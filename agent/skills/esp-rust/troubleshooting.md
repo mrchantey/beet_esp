@@ -27,6 +27,40 @@ deeper hardware/port issues see `setup-hardware.md`.
 | Flashing is very slow                                          | Default baud is 115200. Set `ESPFLASH_BAUD` higher.                                                          |
 | probe-rs `--chip` / target mismatch                            | The `--chip` in `.cargo/config.toml` must match the connected chip.                                          |
 
+### Flashes OK but no `defmt`, RTT control block never found (S3 sticky download mode)
+
+Symptom: `cargo run` reports `Finished in Ns` (flash succeeded) but **no `defmt`
+ever appears**; `probe-rs` scans for the RTT control block forever
+(`RUST_LOG=probe_rs::rtt=debug` shows endless `Scanning at exact address …`); the
+exit backtrace shows both cores in ROM (`0x4000_xxxx`), not app IRAM
+(`0x4037_xxxx`). The app simply never runs, so `rtt_init_defmt!()` never writes
+the control block.
+
+Cause: the chip keeps booting into **download mode** instead of from flash.
+`probe-rs` only does a soft/JTAG reset, which can't escape it. Two triggers seen
+on the dual-port S3 DevKit:
+
+- The one-time manual download entry (hold `BOOT`, tap `RESET`) sets a flag that
+  **survives `probe-rs`'s soft reset** — every subsequent `cargo run` re-enters
+  download until a true power cycle.
+- The `COM` port's CH340 has DTR/RTS auto-reset lines wired to `GPIO0`/`EN`;
+  while connected it can tug `GPIO0` low at reset → download mode.
+
+Fix: **full cold-boot power cycle** — unplug the cable ~10s (drains the RTC
+domain that latches the flag), leave `COM` unplugged, do **not** hold `BOOT`,
+replug the `USB` port. After that the chip does normal flash boot and `cargo run`
+works for good.
+
+Confirm boot state on the serial console (`cat /dev/ttyACM*` — the
+USB-Serial-JTAG CDC is readable via the probe-rs udev ACL):
+
+- `boot:0x2b (SPI_FAST_FLASH_BOOT)` → good, running from flash.
+- `boot:0x.. (DOWNLOAD(USB/UART0))` + `waiting for download` → stuck; cold-boot.
+
+`probe-rs attach --chip <chip> <elf>` reads RTT from an **already-running** app
+**without** resetting it — useful to read a live board and to sidestep the
+reset-into-download trap.
+
 ## Runtime / behavior
 
 | Symptom                                                        | Cause / fix                                                                                                  |
