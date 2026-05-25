@@ -1,12 +1,7 @@
 name: Continuous Integration
 
+# Automatic triggers disabled for now — run manually from the Actions tab.
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - "**/README.md"
-  pull_request:
   workflow_dispatch:
 
 env:
