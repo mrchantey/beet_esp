@@ -1,9 +1,31 @@
 fn main() {
     linker_be_nice();
+    load_dotenv();
     println!("cargo:rustc-link-arg-tests=-Tembedded-test.x");
     println!("cargo:rustc-link-arg=-Tdefmt.x");
     // make sure linkall.x is the last linker script (otherwise might cause problems with flip-link)
     println!("cargo:rustc-link-arg=-Tlinkall.x");
+}
+
+// Expose KEY=VALUE pairs from a local `.env` to the crate via `env!()`.
+// Lets examples read secrets (e.g. SSID/PASSWORD) without committing them.
+fn load_dotenv() {
+    println!("cargo:rerun-if-changed=.env");
+    let Ok(contents) = std::fs::read_to_string(".env") else {
+        return;
+    };
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        let value = value.trim().trim_matches('"').trim_matches('\'');
+        println!("cargo:rustc-env={key}={value}");
+    }
 }
 
 fn linker_be_nice() {

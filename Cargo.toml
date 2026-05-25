@@ -68,9 +68,10 @@ smoltcp = { version = "0.13.0", default-features = false, features = [
   "socket-tcp",
   "socket-udp",
 ] }
-trouble-host = { version = "0.6.0", features = ["gatt"] }
+trouble-host = { version = "0.6.0", features = ["defmt", "gatt", "scan"] }
 
 critical-section = "1.2.0"
+embassy-futures  = "0.1.2"
 static_cell      = "2.1.1"
 
 [dev-dependencies]
