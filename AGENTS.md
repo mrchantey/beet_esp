@@ -74,10 +74,23 @@ Dual-port ESP32-S3 DevKit, brought up and verified 2026-05. Day-to-day:
 - **Keep `COM` unplugged while using `probe-rs`** — its auto-reset lines can tug
   `GPIO0`/`EN` into download mode.
 - udev rules are installed and `probe-rs list` shows `ESP JTAG -- 303a:1001`.
+- **On-board addressable LED (WS2812) is on `GPIO48`**, driven over RMT. See
+  `examples/blinky.rs` (RGB hue fade) and `examples/led_scan.rs` (the GPIO
+  scanner that found it).
+- **Two+ boards at once:** each appears in `probe-rs list` with its own serial;
+  the `.cargo/config.toml` runner sets no `--probe`, so target one explicitly,
+  e.g. `probe-rs run --probe 303a:1001:<SERIAL> --chip esp32s3 … <elf>`.
+- **Board in `lsusb` as `303a:4001` but missing from `probe-rs list`:** its
+  firmware grabbed the USB-OTG port as a CDC serial (`/dev/ttyACM*`), hiding the
+  native JTAG. Enter download mode (hold `BOOT`, tap `RST`) to restore
+  `303a:1001`, then flash and cold-boot.
 
 If a flash succeeds but no `defmt` ever appears (probe-rs scans for RTT
-forever), the chip is stuck in download mode — see the "sticky download mode"
-entry in `agent/skills/esp-rust/troubleshooting.md`.
+forever), the chip is stuck in download mode: **the app isn't running, so don't
+mistake it for a dead peripheral** (a silent app looks exactly like a broken
+LED/sensor). Cold-boot (unplug ~10s, leave `COM` out, replug `USB`) before you
+start debugging hardware. See the "sticky download mode" entry in
+`agent/skills/esp-rust/troubleshooting.md`.
 
 ## Deeper reference
 

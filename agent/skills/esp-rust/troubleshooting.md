@@ -24,6 +24,8 @@ deeper hardware/port issues see `setup-hardware.md`.
 | `espflash` can't detect chip / wrong chip                      | Run `espflash board-info`. Ensure the `--chip` in `.cargo/config.toml` matches the actual silicon.           |
 | Chip stuck at `waiting for download` / new firmware won't run  | Still in Download mode. Reset the board, or flash with `--after watchdog-reset` (USB-Serial/JTAG). Enter download manually: hold **Boot**, tap **Reset**, release Boot. |
 | `probe-rs list` shows nothing                                  | Wrong port or unsupported setup. probe-rs needs native USB-Serial-JTAG (C3 rev0.3+, C5/C6/C61/H2/S3) or an external ESP-Prog — **not** a USB-UART adapter. Check udev rules. See `setup-hardware.md`. |
+| Board present in `lsusb` as `303a:4001` but absent from `probe-rs list` | Its app firmware claimed the USB-OTG peripheral as a CDC serial (`/dev/ttyACM*`, `bDeviceClass` Misc + CDC ACM), which hides the native USB-Serial-JTAG (`303a:1001`). Enter download mode (hold `BOOT`, tap `RST`) to hand USB back to the ROM serial-JTAG → it re-enumerates as `303a:1001`. Flash, then **cold-boot** (the manual entry leaves it stuck in download — see below). |
+| Multiple boards connected / flashes the wrong one (probe-rs)   | Each board shows in `probe-rs list` with its own serial (`303a:1001:<MAC>`). The `.cargo/config.toml` runner sets no `--probe`, so `cargo run` is ambiguous with >1 board. Target one with `probe-rs run --probe 303a:1001:<SERIAL> --chip esp32s3 --preverify <elf>` (or `probe-rs attach …` to just read it). |
 | Flashing is very slow                                          | Default baud is 115200. Set `ESPFLASH_BAUD` higher.                                                          |
 | probe-rs `--chip` / target mismatch                            | The `--chip` in `.cargo/config.toml` must match the connected chip.                                          |
 
@@ -35,6 +37,14 @@ ever appears**; `probe-rs` scans for the RTT control block forever
 exit backtrace shows both cores in ROM (`0x4000_xxxx`), not app IRAM
 (`0x4037_xxxx`). The app simply never runs, so `rtt_init_defmt!()` never writes
 the control block.
+
+> **Check this FIRST before blaming a peripheral.** A flashed-but-not-running
+> app is indistinguishable from dead hardware: the LED never lights, the sensor
+> reads nothing, the GPIO never toggles — because no code is executing. If a
+> freshly flashed board "does nothing", confirm the boot `info!` line actually
+> prints (i.e. the app is alive) before you start scanning pins or suspecting
+> wiring. (Lesson from a long session spent pin-scanning a "dead" WS2812 that
+> turned out to be a board stuck in download mode.)
 
 Cause: the chip keeps booting into **download mode** instead of from flash.
 `probe-rs` only does a soft/JTAG reset, which can't escape it. Two triggers seen
