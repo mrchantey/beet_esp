@@ -20,6 +20,7 @@ test = false
 # Local beet worktree, no_std build exposing bevy_color etc.
 beet = { path = "/home/pete/me/worktrees/beet/no-std-update/beet", default-features = false, features = [
   "embedded",
+  "bevy_color",
 ] }
 
 esp-hal = { version = "~1.1.0", features = ["defmt", "esp32s3", "unstable"] }
