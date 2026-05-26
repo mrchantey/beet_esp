@@ -17,6 +17,11 @@ name    = "hello_test"
 test = false
 
 [dependencies]
+# Local beet worktree, no_std build exposing bevy_color etc.
+beet = { path = "/home/pete/me/worktrees/beet/no-std-update/beet", default-features = false, features = [
+  "embedded",
+] }
+
 esp-hal = { version = "~1.1.0", features = ["defmt", "esp32s3", "unstable"] }
 
 esp-rtos = { version = "0.3.0", features = [

@@ -5,6 +5,9 @@
 //! directly into RMT pulse codes, so there's no dependency on an external
 //! smart-led crate.
 //!
+//! Colours come from Bevy's [`Color`] (re-exported through `beet`): we rotate
+//! the hue in HSL space and convert to 8-bit sRGB via `beet`'s `ColorExt`.
+//!
 //! The on-board LED pin differs between ESP32-S3 boards: official Espressif
 //! DevKitC-1 / DevKitM-1 use GPIO48, while some clone boards use GPIO38. If
 //! nothing lights up, swap the pin at `LED_PIN` below (see the comment there).
@@ -14,6 +17,8 @@
 #![no_std]
 #![no_main]
 
+use beet::prelude::Color;
+use beet::prelude::ColorExt;
 use defmt::info;
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
@@ -51,21 +56,6 @@ fn encode(grb: u32, buf: &mut [PulseCode; PIXEL_CODES]) {
     buf[24] = PulseCode::end_marker();
 }
 
-/// Map a hue position (0..=255) around the colour wheel at full saturation and
-/// value. Returns `(r, g, b)`.
-fn wheel(pos: u8) -> (u8, u8, u8) {
-    let p = pos as u16;
-    if pos < 85 {
-        ((255 - p * 3) as u8, 0, (p * 3) as u8)
-    } else if pos < 170 {
-        let p = p - 85;
-        (0, (p * 3) as u8, (255 - p * 3) as u8)
-    } else {
-        let p = p - 170;
-        ((p * 3) as u8, (255 - p * 3) as u8, 0)
-    }
-}
-
 #[esp_rtos::main]
 async fn main(_spawner: Spawner) -> ! {
     rtt_target::rtt_init_defmt!();
@@ -100,14 +90,16 @@ async fn main(_spawner: Spawner) -> ! {
         .with_pin(led_pin);
 
     let mut buf = [PulseCode::end_marker(); PIXEL_CODES];
-    let mut hue: u8 = 0;
+    // Hue in degrees (0..360), full saturation, mid lightness.
+    let mut hue: f32 = 0.0;
 
     loop {
-        let (r, g, b) = wheel(hue);
+        // Bevy colour: rotate hue in HSL, convert to 8-bit sRGB.
+        let srgb = Color::hsl(hue, 1.0, 0.5).to_srgba_u8();
         // Scale by brightness, then pack as GRB (WS2812 wire order).
-        let r = (r as u16 * BRIGHTNESS / 255) as u32;
-        let g = (g as u16 * BRIGHTNESS / 255) as u32;
-        let b = (b as u16 * BRIGHTNESS / 255) as u32;
+        let r = (srgb.red as u16 * BRIGHTNESS / 255) as u32;
+        let g = (srgb.green as u16 * BRIGHTNESS / 255) as u32;
+        let b = (srgb.blue as u16 * BRIGHTNESS / 255) as u32;
         let grb = (g << 16) | (r << 8) | b;
 
         encode(grb, &mut buf);
@@ -115,7 +107,10 @@ async fn main(_spawner: Spawner) -> ! {
             defmt::error!("RMT transmit failed: {}", e);
         }
 
-        hue = hue.wrapping_add(1);
+        hue += 1.5;
+        if hue >= 360.0 {
+            hue -= 360.0;
+        }
         Timer::after(Duration::from_millis(20)).await;
     }
 }
