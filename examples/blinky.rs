@@ -1,9 +1,11 @@
 //! Addressable RGB LED hue-fade ("blinky"), as a Bevy app.
 //!
-//! [`init_esp!`] hides the board bring-up and hands back the on-board WS2812.
-//! [`LedPlugin`] spawns an LED entity and advances its [`HueFade`] each
-//! `Update`, writing the colour to the entity's [`LedColor`]; the async render
-//! loop reads that colour and pushes it to the LED over RMT.
+//! [`init_esp!`] hides the board bring-up and hands back the on-board WS2812;
+//! the app takes it as a non-send resource. [`LedPlugin`] spawns an LED entity
+//! and advances its [`HueFade`] each `Update`, writing the colour to the
+//! entity's [`LedColor`]. [`Esp32Plugin`]'s runner drives the schedule on the
+//! embassy executor and pushes that colour to the LED over RMT — so this is
+//! just a Bevy app with `App::new()...run()`.
 //!
 //! The on-board LED is `GPIO48` on the official Espressif DevKitC-1 / DevKitM-1;
 //! some clone boards use `GPIO38` — see `init_esp!` if nothing lights up.
@@ -13,27 +15,20 @@
 #![no_std]
 #![no_main]
 
-use beet::prelude::App;
+use beet::prelude::*;
 use beet_esp::prelude::*;
-use embassy_executor::Spawner;
-use embassy_time::{Duration, Timer};
 use panic_rtt_target as _;
 
-esp_bootloader_esp_idf::esp_app_desc!();
+beet_esp::esp_app_desc!();
 
-#[esp_rtos::main]
-async fn main(_spawner: Spawner) -> ! {
+#[esp_hal::main]
+fn main() -> ! {
     init_esp!(led);
 
-    let mut app = App::new();
-    app.add_plugins((Esp32Plugin, LedPlugin::default()));
+    App::new()
+        .insert_non_send(led)
+        .add_plugins((Esp32Plugin, LedPlugin::default()))
+        .run();
 
-    let mut led_color = app.world_mut().query::<&LedColor>();
-    loop {
-        app.update();
-        if let Ok(color) = led_color.single(app.world()) {
-            led.write(color.0).await;
-        }
-        Timer::after(Duration::from_millis(20)).await;
-    }
+    unreachable!("the esp runner never returns")
 }
