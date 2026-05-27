@@ -17,6 +17,7 @@ pub use beet_esp_macros::main;
 pub mod bridge;
 pub mod esp32_plugin;
 pub mod led;
+pub mod wifi;
 
 pub mod prelude {
 	pub use crate::bridge::*;
@@ -25,6 +26,7 @@ pub mod prelude {
 	pub use crate::init_esp;
 	pub use crate::led::*;
 	pub use crate::main;
+	pub use crate::wifi::*;
 }
 
 /// Emit the esp-idf bootloader application descriptor required to boot.
@@ -66,6 +68,11 @@ macro_rules! init_esp {
 	};
 	(heap_size: $size:expr) => {
 		$crate::rtt_target::rtt_init_defmt!();
+		// The main heap, in the RAM the stack also uses.
 		$crate::esp_alloc::heap_allocator!(size: $size);
+		// A second heap in the RAM reclaimed from the bootloader, otherwise
+		// unused. esp-radio (Wi-Fi/BLE COEX) needs this extra region; it is
+		// harmless for apps that don't use the radio.
+		$crate::esp_alloc::heap_allocator!(#[$crate::esp_hal::ram(reclaimed)] size: 73744);
 	};
 }

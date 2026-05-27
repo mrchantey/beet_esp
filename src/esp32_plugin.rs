@@ -60,6 +60,7 @@ fn bring_up(world: &mut World) {
     // separate resources. A domain plugin removes whichever ones it owns.
     world.insert_non_send(p.RMT);
     world.insert_non_send(p.GPIO48);
+    world.insert_non_send(p.WIFI);
 }
 
 /// How long the schedule sleeps between ticks.
