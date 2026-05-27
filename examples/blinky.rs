@@ -1,12 +1,12 @@
 //! Addressable RGB LED hue-fade ("blinky"), as a Bevy app.
 //!
-//! A minimal Bevy `App` on bare metal: [`Esp32Plugin`] handles bring-up — it
-//! spawns an LED entity and advances its [`HueFade`] each `Update`, writing the
-//! colour to the entity's [`LedColor`]. The async render loop reads that colour
-//! and pushes it to the on-board WS2812 over RMT via [`Ws2812`].
+//! [`init_esp!`] hides the board bring-up and hands back the on-board WS2812.
+//! [`LedPlugin`] spawns an LED entity and advances its [`HueFade`] each
+//! `Update`, writing the colour to the entity's [`LedColor`]; the async render
+//! loop reads that colour and pushes it to the LED over RMT.
 //!
 //! The on-board LED is `GPIO48` on the official Espressif DevKitC-1 / DevKitM-1;
-//! some clone boards use `GPIO38` — swap the pin below if nothing lights up.
+//! some clone boards use `GPIO38` — see `init_esp!` if nothing lights up.
 //!
 //! Run with: `cargo run --release --example blinky`
 
@@ -23,14 +23,10 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 #[esp_rtos::main]
 async fn main(_spawner: Spawner) -> ! {
-    rtt_target::rtt_init_defmt!();
-
-    let p = init_board();
-    start_embassy(p.TIMG0, p.SW_INTERRUPT);
-    let mut led = Ws2812::new(p.RMT, p.GPIO48);
+    init_esp!(led);
 
     let mut app = App::new();
-    app.add_plugins(Esp32Plugin::default());
+    app.add_plugins((Esp32Plugin, LedPlugin::default()));
 
     let mut led_color = app.world_mut().query::<&LedColor>();
     loop {
