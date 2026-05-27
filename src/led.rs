@@ -24,25 +24,15 @@ use esp_hal::time::Rate;
 /// flight — exactly the "hold off until the current write completes" behaviour.
 pub static LED_IN: Latest<Color> = Latest::new();
 
-/// Owns everything LED: claims the on-board WS2812's peripherals and spawns its
-/// async RMT driver at startup, spawns an LED entity, and advances any
-/// [`HueFade`] each update — pushing the colour to the driver via [`LED_IN`].
-#[derive(Default)]
-pub struct LedPlugin {
-    /// Hue-fade parameters for the LED entity spawned at startup.
-    pub hue_fade: HueFade,
-}
+/// Claims the on-board WS2812's peripherals and spawns its async RMT driver at
+/// startup. Spawning LED entities and animating them is left to the app — see
+/// [`LedColor`], [`cycle_hue`] and [`flush_led`].
+pub struct LedPlugin;
 
 impl Plugin for LedPlugin {
     fn build(&self, app: &mut App) {
-        let hue_fade = self.hue_fade;
-        app.add_systems(
-            Startup,
-            (spawn_led_driver, move |mut commands: Commands| {
-                commands.spawn((LedColor::default(), hue_fade));
-            }),
-        )
-        .add_systems(Update, (cycle_hue, flush_led).chain());
+        app.add_systems(Startup, spawn_led_driver)
+            .add_systems(Update, (cycle_hue, flush_led).chain());
     }
 }
 
@@ -195,7 +185,7 @@ impl Default for LedColor {
 }
 
 /// Cycles an entity's [`LedColor`] through the hue wheel. Attach it to an LED
-/// entity and [`LedPlugin`] advances it each update.
+/// entity and [`cycle_hue`] advances it each update.
 #[derive(Component, Clone, Copy)]
 pub struct HueFade {
     /// Current hue in degrees, 0..360.

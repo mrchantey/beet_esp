@@ -56,7 +56,7 @@ macro_rules! esp_app_desc {
 /// init_esp!();                     // default 96 KiB heap
 /// init_esp!(heap_size: 64 * 1024); // or pick a size
 /// App::new()
-///     .add_plugins((Esp32Plugin, LedPlugin::default()))
+///     .add_plugins((Esp32Plugin, LedPlugin))
 ///     .run();
 /// ```
 #[macro_export]
