@@ -6,7 +6,9 @@ use crate::types::Grb;
 use crate::types::PIXEL_CODES;
 use defmt::info;
 use esp_hal::Async;
+use esp_hal::clock::CpuClock;
 use esp_hal::gpio::interconnect::PeripheralOutput;
+use esp_hal::peripherals::Peripherals;
 use esp_hal::peripherals::RMT;
 use esp_hal::rmt::Channel;
 use esp_hal::rmt::PulseCode;
@@ -18,8 +20,21 @@ use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::gpio::Level;
 
+/// Board bring-up that must run before constructing a Bevy [`App`]: installs
+/// the heap (the `World` allocates) and sets the CPU clock. Returns the
+/// peripherals so the caller can start embassy and wire up hardware that the
+/// async render loop drives (e.g. the [`Ws2812`]).
+///
+/// Initialise RTT/`defmt` logging (`rtt_target::rtt_init_defmt!()`) in `main`
+/// before calling this — the RTT control block is a per-binary singleton, so it
+/// can't live behind a shared helper.
+pub fn init_board() -> Peripherals {
+	esp_alloc::heap_allocator!(size: 96 * 1024);
+	esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()))
+}
+
 /// Start the embassy executor on `esp-rtos` using timer group 0. Call once,
-/// after [`esp_hal::init`], before spawning tasks or running an [`App`].
+/// after [`init_board`], before spawning tasks or running an [`App`].
 pub fn start_embassy(timg0: esp_hal::peripherals::TIMG0<'static>, sw: esp_hal::peripherals::SW_INTERRUPT<'static>) {
 	let timg0 = TimerGroup::new(timg0);
 	let sw_interrupt = esp_hal::interrupt::software::SoftwareInterruptControl::new(sw);
@@ -76,9 +91,9 @@ impl Ws2812 {
 	}
 }
 
-/// The colour the LED should currently show. Updated by app systems and read by
-/// the render loop.
-#[derive(Resource, Clone, Copy)]
+/// The colour an LED entity should currently show. App systems write it; the
+/// async render loop reads it and pushes it to the hardware.
+#[derive(Component, Clone, Copy)]
 pub struct LedColor(pub Color);
 
 impl Default for LedColor {
@@ -87,42 +102,50 @@ impl Default for LedColor {
 	}
 }
 
-/// Current hue in degrees (0..360).
-#[derive(Resource, Clone, Copy, Default)]
-pub struct Hue(pub f32);
-
-/// Baseline scaffolding for an esp32 Bevy app: a startup banner.
-pub struct Esp32Plugin;
-
-impl Plugin for Esp32Plugin {
-	fn build(&self, app: &mut App) {
-		app.add_systems(Startup, || info!("esp32 bevy app started"));
-	}
-}
-
-/// Rotates the hue every update and writes the resulting colour to [`LedColor`].
-pub struct HueFadePlugin {
+/// Cycles an entity's [`LedColor`] through the hue wheel. Attach it to an LED
+/// entity and [`Esp32Plugin`] advances it each update.
+#[derive(Component, Clone, Copy)]
+pub struct HueFade {
+	/// Current hue in degrees, 0..360.
+	pub hue: f32,
 	/// Degrees of hue advanced per update.
 	pub step: f32,
 }
 
-impl Default for HueFadePlugin {
+impl Default for HueFade {
 	fn default() -> Self {
-		Self { step: 1.5 }
+		Self { hue: 0.0, step: 1.5 }
 	}
 }
 
-impl Plugin for HueFadePlugin {
+/// Baseline scaffolding for an esp32 Bevy app: logs a startup banner, spawns an
+/// LED entity, and advances any [`HueFade`] each update.
+pub struct Esp32Plugin {
+	/// Hue-fade parameters for the LED entity spawned at startup.
+	pub hue_fade: HueFade,
+}
+
+impl Default for Esp32Plugin {
+	fn default() -> Self {
+		Self { hue_fade: HueFade::default() }
+	}
+}
+
+impl Plugin for Esp32Plugin {
 	fn build(&self, app: &mut App) {
-		let step = self.step;
-		app.init_resource::<Hue>()
-			.init_resource::<LedColor>()
-			.add_systems(
-				Update,
-				move |mut hue: ResMut<Hue>, mut color: ResMut<LedColor>| {
-					hue.0 = (hue.0 + step) % 360.0;
-					color.0 = Color::hsl(hue.0, 1.0, 0.5);
-				},
-			);
+		let hue_fade = self.hue_fade;
+		app.add_systems(Startup, move |mut commands: Commands| {
+			info!("esp32 bevy app started");
+			commands.spawn((LedColor::default(), hue_fade));
+		})
+		.add_systems(Update, cycle_hue);
+	}
+}
+
+/// Advances every [`HueFade`] and writes the resulting colour to its [`LedColor`].
+fn cycle_hue(mut query: Query<(&mut HueFade, &mut LedColor)>) {
+	for (mut fade, mut color) in &mut query {
+		fade.hue = (fade.hue + fade.step) % 360.0;
+		color.0 = Color::hsl(fade.hue, 1.0, 0.5);
 	}
 }
