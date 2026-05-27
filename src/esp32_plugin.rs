@@ -1,16 +1,14 @@
 //! ESP32/Bevy bring-up: the embassy/`esp-rtos` starter and the baseline app
-//! plugin. The bulk of board bring-up is hidden behind the [`init_esp!`] macro;
-//! [`Esp32Plugin`] installs a runner so a bare-metal app is driven by plain
-//! [`App::run`].
-//!
-//! [`init_esp!`]: crate::init_esp
+//! plugin. [`Esp32Plugin`] initialises the chip and embassy in a `PreStartup`
+//! system, exposes the raw peripherals as non-send resources, and installs a
+//! runner so a bare-metal app is driven by plain [`App::run`].
 
-use crate::led::LedColor;
-use crate::led::Ws2812;
+use crate::bridge::spawn_driver;
 use beet::prelude::*;
 use defmt::info;
 use embassy_time::Duration;
 use embassy_time::Timer;
+use esp_hal::clock::CpuClock;
 use esp_hal::timer::timg::TimerGroup;
 use esp_rtos::embassy::Executor;
 use static_cell::StaticCell;
@@ -26,51 +24,65 @@ pub fn start_embassy(
     esp_rtos::start(timg0.timer0, sw_interrupt.software_interrupt0);
 }
 
-/// Baseline scaffolding for an esp32 Bevy app: logs a startup banner and
-/// installs a runner so [`App::run`] drives the schedule on the embassy
-/// executor, pushing the [`LedColor`] to the on-board LED each frame.
+/// Baseline runtime for an esp32 Bevy app: brings up the chip and embassy,
+/// logs a startup banner, and installs a runner so [`App::run`] drives the
+/// schedule on the embassy executor.
 ///
-/// The LED hardware can't be driven from a (synchronous) Bevy system, so the
-/// app hands it over as a non-send resource and the runner takes ownership
-/// before the loop starts. See [`init_esp!`](crate::init_esp).
+/// It is LED-agnostic — it only ticks the schedule and exposes the raw
+/// peripherals as non-send resources. Each domain plugin (e.g.
+/// [`LedPlugin`](crate::led::LedPlugin)) assembles its own drivers from those
+/// peripherals and spawns its own async driver via the [`bridge`](crate::bridge)
+/// using the [`Spawner`](embassy_executor::Spawner) resource. See
+/// [`init_esp!`](crate::init_esp).
 pub struct Esp32Plugin;
 
 impl Plugin for Esp32Plugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, || info!("esp32 bevy app started"))
+        app.add_systems(PreStartup, bring_up)
+            .add_systems(Startup, || info!("esp32 bevy app started"))
             .set_runner(esp_runner);
     }
 }
 
-/// Bevy runner: hands the schedule and the LED hardware to the embassy executor
-/// and runs forever, so callers just write `App::new()...run()`.
+/// Initialise the chip, start the embassy runtime, and expose the peripherals
+/// domain plugins need as non-send resources.
+///
+/// Exclusive so it can both call the hardware fns and `insert_non_send`. It runs
+/// once in `PreStartup`, before any plugin's `Startup` split system claims a
+/// peripheral. Calling `esp_hal::init`/[`start_embassy`] from a system (rather
+/// than `main`) is the proven "run-then-start" order: the runner calls
+/// `Executor::run` first, and this system runs inside the spawned tick task
+/// before any embassy timer is awaited.
+fn bring_up(world: &mut World) {
+    let p = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()));
+    start_embassy(p.TIMG0, p.SW_INTERRUPT);
+    // Each esp-hal peripheral is a distinct type, so they key cleanly as
+    // separate resources. A domain plugin removes whichever ones it owns.
+    world.insert_non_send(p.RMT);
+    world.insert_non_send(p.GPIO48);
+}
+
+/// How long the schedule sleeps between ticks.
+const FRAME: Duration = Duration::from_millis(20);
+
+/// Bevy runner: hands the schedule to the embassy executor and runs forever, so
+/// callers just write `App::new()...run()`. The embassy
+/// [`Spawner`](embassy_executor::Spawner) is exposed as a non-send resource so
+/// domain plugins can spawn their own async drivers.
 fn esp_runner(mut app: App) -> AppExit {
     app.finish();
     app.cleanup();
-    let led = app
-        .world_mut()
-        .remove_non_send::<Ws2812>()
-        .expect("insert the Ws2812 with `insert_non_send` before `App::run()`");
 
     static EXECUTOR: StaticCell<Executor> = StaticCell::new();
     let executor = EXECUTOR.init(Executor::new());
     executor.run(move |spawner| {
-        let task = render(app, led).expect("render task pool exhausted");
-        spawner.spawn(task);
+        app.insert_non_send(spawner);
+        // Generic tick: advance the schedule, then yield a frame.
+        spawn_driver(spawner, async move {
+            loop {
+                app.update();
+                Timer::after(FRAME).await;
+            }
+        });
     })
-}
-
-/// Tick the schedule, then push the current [`LedColor`] to the LED. The
-/// `await` here is why the loop lives in a task rather than a Bevy system —
-/// it yields to the executor while the RMT transfer is in flight.
-#[embassy_executor::task]
-async fn render(mut app: App, mut led: Ws2812) -> ! {
-    let mut led_color = app.world_mut().query::<&LedColor>();
-    loop {
-        app.update();
-        if let Ok(color) = led_color.single(app.world()) {
-            led.write(color.0).await;
-        }
-        Timer::after(Duration::from_millis(20)).await;
-    }
 }

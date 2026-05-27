@@ -23,6 +23,9 @@ beet = { path = "/home/pete/me/worktrees/beet/embedded/beet", default-features =
   "bevy_color",
 ] }
 
+# Sibling proc-macro crate providing #[beet_esp::main]. Builds for the host.
+beet_esp_macros = { path = "macros" }
+
 esp-hal = { version = "~1.1.0", features = ["defmt", "esp32s3", "unstable"] }
 
 esp-rtos = { version = "0.3.0", features = [
@@ -78,7 +81,10 @@ trouble-host = { version = "0.6.0", features = ["defmt", "gatt", "scan"] }
 
 critical-section = "1.2.0"
 embassy-futures  = "0.1.2"
-static_cell      = "2.1.1"
+# Pinned to esp-rtos's embassy-sync (0.8.0) so the bridge's Signal/Channel share
+# the same version the runtime links.
+embassy-sync = { version = "0.8.0", features = ["defmt"] }
+static_cell  = "2.1.1"
 
 [dev-dependencies]
 embedded-test = { version = "0.7.1", features = [

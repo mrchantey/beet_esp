@@ -2,21 +2,29 @@
 
 extern crate alloc;
 
-// Re-exported so the macros below can reach these crates hermetically via
-// `$crate`, without the calling example having to import ESP internals itself.
+// Re-exported so the macros below (and `#[beet_esp::main]`) can reach these
+// crates hermetically via absolute paths, without the calling example having to
+// import ESP internals itself.
 pub use esp_alloc;
 pub use esp_bootloader_esp_idf;
 pub use esp_hal;
+pub use panic_rtt_target;
 pub use rtt_target;
 
+/// `#[beet_esp::main]` — wraps `fn main` with the ESP32 entry boilerplate.
+pub use beet_esp_macros::main;
+
+pub mod bridge;
 pub mod esp32_plugin;
 pub mod led;
 
 pub mod prelude {
+	pub use crate::bridge::*;
 	pub use crate::esp32_plugin::*;
 	pub use crate::esp_app_desc;
 	pub use crate::init_esp;
 	pub use crate::led::*;
+	pub use crate::main;
 }
 
 /// Emit the esp-idf bootloader application descriptor required to boot.
@@ -31,34 +39,33 @@ macro_rules! esp_app_desc {
 	};
 }
 
-/// Bring up the board for a Bevy app and bind `$led` to the on-board WS2812.
+/// Set up the binary-local statics a Bevy app on this board needs: RTT/`defmt`
+/// logging and the heap (a Bevy `World` allocates, so the heap must exist before
+/// `App::new()`).
 ///
-/// Expands at the top of `main` into the ESP32 wiring an app needs but
-/// shouldn't have to spell out: RTT/`defmt` logging, the heap (a Bevy `World`
-/// allocates), CPU clock and peripheral init, and the embassy executor on
-/// `esp-rtos`. `$led` is bound to a [`Ws2812`](crate::led::Ws2812) on `GPIO48`
-/// (the on-board LED of the official DevKitC-1/M-1); hand it to the app with
-/// `insert_non_send` so [`Esp32Plugin`](crate::esp32_plugin::Esp32Plugin)'s
-/// runner can drive it.
+/// Invoke at the top of `main`, before `App::new()`. These define per-binary
+/// linker statics (`_SEGGER_RTT`, the heap region) so they must expand in the
+/// binary, not inside a library fn. Chip/embassy bring-up and peripheral
+/// distribution happen later, inside
+/// [`Esp32Plugin`](crate::esp32_plugin::Esp32Plugin)'s `PreStartup` system.
+///
+/// This is the manual counterpart to [`#[beet_esp::main]`](crate::main), which
+/// expands to it — so the heap/RTT setup can't drift between the two paths.
 ///
 /// ```ignore
-/// init_esp!(led);
+/// init_esp!();                     // default 96 KiB heap
+/// init_esp!(heap_size: 64 * 1024); // or pick a size
 /// App::new()
-///     .insert_non_send(led)
 ///     .add_plugins((Esp32Plugin, LedPlugin::default()))
 ///     .run();
 /// ```
 #[macro_export]
 macro_rules! init_esp {
-	($led:ident) => {
+	() => {
+		$crate::init_esp!(heap_size: 96 * 1024);
+	};
+	(heap_size: $size:expr) => {
 		$crate::rtt_target::rtt_init_defmt!();
-		// Bevy's World and schedules allocate, so bring up a heap first.
-		$crate::esp_alloc::heap_allocator!(size: 96 * 1024);
-		let peripherals = $crate::esp_hal::init(
-			$crate::esp_hal::Config::default()
-				.with_cpu_clock($crate::esp_hal::clock::CpuClock::max()),
-		);
-		$crate::esp32_plugin::start_embassy(peripherals.TIMG0, peripherals.SW_INTERRUPT);
-		let mut $led = $crate::led::Ws2812::new(peripherals.RMT, peripherals.GPIO48);
+		$crate::esp_alloc::heap_allocator!(size: $size);
 	};
 }

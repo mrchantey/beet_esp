@@ -186,12 +186,14 @@ name = "beet_esp"
 version = "0.1.0"
 dependencies = [
  "beet",
+ "beet_esp_macros",
  "bt-hci",
  "critical-section",
  "defmt 1.1.0",
  "embassy-executor",
  "embassy-futures",
  "embassy-net",
+ "embassy-sync 0.8.0",
  "embassy-time",
  "embedded-io 0.7.1",
  "embedded-io-async 0.7.0",
@@ -206,6 +208,15 @@ dependencies = [
  "smoltcp",
  "static_cell",
  "trouble-host",
+]
+
+[[package]]
+name = "beet_esp_macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]

@@ -1,10 +1,14 @@
 //! On-board addressable LED: the WS2812 RMT driver, its Bevy components and
 //! hue-fade animation, and the GRB wire encoding a [`Color`] becomes.
 
+use crate::bridge::Latest;
+use crate::bridge::spawn_driver;
 use beet::prelude::*;
+use embassy_executor::Spawner;
 use esp_hal::Async;
 use esp_hal::gpio::Level;
 use esp_hal::gpio::interconnect::PeripheralOutput;
+use esp_hal::peripherals::GPIO48;
 use esp_hal::peripherals::RMT;
 use esp_hal::rmt::Channel;
 use esp_hal::rmt::PulseCode;
@@ -14,7 +18,15 @@ use esp_hal::rmt::TxChannelConfig;
 use esp_hal::rmt::TxChannelCreator;
 use esp_hal::time::Rate;
 
-/// Spawns an LED entity at startup and advances any [`HueFade`] each update.
+/// Latest-wins pipe carrying the desired LED colour from Bevy systems to the
+/// async RMT driver. Systems push via [`flush_led`]; the driver pulls the newest
+/// value and writes it, dropping any colour superseded while a write is in
+/// flight — exactly the "hold off until the current write completes" behaviour.
+pub static LED_IN: Latest<Color> = Latest::new();
+
+/// Owns everything LED: claims the on-board WS2812's peripherals and spawns its
+/// async RMT driver at startup, spawns an LED entity, and advances any
+/// [`HueFade`] each update — pushing the colour to the driver via [`LED_IN`].
 #[derive(Default)]
 pub struct LedPlugin {
     /// Hue-fade parameters for the LED entity spawned at startup.
@@ -24,11 +36,39 @@ pub struct LedPlugin {
 impl Plugin for LedPlugin {
     fn build(&self, app: &mut App) {
         let hue_fade = self.hue_fade;
-        app.add_systems(Startup, move |mut commands: Commands| {
-            commands.spawn((LedColor::default(), hue_fade));
-        })
-        .add_systems(Update, cycle_hue);
+        app.add_systems(
+            Startup,
+            (spawn_led_driver, move |mut commands: Commands| {
+                commands.spawn((LedColor::default(), hue_fade));
+            }),
+        )
+        .add_systems(Update, (cycle_hue, flush_led).chain());
     }
+}
+
+/// Claim the LED's peripherals (`RMT` + `GPIO48`) that
+/// [`bring_up`](crate::esp32_plugin) exposed, build the [`Ws2812`], and spawn
+/// the async driver that writes the latest [`LED_IN`] colour over RMT — holding
+/// off the next pull until the in-flight write completes.
+///
+/// Exclusive so it can pull the non-send peripherals and the [`Spawner`] from
+/// the world. Runs in `Startup`, after `bring_up`'s `PreStartup`.
+fn spawn_led_driver(world: &mut World) {
+    let rmt = world
+        .remove_non_send::<RMT<'static>>()
+        .expect("add Esp32Plugin before LedPlugin — bring_up provides the RMT peripheral");
+    let pin = world
+        .remove_non_send::<GPIO48<'static>>()
+        .expect("add Esp32Plugin before LedPlugin — bring_up provides GPIO48");
+    let spawner = *world.non_send::<Spawner>();
+
+    let mut led = Ws2812::new(rmt, pin);
+    spawn_driver(spawner, async move {
+        loop {
+            let color = LED_IN.recv().await;
+            led.write(color).await;
+        }
+    });
 }
 
 /// Advances every [`HueFade`] and writes the resulting colour to its [`LedColor`].
@@ -36,6 +76,14 @@ fn cycle_hue(mut query: Query<(&mut HueFade, &mut LedColor)>) {
     for (mut fade, mut color) in &mut query {
         fade.hue = (fade.hue + fade.step) % 360.0;
         color.0 = Color::hsl(fade.hue, 1.0, 0.5);
+    }
+}
+
+/// Pushes the LED entity's current [`LedColor`] into [`LED_IN`] for the async
+/// driver to pick up.
+fn flush_led(query: Query<&LedColor>) {
+    if let Ok(color) = query.single() {
+        LED_IN.send(color.0);
     }
 }
 
@@ -52,7 +100,7 @@ pub const PIXEL_CODES: usize = 24 + 1;
 
 /// A single WS2812 pixel packed in wire order (green, red, blue), 8 bits per
 /// channel — the "microcontroller value" a [`Color`] becomes on the wire.
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Deref, DerefMut)]
 pub struct Grb(pub u32);
 
 impl Grb {
