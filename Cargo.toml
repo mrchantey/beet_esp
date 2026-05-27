@@ -21,6 +21,8 @@ test = false
 beet = { path = "/home/pete/me/worktrees/beet/embedded/beet", default-features = false, features = [
   "embedded",
   "bevy_color",
+  "world_serde",
+  "json",
 ] }
 
 # Sibling proc-macro crate providing #[beet_esp::main]. Builds for the host.

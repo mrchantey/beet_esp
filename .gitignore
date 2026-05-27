@@ -7,7 +7,7 @@ target/
 .zed/
 .helix/
 .nvim.lua
-
+.claude
 agent/plans
 agent/reference
 
