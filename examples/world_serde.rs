@@ -15,7 +15,7 @@
 //! No Wi-Fi/LED here; [`Esp32Plugin`] just brings up the chip and ticks the
 //! schedule. Types must be reflected and registered for serde to find them.
 //!
-//! Run with: `cargo run --release --example world_serde`
+//! Run with: `cargo run --release --no-default-features --example world_serde`
 
 #![no_std]
 #![no_main]
@@ -53,7 +53,7 @@ const SCENE_JSON: &str = r#"{
 #[beet_esp::main]
 fn main() {
     let mut app = App::new();
-    app.add_plugins(Esp32Plugin);
+    app.add_plugins((Esp32Plugin, HealthPlugin));
     // world_serde looks types up by reflection at load time.
     app.init_resource::<AppTypeRegistry>();
     app.register_type::<HelloWorld>();

@@ -10,7 +10,7 @@
 //! The on-board LED is `GPIO48` on the official Espressif DevKitC-1 / DevKitM-1;
 //! some clone boards use `GPIO38` — see [`LedPlugin`] if nothing lights up.
 //!
-//! Run with: `cargo run --release --example blinky`
+//! Run with: `cargo run --release --no-default-features --features led --example blinky`
 
 #![no_std]
 #![no_main]
@@ -21,7 +21,7 @@ use beet_esp::prelude::*;
 #[beet_esp::main]
 fn main() {
     App::new()
-        .add_plugins((Esp32Plugin, LedPlugin))
+        .add_plugins((Esp32Plugin, HealthPlugin, LedPlugin))
         .add_systems(Startup, setup)
         .run();
 }

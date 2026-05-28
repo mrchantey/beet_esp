@@ -16,16 +16,22 @@ pub use beet_esp_macros::main;
 
 pub mod bridge;
 pub mod esp32_plugin;
+pub mod health;
+#[cfg(feature = "led")]
 pub mod led;
+#[cfg(feature = "wifi")]
 pub mod wifi;
 
 pub mod prelude {
 	pub use crate::bridge::*;
 	pub use crate::esp32_plugin::*;
 	pub use crate::esp_app_desc;
+	pub use crate::health::*;
 	pub use crate::init_esp;
-	pub use crate::led::*;
 	pub use crate::main;
+	#[cfg(feature = "led")]
+	pub use crate::led::*;
+	#[cfg(feature = "wifi")]
 	pub use crate::wifi::*;
 }
 
@@ -74,5 +80,8 @@ macro_rules! init_esp {
 		// unused. esp-radio (Wi-Fi/BLE COEX) needs this extra region; it is
 		// harmless for apps that don't use the radio.
 		$crate::esp_alloc::heap_allocator!(#[$crate::esp_hal::ram(reclaimed)] size: 73744);
+		// Paint the stack and record the boot memory snapshot, before anything
+		// allocates. Picked up by `HealthPlugin` in `PreStartup`.
+		$crate::health::on_boot();
 	};
 }

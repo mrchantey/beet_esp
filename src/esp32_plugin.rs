@@ -57,10 +57,20 @@ fn bring_up(world: &mut World) {
     let p = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()));
     start_embassy(p.TIMG0, p.SW_INTERRUPT);
     // Each esp-hal peripheral is a distinct type, so they key cleanly as
-    // separate resources. A domain plugin removes whichever ones it owns.
-    world.insert_non_send(p.RMT);
-    world.insert_non_send(p.GPIO48);
+    // separate resources. A domain plugin removes whichever ones it owns; only
+    // expose the ones a compiled-in domain plugin can actually claim.
+    #[cfg(feature = "led")]
+    {
+        world.insert_non_send(p.RMT);
+        world.insert_non_send(p.GPIO48);
+    }
+    #[cfg(feature = "wifi")]
     world.insert_non_send(p.WIFI);
+
+    // Without a domain plugin there are no peripherals to expose; `world` is then
+    // only here to keep `bring_up` an exclusive system that runs in `PreStartup`.
+    #[cfg(not(any(feature = "led", feature = "wifi")))]
+    let _ = world;
 }
 
 /// How long the schedule sleeps between ticks.

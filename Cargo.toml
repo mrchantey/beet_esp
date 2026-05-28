@@ -5,9 +5,10 @@ rust-version = "1.88"
 version      = "0.1.0"
 
 [[bin]]
-name = "beet_esp"
-path = "./src/bin/main.rs"
-test = false
+name             = "beet_esp"
+path             = "./src/bin/main.rs"
+required-features = ["coex"]
+test             = false
 
 [[test]]
 harness = false
@@ -15,6 +16,56 @@ name    = "hello_test"
 
 [lib]
 test = false
+
+[features]
+default = ["coex"]
+# On-board WS2812 LED over RMT (the `led` module). No extra crates.
+led = []
+# Wi-Fi station + embassy-net TCP/HTTP stack (the `wifi` module).
+wifi = [
+  "dep:esp-radio",
+  "esp-radio/wifi",
+  "dep:embassy-net",
+  "dep:smoltcp",
+  "dep:embedded-io",
+  "dep:embedded-io-async",
+]
+# BLE host (trouBLE).
+ble = ["dep:esp-radio", "esp-radio/ble", "dep:trouble-host", "dep:bt-hci"]
+# Wi-Fi + BLE coexistence — both radios at once. Required by the default bin.
+coex = ["wifi", "ble", "esp-radio/coex"]
+
+# Examples only build when their required features are on, so e.g. `blinky`
+# stays lean: `cargo run --release --no-default-features --features led --example blinky`.
+[[example]]
+name             = "blinky"
+required-features = ["led"]
+
+[[example]]
+name             = "led_scan"
+required-features = ["led"]
+
+[[example]]
+name             = "ecs_wifi"
+required-features = ["wifi"]
+
+[[example]]
+name             = "wifi-client"
+required-features = ["wifi"]
+
+[[example]]
+name             = "wifi-server"
+required-features = ["wifi"]
+
+[[example]]
+name             = "bluetooth-client"
+required-features = ["ble"]
+
+[[example]]
+name             = "kitchen_sink"
+required-features = ["led", "wifi"]
+
+# world_serde needs neither radio nor LED — core only, no required features.
 
 [dependencies]
 # Local beet worktree, no_std build exposing bevy_color etc.
@@ -41,32 +92,34 @@ esp-rtos = { version = "0.3.0", features = [
 defmt                  = "1.0.1"
 esp-bootloader-esp-idf = { version = "0.5.0", features = ["defmt", "esp32s3"] }
 
-embassy-net = { version = "0.9.1", features = [
+# Networking stack — only pulled in by the `wifi` feature (see [features]).
+embassy-net = { version = "0.9.1", optional = true, features = [
   "defmt",
   "dhcpv4",
   "medium-ethernet",
   "tcp",
   "udp",
 ] }
-embedded-io = { version = "0.7.1", features = ["defmt"] }
-embedded-io-async = { version = "0.7.0", features = ["defmt"] }
-esp-alloc = { version = "0.10.0", features = ["defmt"] }
+embedded-io = { version = "0.7.1", optional = true, features = ["defmt"] }
+embedded-io-async = { version = "0.7.0", optional = true, features = ["defmt"] }
+# `internal-heap-stats` adds max-usage / total-allocated / total-freed counters,
+# which `health` uses for leak detection (cheap: an O(regions) tally per alloc).
+esp-alloc = { version = "0.10.0", features = ["defmt", "internal-heap-stats"] }
 panic-rtt-target = { version = "0.2.0", features = ["defmt"] }
 rtt-target = { version = "0.6.2", features = ["defmt"] }
 # for more networking protocol support see https://crates.io/crates/edge-net
-bt-hci = "0.8.0"
+# BLE host (`bt-hci`/`trouble-host`) — only pulled in by the `ble` feature.
+bt-hci = { version = "0.8.0", optional = true }
 embassy-executor = { version = "0.10.0", features = ["defmt"] }
 embassy-time = { version = "0.5.0", features = ["defmt"] }
-esp-radio = { version = "0.18.0", features = [
-  "ble",
-  "coex",
+# Radio — optional; the `wifi`/`ble`/`coex` features turn on the matching parts.
+esp-radio = { version = "0.18.0", optional = true, default-features = false, features = [
   "defmt",
   "esp-alloc",
   "esp32s3",
   "unstable",
-  "wifi",
 ] }
-smoltcp = { version = "0.13.0", default-features = false, features = [
+smoltcp = { version = "0.13.0", optional = true, default-features = false, features = [
   "defmt",
   "medium-ethernet",
   "multicast",
@@ -79,7 +132,7 @@ smoltcp = { version = "0.13.0", default-features = false, features = [
   "socket-tcp",
   "socket-udp",
 ] }
-trouble-host = { version = "0.6.0", features = ["defmt", "gatt", "scan"] }
+trouble-host = { version = "0.6.0", optional = true, features = ["defmt", "gatt", "scan"] }
 
 critical-section = "1.2.0"
 embassy-futures  = "0.1.2"

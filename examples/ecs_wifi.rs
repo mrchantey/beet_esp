@@ -11,7 +11,7 @@
 //!   fires the [`ServerRequest`] observer ([`on_request`]), which here just logs.
 //!   Hit it from the same LAN once it logs its IP: `curl http://<device-ip>:8080`
 //!
-//! Run with: `cargo run --release --example ecs-wifi`
+//! Run with: `cargo run --release --no-default-features --features wifi --example ecs_wifi`
 
 #![no_std]
 #![no_main]
@@ -33,7 +33,7 @@ const PASSWORD: &str = env!("PASSWORD");
 #[beet_esp::main]
 fn main() {
     App::new()
-        .add_plugins((Esp32Plugin, WifiPlugin::new(SSID, PASSWORD)))
+        .add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::new(SSID, PASSWORD)))
         .add_observer(on_request)
         .add_systems(Startup, (spawn_server, ping))
         .run();
