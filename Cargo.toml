@@ -32,6 +32,11 @@ wifi = [
 ]
 # BLE host (trouBLE).
 ble = ["dep:esp-radio", "esp-radio/ble", "dep:trouble-host", "dep:bt-hci"]
+# beet_action + the beet_async bridge (entities-as-async-functions). Pulls in
+# `beet_core/bevy_async`: the AsyncWorld/AsyncEntity layer and the
+# `BeetAsyncSyncPoint` driver the behavior_tree example drives. No extra esp
+# crates — just turns on more of beet. Kept opt-in so non-action builds stay lean.
+action = ["beet/action"]
 # Wi-Fi + BLE coexistence — both radios at once. Required by the default bin.
 coex = ["wifi", "ble", "esp-radio/coex"]
 
@@ -64,6 +69,10 @@ required-features = ["ble"]
 [[example]]
 name             = "kitchen_sink"
 required-features = ["led", "wifi"]
+
+[[example]]
+name             = "behavior_tree"
+required-features = ["action"]
 
 # world_serde needs neither radio nor LED — core only, no required features.
 

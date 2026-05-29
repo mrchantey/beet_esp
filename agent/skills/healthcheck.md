@@ -276,12 +276,46 @@ section), not memory.
 
 ## Worked numbers (ESP32-S3 DevKit, this repo)
 
-| Build         | Features  | Heap peak | Heap region size | Stack peak | Verdict        |
-| ------------- | --------- | --------- | ---------------- | ---------- | -------------- |
-| blinky        | led       | ~104 KB   | 172 KB           | 13.0 KB    | healthy, flat  |
-| world_serde   | (none)    | ~102 KB   | 172 KB           | 13.6 KB    | healthy, flat  |
-| ecs_wifi      | wifi      | 169 KB    | 172 KB           | 15.7 KB    | flat, but tight (98%) |
-| kitchen_sink  | led,wifi  | 183 KB    | 254 KB (bumped)  | 15.7 KB    | flat, ~56% of silicon |
+| Build         | Features  | Pre-startup heap | Heap peak | Heap region | Stack peak | Verdict |
+| ------------- | --------- | ---------------- | --------- | ----------- | ---------- | ------- |
+| blinky        | led       | —                | ~104 KB   | 172 KB      | 13.0 KB    | healthy, flat |
+| world_serde   | (none)    | 91 KB            | 102 KB    | 172 KB      | 13.6 KB    | healthy, flat (59%) |
+| behavior_tree | action    | 139 KB           | 172 KB    | 270 KB (bumped) | 16.0 KB | flat (64%); async runtime is heap-hungry |
+| ecs_wifi      | wifi      | 102 KB           | 164 KB    | 172 KB      | 16.9 KB    | flat, but tight (95%) |
+| kitchen_sink  | led,wifi  | 106 KB           | 178 KB    | 254 KB (bumped) | 16.9 KB | flat, ~54% of silicon |
 
-Stack is never the constraint (peaks 13–16 KB against 80–210 KB regions). Heap is
+Stack is never the constraint (peaks 13–17 KB against 80–220 KB regions). Heap is
 the thing to size; leaks would show as a non-zero, recurring `Δ since last`.
+
+### The beet async runtime (beet_action) is the heaviest per-feature heap cost
+
+`behavior_tree` vs `world_serde` is a clean A/B: both are core-only with no radio,
+differing only in the `action` feature (beet_action + the beet_async bridge +
+bevy's `TaskPoolPlugin` + ~20 reflected control-flow type registrations). Adding
+it costs, on the same baseline:
+
+- **pre-startup heap +48 KB** (91 → 139 KB) — standing up `ActionPlugin` /
+  `AsyncPlugin` / `TaskPoolPlugin` and registering the reflected action types,
+  before any tree runs.
+- **peak heap +70 KB** (102 → 172 KB) — running the tree spawns entities,
+  bridge futures, cached `SystemState`s, and the task-pool executors. This
+  roughly **doubles** the core peak and forces a `heap_size` bump (96 → 192 KB
+  main) — the default 96 KB main heap OOMs during `App` construction.
+- **flash `.text` +350 KB** (651 → 1003 KB) — code, not RAM, but worth noting.
+- statics +5 KB, stack +2 KB — both negligible.
+
+So if a build pulls in beet actions, budget ~140 KB of heap before it does
+anything and bump the main heap accordingly. Wi-Fi, by contrast, is cheaper at
+rest (+11 KB pre-startup) but spikes ~58 KB on connect (DHCP/TCP buffers), which
+is what pushes `ecs_wifi` to 95% of a default region.
+
+### Are we near any limit?
+
+No build is near the **silicon** ceiling (~329 KB usable internal heap; see the
+kitchen-sink method above): the worst case is kitchen_sink at 178 KB ≈ 54%.
+Stack is nowhere close either — every build peaks 13–17 KB against regions of
+80–220 KB (the region auto-shrinks as you raise `heap_size`, reclaiming the
+idle stack RAM). The only builds that get *tight* do so against the **soft**
+ceiling (the `heap_size` you picked): `ecs_wifi` at 95% of a default 172 KB
+region is the one to watch — it has ~8 KB to spare and would benefit from a
+modest bump. Everything else has comfortable headroom.
