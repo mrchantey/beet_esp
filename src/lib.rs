@@ -14,6 +14,8 @@ pub use rtt_target;
 /// `#[beet_esp::main]` — wraps `fn main` with the ESP32 entry boilerplate.
 pub use beet_esp_macros::main;
 
+#[cfg(feature = "action")]
+pub mod async_utils;
 pub mod bridge;
 pub mod esp32_plugin;
 pub mod health;
@@ -23,6 +25,8 @@ pub mod led;
 pub mod wifi;
 
 pub mod prelude {
+	#[cfg(feature = "action")]
+	pub use crate::async_utils::*;
 	pub use crate::bridge::*;
 	pub use crate::esp32_plugin::*;
 	pub use crate::esp_app_desc;

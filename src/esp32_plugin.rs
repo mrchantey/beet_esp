@@ -41,6 +41,12 @@ impl Plugin for Esp32Plugin {
         app.add_systems(PreStartup, bring_up)
             .add_systems(Startup, || info!("esp32 bevy app started"))
             .set_runner(esp_runner);
+        // beet's async bridge (the `action` feature) needs a task spawner; on
+        // no_std there's no default. Install the bevy-task-pool-backed one —
+        // `insert_resource` overrides AsyncPlugin's panicking default regardless
+        // of plugin order. See `async_utils` for why this pool and not embassy.
+        #[cfg(feature = "action")]
+        crate::async_utils::install_async_spawner(app);
     }
 }
 
