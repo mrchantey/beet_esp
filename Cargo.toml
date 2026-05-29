@@ -74,6 +74,9 @@ beet = { path = "/home/pete/me/worktrees/beet/embedded/beet", default-features =
   "bevy_color",
   "world_serde",
   "json",
+  # no_std core of beet_net: the transport-agnostic Request/Response wire types
+  # and the `set_http_client` transport hook the wifi client installs.
+  "net",
 ] }
 
 # Sibling proc-macro crate providing #[beet_esp::main]. Builds for the host.
@@ -96,6 +99,7 @@ esp-bootloader-esp-idf = { version = "0.5.0", features = ["defmt", "esp32s3"] }
 embassy-net = { version = "0.9.1", optional = true, features = [
   "defmt",
   "dhcpv4",
+  "dns",
   "medium-ethernet",
   "tcp",
   "udp",

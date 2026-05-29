@@ -22,9 +22,6 @@ use defmt::Debug2Format;
 use defmt::info;
 use defmt::warn;
 use embassy_executor::Spawner;
-use embassy_net::IpAddress;
-use embassy_net::IpEndpoint;
-use embassy_net::Ipv4Address;
 use embassy_time::Duration;
 use embassy_time::Timer;
 
@@ -60,10 +57,10 @@ fn main() {
     ));
     app.init_resource::<AppTypeRegistry>();
     app.register_type::<HelloWorld>();
-    app.add_observer(on_request);
+    app.add_http_server(8080, on_request);
     app.add_systems(
         Startup,
-        (setup_led, spawn_server, ping, dump_canonical, load_scene, greet).chain(),
+        (setup_led, ping, dump_canonical, load_scene, greet).chain(),
     );
     app.run();
 }
@@ -72,27 +69,24 @@ fn setup_led(mut commands: Commands) {
     commands.spawn((LedColor::default(), HueFade::default()));
 }
 
-fn spawn_server(mut commands: Commands) {
-    commands.spawn(HttpServer::new(8080));
-}
-
 fn ping(world: &mut World) {
     let spawner = *world.non_send::<Spawner>();
     spawn_driver(spawner, async move {
-        let remote = IpEndpoint::new(IpAddress::Ipv4(Ipv4Address::new(1, 1, 1, 1)), 80);
         loop {
-            match Request::get(remote).send().await {
-                Ok(response) => info!("client GET 1.1.1.1 -> status {}", response.status()),
-                Err(e) => warn!("client request failed: {:?}", e),
+            match Request::get("http://example.com").send().await {
+                Ok(response) => {
+                    info!("client GET example.com -> status {}", response.status().as_u16())
+                }
+                Err(e) => warn!("client request failed: {}", Debug2Format(&e)),
             }
             Timer::after(Duration::from_secs(15)).await;
         }
     });
 }
 
-fn on_request(request: On<ServerRequest>) {
-    let request = request.event();
-    info!("server request #{} on :{}", request.count, request.port);
+fn on_request(request: In<Request>) -> Response {
+    info!("server request on `{}`", request.0.path_string().as_str());
+    Response::ok_body("hello from the beet_esp kitchen sink\n", MediaType::Text)
 }
 
 fn dump_canonical(world: &mut World) {

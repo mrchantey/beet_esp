@@ -1,15 +1,19 @@
-//! Wi-Fi as an ECS-friendly mechanism, mirroring beet's networking workflow.
+//! Wi-Fi as an ECS-friendly mechanism, using beet's networking types.
 //!
 //! Like [`led`](crate::led) turns the RMT peripheral into Bevy components driven
 //! by an async task, this turns the ESP32 Wi-Fi station + `embassy-net` stack
-//! into:
+//! into beet's transport-agnostic [`Request`]/[`Response`] workflow:
 //!
-//! - a **client** with beet's `Request::get(..).send().await` shape — a [`Request`]
-//!   is encoded, handed to the async [`client_driver`] over the [`bridge`](crate::bridge)
-//!   [`Queue`], and the awaited [`Response`] comes back through a one-shot signal;
-//! - a **server** as a component — spawn [`HttpServer`] and each request fires a
-//!   [`ServerRequest`] observer trigger (a simple, canned `200 OK` is returned for
-//!   now; richer handler routing is what we're still blocked on upstream).
+//! - a **client** speaking beet's `Request::get(url).send().await` shape. The
+//!   ESP32 transport is registered with beet via [`set_http_client`], so calling
+//!   [`Request::send`] anywhere routes through the [`client_driver`]: the request
+//!   is encoded to HTTP/1.1, handed over the [`bridge`](crate::bridge) [`Queue`],
+//!   and the awaited [`Response`] comes back through a one-shot signal;
+//! - a **server** as a component. Spawn [`HttpServer`] with a handler system
+//!   (`In<Request>` → [`Response`]) via [`WifiAppExt::add_http_server`], mirroring
+//!   beet's `HttpServer` + `Action::<Request, Response>` pattern. Each request is
+//!   parsed into a beet [`Request`], run through the handler on the ECS, and the
+//!   returned [`Response`] is serialised back to the socket.
 //!
 //! [`WifiPlugin`] brings the station up, runs DHCP, and shares the
 //! [`Stack`] so both drivers can open sockets.
@@ -17,14 +21,17 @@
 use crate::bridge::Queue;
 use crate::bridge::spawn_driver;
 use alloc::sync::Arc;
+use beet::exports::bevy::ecs::system::SystemId;
 use beet::prelude::*;
 use defmt::info;
 use defmt::warn;
 use embassy_executor::Spawner;
+use embassy_net::IpAddress;
 use embassy_net::IpEndpoint;
 use embassy_net::Runner;
 use embassy_net::Stack;
 use embassy_net::StackResources;
+use embassy_net::dns::DnsQueryType;
 use embassy_net::tcp::TcpSocket;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
@@ -115,6 +122,13 @@ fn start_wifi(world: &mut World) {
     spawn_driver(spawner, net_loop(runner));
     spawn_driver(spawner, client_driver(stack));
 
+    // Register the ESP32 transport so beet's `Request::send` routes here. It is
+    // a one-time install; a second `WifiPlugin` (or a transport feature compiled
+    // into beet_net) would already own it, so just warn rather than panic.
+    if set_http_client(esp_send).is_err() {
+        warn!("an HTTP transport was already installed; Request::send will not use Wi-Fi");
+    }
+
     // Stack is Copy and !Send; keep it as a non-send resource so the server
     // spawner (a later system) can hand a copy to each accept loop.
     world.insert_non_send(stack);
@@ -144,133 +158,56 @@ async fn net_loop(mut runner: Runner<'static, Interface<'static>>) {
 }
 
 // ---------------------------------------------------------------------------
-// Client: `Request::get(..).send().await`
+// Client: beet's `Request::get(url).send().await`, via `set_http_client`
 // ---------------------------------------------------------------------------
 
-/// Pending client requests handed from [`Request::send`] to [`client_driver`].
+/// Pending client requests handed from [`esp_send`] to [`client_driver`].
 static CLIENT_JOBS: Queue<ClientJob, 4> = Queue::new();
-
-/// One-shot reply channel for an in-flight [`Request`].
-type Reply = Arc<Signal<CriticalSectionRawMutex, Result<Response, WifiError>>>;
 
 /// A request encoded and queued for the driver, with the channel to reply on.
 struct ClientJob {
-    remote: IpEndpoint,
-    bytes: alloc::vec::Vec<u8>,
-    reply: Reply,
-}
-
-/// Why a [`Request`] could not complete.
-#[derive(Debug, Clone, Copy, defmt::Format)]
-pub enum WifiError {
-    /// The client queue was full (too many in-flight requests).
-    QueueFull,
-    /// The TCP connection to the remote could not be established.
-    Connect,
-    /// Writing the request to the socket failed.
-    Write,
-}
-
-/// An outbound HTTP request, mirroring beet's `Request` builder.
-///
-/// ```ignore
-/// let remote = IpEndpoint::new(IpAddress::Ipv4(Ipv4Address::new(1, 1, 1, 1)), 80);
-/// let response = Request::get(remote).send().await?;
-/// info!("status {}", response.status());
-/// ```
-pub struct Request {
-    remote: IpEndpoint,
-    method: &'static str,
-    path: String,
+    /// Authority host to resolve (an IP literal or a DNS name).
     host: String,
-    body: Option<String>,
+    /// TCP port to connect to.
+    port: u16,
+    /// The full HTTP/1.1 request, ready to write to the socket.
+    bytes: Vec<u8>,
+    /// One-shot reply channel for the awaited [`Response`].
+    reply: Arc<Signal<CriticalSectionRawMutex, Result<Response, BevyError>>>,
 }
 
-impl Request {
-    /// A `GET` to `/` on the given endpoint. The `Host` header defaults to the
-    /// endpoint's IP; override it with [`with_host`](Self::with_host).
-    pub fn get(remote: IpEndpoint) -> Self {
-        Self {
-            remote,
-            method: "GET",
-            path: String::from("/"),
-            host: alloc::format!("{}", remote.addr),
-            body: None,
+/// beet's transport hook (see [`set_http_client`]): encode the [`Request`], queue
+/// it for [`client_driver`], and await the [`Response`].
+///
+/// Installed once by [`start_wifi`]; thereafter any `Request::send` on an
+/// `http://` URL flows through here.
+fn esp_send(request: Request) -> MaybeSendBoxedFuture<'static, Result<Response>> {
+    Box::pin(async move {
+        if request.scheme().is_secure() {
+            bevybail!("the esp32 Wi-Fi transport only supports plain http, not https/tls");
         }
-    }
+        let authority = request.authority().to_string();
+        if authority.is_empty() {
+            bevybail!("request URL has no host: {}", request.uri());
+        }
+        let (host, port) = split_authority(&authority, 80);
 
-    /// Set the request path (e.g. `/api/status`).
-    pub fn with_path(mut self, path: impl Into<String>) -> Self {
-        self.path = path.into();
-        self
-    }
+        let (parts, body) = request.into_parts();
+        let body = body.into_bytes().await?;
+        let bytes = encode_request(&parts, &authority, &body);
 
-    /// Set the `Host` header (a server may route on it).
-    pub fn with_host(mut self, host: impl Into<String>) -> Self {
-        self.host = host.into();
-        self
-    }
-
-    /// Send a body and switch the method to `POST`.
-    pub fn with_body(mut self, body: impl Into<String>) -> Self {
-        self.method = "POST";
-        self.body = Some(body.into());
-        self
-    }
-
-    /// Encode, queue, and await the [`Response`].
-    ///
-    /// Call from an async driver (e.g. one spawned with
-    /// [`spawn_driver`](crate::bridge::spawn_driver)); the actual socket work
-    /// happens on [`client_driver`].
-    pub async fn send(self) -> Result<Response, WifiError> {
-        let reply: Reply = Arc::new(Signal::new());
+        let reply = Arc::new(Signal::new());
         let job = ClientJob {
-            remote: self.remote,
-            bytes: self.encode(),
+            host,
+            port,
+            bytes,
             reply: reply.clone(),
         };
-        CLIENT_JOBS.send(job).map_err(|_| WifiError::QueueFull)?;
+        CLIENT_JOBS
+            .send(job)
+            .map_err(|_| bevyhow!("Wi-Fi client queue full"))?;
         reply.wait().await
-    }
-
-    /// Serialise to raw HTTP/1.1 request bytes.
-    fn encode(&self) -> alloc::vec::Vec<u8> {
-        let body = self.body.as_deref().unwrap_or("");
-        let head = alloc::format!(
-            "{} {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nContent-Length: {}\r\n\r\n",
-            self.method,
-            self.path,
-            self.host,
-            body.len(),
-        );
-        let mut bytes = head.into_bytes();
-        bytes.extend_from_slice(body.as_bytes());
-        bytes
-    }
-}
-
-/// A received HTTP response: parsed status plus the raw bytes.
-pub struct Response {
-    status: u16,
-    body: alloc::vec::Vec<u8>,
-}
-
-impl Response {
-    /// The HTTP status code (0 if the status line could not be parsed).
-    pub fn status(&self) -> u16 {
-        self.status
-    }
-
-    /// The raw response bytes (headers + body).
-    pub fn bytes(&self) -> &[u8] {
-        &self.body
-    }
-
-    /// The response as UTF-8, lossy-empty if it is not valid UTF-8.
-    pub fn text(&self) -> &str {
-        core::str::from_utf8(&self.body).unwrap_or("")
-    }
+    })
 }
 
 /// Services [`CLIENT_JOBS`]: one TCP request at a time, replying on each job's
@@ -287,53 +224,59 @@ async fn client_driver(stack: Stack<'static>) {
     }
 }
 
-/// Open a socket, send the encoded request, and read the whole response.
-async fn exchange(stack: Stack<'static>, job: &ClientJob) -> Result<Response, WifiError> {
+/// Resolve the host, open a socket, send the encoded request, and read the whole
+/// response into a beet [`Response`].
+async fn exchange(stack: Stack<'static>, job: &ClientJob) -> Result<Response> {
+    // `dns_query` short-circuits IP literals, so this covers both `1.1.1.1` and
+    // real hostnames (DNS servers come from the DHCP lease).
+    let addrs = stack
+        .dns_query(&job.host, DnsQueryType::A)
+        .await
+        .map_err(|e| bevyhow!("DNS lookup for `{}` failed: {:?}", job.host.as_str(), e))?;
+    let addr: IpAddress = addrs
+        .into_iter()
+        .next()
+        .ok_or_else(|| bevyhow!("no DNS results for `{}`", job.host.as_str()))?;
+    let remote = IpEndpoint::new(addr, job.port);
+
     let mut rx = [0u8; 1536];
     let mut tx = [0u8; 1536];
     let mut socket = TcpSocket::new(stack, &mut rx, &mut tx);
     socket.set_timeout(Some(Duration::from_secs(10)));
 
-    socket.connect(job.remote).await.map_err(|e| {
-        warn!("connect failed: {:?}", e);
-        WifiError::Connect
-    })?;
-    socket.write_all(&job.bytes).await.map_err(|e| {
-        warn!("write failed: {:?}", e);
-        WifiError::Write
-    })?;
+    socket
+        .connect(remote)
+        .await
+        .map_err(|e| bevyhow!("connect to {} failed: {:?}", job.host.as_str(), e))?;
+    socket
+        .write_all(&job.bytes)
+        .await
+        .map_err(|e| bevyhow!("write failed: {:?}", e))?;
 
-    let mut body = alloc::vec::Vec::new();
+    let mut raw = Vec::new();
     let mut buf = [0u8; 512];
     loop {
         match socket.read(&mut buf).await {
             Ok(0) => break,
-            Ok(n) => body.extend_from_slice(&buf[..n]),
+            Ok(n) => raw.extend_from_slice(&buf[..n]),
             Err(e) => {
                 warn!("read failed: {:?}", e);
                 break;
             }
         }
     }
-    let status = parse_status(&body).unwrap_or(0);
-    Ok(Response { status, body })
-}
-
-/// Pull the status code out of an HTTP status line (`HTTP/1.1 200 OK`).
-fn parse_status(bytes: &[u8]) -> Option<u16> {
-    let line = bytes.split(|&b| b == b'\n').next()?;
-    let line = core::str::from_utf8(line).ok()?;
-    line.split_whitespace().nth(1)?.parse().ok()
+    Ok(parse_response(&raw))
 }
 
 // ---------------------------------------------------------------------------
-// Server: an `HttpServer` component triggering a `ServerRequest` observer
+// Server: an `HttpServer` component + a handler system (In<Request> -> Response)
 // ---------------------------------------------------------------------------
 
 /// A TCP/HTTP server bound to a port, spawned as an ECS component.
 ///
-/// Each accepted request returns a canned `200 OK` and fires a [`ServerRequest`]
-/// observer trigger so app systems can react (count visitors, blink an LED, …).
+/// Mirrors beet's `HttpServer`: spawn it together with a handler system via
+/// [`WifiAppExt::add_http_server`]. An `HttpServer` spawned without a handler
+/// answers every request with `404 Not Found`.
 #[derive(Component, Clone, Copy)]
 pub struct HttpServer {
     /// The TCP port to listen on.
@@ -353,19 +296,54 @@ impl HttpServer {
     }
 }
 
-/// Fired as an observer trigger for every request an [`HttpServer`] handles.
-#[derive(Event, Clone)]
-pub struct ServerRequest {
-    /// The port the request arrived on.
-    pub port: u16,
-    /// 1-based request count for this server since boot.
-    pub count: u32,
-    /// The HTTP request line (e.g. `GET / HTTP/1.1`).
-    pub line: String,
+/// The handler for an [`HttpServer`]: a one-shot system taking the incoming
+/// [`Request`] and returning a [`Response`], registered via
+/// [`WifiAppExt::add_http_server`]. This is the no_std stand-in for beet's
+/// `Action::<Request, Response>`.
+#[derive(Component)]
+struct ServerHandler(SystemId<In<Request>, Response>);
+
+/// Extension for registering an [`HttpServer`] together with its handler system.
+pub trait WifiAppExt {
+    /// Spawn an [`HttpServer`] on `port` whose requests are handled by `handler`,
+    /// a system of the form `fn(In<Request>, ...) -> Response`.
+    ///
+    /// ```ignore
+    /// app.add_http_server(8080, |request: In<Request>| {
+    ///     Response::ok_body("hello from beet_esp", MediaType::Text)
+    /// });
+    /// ```
+    fn add_http_server<M>(
+        &mut self,
+        port: u16,
+        handler: impl IntoSystem<In<Request>, Response, M> + 'static,
+    ) -> &mut Self;
+}
+
+impl WifiAppExt for App {
+    fn add_http_server<M>(
+        &mut self,
+        port: u16,
+        handler: impl IntoSystem<In<Request>, Response, M> + 'static,
+    ) -> &mut Self {
+        let id = self.world_mut().register_system(handler);
+        self.world_mut().spawn((HttpServer::new(port), ServerHandler(id)));
+        self
+    }
+}
+
+/// An accepted request awaiting an ECS-produced [`Response`].
+struct ServerExchange {
+    /// The port the request arrived on (selects the handler).
+    port: u16,
+    /// The parsed incoming request.
+    request: Request,
+    /// One-shot channel the drain system replies on.
+    reply: Arc<Signal<CriticalSectionRawMutex, Response>>,
 }
 
 /// Requests handed from a [`server_loop`] to the ECS via [`drain_server_requests`].
-static SERVER_REQUESTS: Queue<ServerRequest, 8> = Queue::new();
+static SERVER_EXCHANGES: Queue<ServerExchange, 4> = Queue::new();
 
 /// Spawn an accept loop for each [`HttpServer`] entity. Exclusive so it can read
 /// the non-send [`Stack`]/[`Spawner`]; runs in `PostStartup`, after
@@ -375,21 +353,20 @@ fn spawn_servers(world: &mut World) {
     let spawner = *world.non_send::<Spawner>();
 
     let mut query = world.query::<&HttpServer>();
-    let ports: alloc::vec::Vec<u16> = query.iter(world).map(|server| server.port).collect();
+    let ports: Vec<u16> = query.iter(world).map(|server| server.port).collect();
     for port in ports {
         spawn_driver(spawner, server_loop(stack, port));
     }
 }
 
-/// Accept connections forever; reply with a canned page and queue a
-/// [`ServerRequest`] for the ECS to observe.
+/// Accept connections forever; parse each into a beet [`Request`], hand it to the
+/// ECS for a [`Response`], and serialise the reply back to the socket.
 async fn server_loop(stack: Stack<'static>, port: u16) {
     stack.wait_config_up().await;
     if let Some(cfg) = stack.config_v4() {
         info!("HTTP server: http://{}:{}", cfg.address.address(), port);
     }
 
-    let mut count: u32 = 0;
     loop {
         let mut rx = [0u8; 1536];
         let mut tx = [0u8; 1536];
@@ -400,37 +377,297 @@ async fn server_loop(stack: Stack<'static>, port: u16) {
             warn!("accept failed: {:?}", e);
             continue;
         }
-        count += 1;
 
-        let mut req = [0u8; 512];
-        let n = socket.read(&mut req).await.unwrap_or(0);
-        let line = first_line(&req[..n]);
+        let raw = read_http(&mut socket).await;
+        let request = match parse_http_request(&raw) {
+            Ok(request) => request,
+            Err(e) => {
+                warn!("malformed request: {}", defmt::Debug2Format(&e));
+                let _ = socket
+                    .write_all(b"HTTP/1.1 400 Bad Request\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+                    .await;
+                let _ = socket.flush().await;
+                socket.close();
+                continue;
+            }
+        };
 
-        let response = b"HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n\
-            hello from the beet_esp ECS server\r\n";
-        if let Err(e) = socket.write_all(response).await {
+        let reply = Arc::new(Signal::new());
+        let exchange = ServerExchange {
+            port,
+            request,
+            reply: reply.clone(),
+        };
+        if SERVER_EXCHANGES.send(exchange).is_err() {
+            warn!("server queue full; dropping request on :{}", port);
+            let _ = socket
+                .write_all(b"HTTP/1.1 503 Service Unavailable\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+                .await;
+            let _ = socket.flush().await;
+            socket.close();
+            continue;
+        }
+
+        let response = reply.wait().await;
+        let bytes = serialize_response(response).await;
+        if let Err(e) = socket.write_all(&bytes).await {
             warn!("write failed: {:?}", e);
         }
         if let Err(e) = socket.flush().await {
             warn!("flush failed: {:?}", e);
         }
         socket.close();
-
-        // Drop-oldest semantics would be nicer, but a full queue just means the
-        // ECS is behind; skip the notification rather than block the accept loop.
-        let _ = SERVER_REQUESTS.send(ServerRequest { port, count, line });
     }
 }
 
-/// Drain queued [`ServerRequest`]s and fire their observer triggers.
-fn drain_server_requests(mut commands: Commands) {
-    while let Some(request) = SERVER_REQUESTS.try_recv() {
-        commands.trigger(request);
+/// Drain queued [`ServerExchange`]s, run each through its [`HttpServer`]'s handler
+/// system, and reply with the produced [`Response`].
+fn drain_server_requests(world: &mut World) {
+    // Snapshot (port, handler) pairs; the query borrow must end before we call
+    // `run_system_with` (which needs `&mut World`).
+    let mut handlers: Vec<(u16, SystemId<In<Request>, Response>)> = Vec::new();
+    {
+        let mut query = world.query::<(&HttpServer, &ServerHandler)>();
+        for (server, handler) in query.iter(world) {
+            handlers.push((server.port, handler.0));
+        }
+    }
+
+    while let Some(exchange) = SERVER_EXCHANGES.try_recv() {
+        let handler = handlers
+            .iter()
+            .find(|(port, _)| *port == exchange.port)
+            .map(|(_, id)| *id);
+        let response = match handler {
+            Some(id) => world
+                .run_system_with(id, exchange.request)
+                .unwrap_or_else(|_| {
+                    warn!("server handler errored on :{}", exchange.port);
+                    Response::internal_error()
+                }),
+            None => Response::not_found(),
+        };
+        exchange.reply.signal(response);
     }
 }
 
-/// First line of a request buffer, up to the first CR/LF.
-fn first_line(bytes: &[u8]) -> String {
-    let line = bytes.split(|&b| b == b'\r' || b == b'\n').next().unwrap_or(&[]);
-    String::from_utf8_lossy(line).into_owned()
+// ---------------------------------------------------------------------------
+// HTTP/1.1 wire helpers (no_std, beet types)
+// ---------------------------------------------------------------------------
+
+/// Split an authority into `(host, port)`, falling back to `default_port`.
+fn split_authority(authority: &str, default_port: u16) -> (String, u16) {
+    match authority.rsplit_once(':') {
+        Some((host, port)) => (host.to_string(), port.parse().unwrap_or(default_port)),
+        None => (authority.to_string(), default_port),
+    }
+}
+
+/// The uppercase HTTP token for a method (the [`HttpMethod`] `Display` is
+/// title-case, e.g. `Get`, so it can't be used on the wire).
+fn method_token(method: &HttpMethod) -> &'static str {
+    match method {
+        HttpMethod::Get => "GET",
+        HttpMethod::Post => "POST",
+        HttpMethod::Put => "PUT",
+        HttpMethod::Patch => "PATCH",
+        HttpMethod::Delete => "DELETE",
+        HttpMethod::Options => "OPTIONS",
+        HttpMethod::Head => "HEAD",
+        HttpMethod::Trace => "TRACE",
+        HttpMethod::Connect => "CONNECT",
+    }
+}
+
+/// Headers the encoders set themselves; user-supplied copies are skipped to
+/// avoid duplicates.
+fn is_managed_header(key: &str) -> bool {
+    key.eq_ignore_ascii_case("host")
+        || key.eq_ignore_ascii_case("content-length")
+        || key.eq_ignore_ascii_case("connection")
+}
+
+/// Serialise a [`Request`] to raw HTTP/1.1 bytes (origin-form target).
+fn encode_request(parts: &RequestParts, authority: &str, body: &[u8]) -> Vec<u8> {
+    let path = parts.path_string();
+    let query = parts.query_string();
+    let target = if query.is_empty() {
+        path
+    } else {
+        format!("{path}?{query}")
+    };
+
+    let mut head = format!("{} {} HTTP/1.1\r\n", method_token(parts.method()), target);
+    head.push_str(&format!("Host: {authority}\r\n"));
+    for (key, values) in parts.headers().iter_all() {
+        if is_managed_header(key) {
+            continue;
+        }
+        for value in values {
+            head.push_str(&format!("{key}: {value}\r\n"));
+        }
+    }
+    head.push_str(&format!("Content-Length: {}\r\n", body.len()));
+    head.push_str("Connection: close\r\n\r\n");
+
+    let mut bytes = head.into_bytes();
+    bytes.extend_from_slice(body);
+    bytes
+}
+
+/// Parse raw HTTP/1.1 response bytes into a beet [`Response`].
+fn parse_response(raw: &[u8]) -> Response {
+    let (header_section, body) = split_head_body(raw);
+    let header_str = String::from_utf8_lossy(header_section);
+    let mut lines = header_str.lines();
+
+    let status = lines
+        .next()
+        .and_then(parse_status_line)
+        .unwrap_or(0);
+    let mut parts = ResponseParts::new(StatusCode::new(status));
+    for line in lines {
+        if line.is_empty() {
+            break;
+        }
+        if let Some((key, value)) = line.split_once(':') {
+            parts.headers.set_raw(key.trim(), value.trim());
+        }
+    }
+    Response::new(parts, body.to_vec().into())
+}
+
+/// Pull the status code out of an HTTP status line (`HTTP/1.1 200 OK`).
+fn parse_status_line(line: &str) -> Option<u16> {
+    line.split_whitespace().nth(1)?.parse().ok()
+}
+
+/// Parse raw HTTP/1.1 request bytes into a beet [`Request`].
+fn parse_http_request(raw: &[u8]) -> Result<Request> {
+    let (header_section, body) = split_head_body(raw);
+    let header_str = String::from_utf8_lossy(header_section);
+    let mut lines = header_str.lines();
+
+    let request_line = lines.next().ok_or_else(|| bevyhow!("empty request"))?;
+    let mut tokens = request_line.split_whitespace();
+    let method_str = tokens.next().ok_or_else(|| bevyhow!("missing HTTP method"))?;
+    let path = tokens.next().ok_or_else(|| bevyhow!("missing HTTP path"))?;
+
+    let method = match method_str.to_ascii_uppercase().as_str() {
+        "GET" => HttpMethod::Get,
+        "POST" => HttpMethod::Post,
+        "PUT" => HttpMethod::Put,
+        "DELETE" => HttpMethod::Delete,
+        "PATCH" => HttpMethod::Patch,
+        "HEAD" => HttpMethod::Head,
+        "OPTIONS" => HttpMethod::Options,
+        other => return Err(bevyhow!("unsupported HTTP method: {other}")),
+    };
+
+    let mut request = Request::new(method, path);
+    for line in lines {
+        if line.is_empty() {
+            break;
+        }
+        if let Some((key, value)) = line.split_once(':') {
+            request.headers.set_raw(key.trim(), value.trim());
+        }
+    }
+    if !body.is_empty() {
+        request.set_body(body);
+    }
+    Ok(request)
+}
+
+/// Serialise a beet [`Response`] into raw HTTP/1.1 bytes.
+async fn serialize_response(response: Response) -> Vec<u8> {
+    let (parts, body) = response.into_parts();
+    let body = body.into_bytes().await.unwrap_or_default();
+    let status = parts.status();
+
+    let mut head = format!("HTTP/1.1 {} {}\r\n", status.as_u16(), status.message());
+    for (key, values) in parts.headers().iter_all() {
+        if is_managed_header(key) {
+            continue;
+        }
+        for value in values {
+            head.push_str(&format!("{key}: {value}\r\n"));
+        }
+    }
+    head.push_str(&format!("content-length: {}\r\n", body.len()));
+    head.push_str("connection: close\r\n\r\n");
+
+    let mut bytes = head.into_bytes();
+    bytes.extend_from_slice(&body);
+    bytes
+}
+
+/// Read a full HTTP message off the socket: headers, plus the body if a
+/// `Content-Length` says there is one. Stops at EOF or once the body is in.
+async fn read_http(socket: &mut TcpSocket<'_>) -> Vec<u8> {
+    const CAP: usize = 8192;
+    let mut buf = Vec::new();
+    let mut chunk = [0u8; 512];
+    loop {
+        match socket.read(&mut chunk).await {
+            Ok(0) => break,
+            Ok(n) => {
+                buf.extend_from_slice(&chunk[..n]);
+                if let Some(header_end) = find_header_end(&buf) {
+                    let content_length = parse_content_length(&buf[..header_end]);
+                    if buf.len() >= header_end + content_length {
+                        break;
+                    }
+                }
+                if buf.len() >= CAP {
+                    break;
+                }
+            }
+            Err(e) => {
+                warn!("read failed: {:?}", e);
+                break;
+            }
+        }
+    }
+    buf
+}
+
+/// Split a raw HTTP message into `(headers, body)` on the blank-line separator.
+fn split_head_body(raw: &[u8]) -> (&[u8], &[u8]) {
+    if let Some(pos) = find_subslice(raw, b"\r\n\r\n") {
+        (&raw[..pos], &raw[pos + 4..])
+    } else if let Some(pos) = find_subslice(raw, b"\n\n") {
+        (&raw[..pos], &raw[pos + 2..])
+    } else {
+        (raw, &[])
+    }
+}
+
+/// Byte offset just past the blank line ending the headers, if present.
+fn find_header_end(buf: &[u8]) -> Option<usize> {
+    if let Some(pos) = find_subslice(buf, b"\r\n\r\n") {
+        Some(pos + 4)
+    } else {
+        find_subslice(buf, b"\n\n").map(|pos| pos + 2)
+    }
+}
+
+/// Extract the `Content-Length` value from raw header bytes (0 if absent).
+fn parse_content_length(header_bytes: &[u8]) -> usize {
+    let header_str = String::from_utf8_lossy(header_bytes);
+    for line in header_str.lines() {
+        if let Some((key, value)) = line.split_once(':') {
+            if key.trim().eq_ignore_ascii_case("content-length") {
+                return value.trim().parse::<usize>().unwrap_or(0);
+            }
+        }
+    }
+    0
+}
+
+/// First index of `needle` within `haystack`.
+fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
