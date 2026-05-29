@@ -32,6 +32,14 @@ wifi = [
 ]
 # BLE host (trouBLE).
 ble = ["dep:esp-radio", "esp-radio/ble", "dep:trouble-host", "dep:bt-hci"]
+# SNTP wall clock (the `clock` module): a UDP NTP client that installs beet's
+# `time_ext::now` source once synced. Builds on `wifi` (shares the network stack).
+clock = ["wifi"]
+# beet's `RandomSource` on this bare no_std target. Turns on `beet/rand` and
+# provides a getrandom `custom` backend (`src/random.rs`) wired to the esp-hal
+# hardware RNG; pair with the `getrandom_backend="custom"` cfg in
+# `.cargo/config.toml`.
+random = ["dep:getrandom", "beet/rand"]
 # beet_action + the beet_async bridge (entities-as-async-functions). Pulls in
 # `beet_core/bevy_async`: the AsyncWorld/AsyncEntity layer and the
 # `BeetAsyncSyncPoint` driver the behavior_tree example drives. No extra esp
@@ -73,6 +81,14 @@ required-features = ["led", "wifi"]
 [[example]]
 name             = "behavior_tree"
 required-features = ["action"]
+
+[[example]]
+name             = "random"
+required-features = ["random"]
+
+[[example]]
+name             = "clock"
+required-features = ["clock"]
 
 # world_serde needs neither radio nor LED — core only, no required features.
 
@@ -146,6 +162,10 @@ smoltcp = { version = "0.13.0", optional = true, default-features = false, featu
   "socket-udp",
 ] }
 trouble-host = { version = "0.6.0", optional = true, features = ["defmt", "gatt", "scan"] }
+
+# getrandom's `custom` backend (selected in .cargo/config.toml) — only pulled in
+# by the `random` feature, which provides the entropy symbol in `src/random.rs`.
+getrandom = { version = "0.3", optional = true }
 
 critical-section = "1.2.0"
 embassy-futures  = "0.1.2"

@@ -7,6 +7,12 @@ DEFMT_LOG="info"
 [build]
 rustflags = [
   "-C", "link-arg=-nostartfiles",
+  # getrandom 0.3 has no built-in backend for bare no_std targets, so select its
+  # `custom` backend. The `random` feature's `src/random.rs` provides the
+  # `__getrandom_v03_custom` entropy symbol (backed by the esp-hal hardware RNG)
+  # at link time; without that feature nothing pulls in getrandom, so the cfg is
+  # inert.
+  "--cfg", "getrandom_backend=\"custom\"",
 ]
 
 target = "xtensa-esp32s3-none-elf"

@@ -17,10 +17,14 @@ pub use beet_esp_macros::main;
 #[cfg(feature = "action")]
 pub mod async_utils;
 pub mod bridge;
+#[cfg(feature = "clock")]
+pub mod clock;
 pub mod esp32_plugin;
 pub mod health;
 #[cfg(feature = "led")]
 pub mod led;
+#[cfg(feature = "random")]
+pub mod random;
 #[cfg(feature = "wifi")]
 pub mod wifi;
 
@@ -28,6 +32,8 @@ pub mod prelude {
 	#[cfg(feature = "action")]
 	pub use crate::async_utils::*;
 	pub use crate::bridge::*;
+	#[cfg(feature = "clock")]
+	pub use crate::clock::*;
 	pub use crate::esp32_plugin::*;
 	pub use crate::esp_app_desc;
 	pub use crate::health::*;

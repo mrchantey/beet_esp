@@ -68,6 +68,15 @@ impl WifiPlugin {
 
 impl Plugin for WifiPlugin {
     fn build(&self, app: &mut App) {
+        // Install the ESP32 server backend so beet's `HttpServer` component
+        // works on this no_std target: spawning one fires its `on_add` hook,
+        // which (finding no compiled-in backend) calls `esp_start_server`. The
+        // install must happen in `build` so it precedes any `add_http_server`
+        // spawn. A second `WifiPlugin` would already own it; just warn.
+        if set_http_server(esp_start_server).is_err() {
+            warn!("an HTTP server backend was already installed");
+        }
+
         app.insert_resource(WifiCredentials {
             ssid: self.ssid,
             password: self.password,
@@ -272,27 +281,25 @@ async fn exchange(stack: Stack<'static>, job: &ClientJob) -> Result<Response> {
 // Server: an `HttpServer` component + a handler system (In<Request> -> Response)
 // ---------------------------------------------------------------------------
 
-/// A TCP/HTTP server bound to a port, spawned as an ECS component.
+/// Default port used when an [`HttpServer`] leaves `port` unset (`None`).
+const DEFAULT_HTTP_PORT: u16 = 8080;
+
+/// Ports of [`HttpServer`] entities awaiting an accept loop, filled by
+/// [`esp_start_server`] (beet's `on_add` hook) and drained by [`spawn_servers`]
+/// once the [`Stack`] is up.
+static PENDING_SERVERS: Queue<u16, 4> = Queue::new();
+
+/// beet's server backend hook (see [`set_http_server`]): record the port so
+/// [`spawn_servers`] can open an accept loop for it once Wi-Fi is up.
 ///
-/// Mirrors beet's `HttpServer`: spawn it together with a handler system via
-/// [`WifiAppExt::add_http_server`]. An `HttpServer` spawned without a handler
-/// answers every request with `404 Not Found`.
-#[derive(Component, Clone, Copy)]
-pub struct HttpServer {
-    /// The TCP port to listen on.
-    pub port: u16,
-}
-
-impl Default for HttpServer {
-    fn default() -> Self {
-        Self { port: 8080 }
-    }
-}
-
-impl HttpServer {
-    /// Listen on the given port.
-    pub fn new(port: u16) -> Self {
-        Self { port }
+/// Installed once by [`WifiPlugin::build`]; thereafter spawning beet's
+/// [`HttpServer`] (eg via [`WifiAppExt::add_http_server`]) routes here. The
+/// socket can't be opened yet — the [`Stack`] is only created in [`start_wifi`]
+/// — so the work is deferred to [`spawn_servers`] in `PostStartup`.
+fn esp_start_server(_entity: Entity, server: HttpServer) {
+    let port = server.port.unwrap_or(DEFAULT_HTTP_PORT);
+    if PENDING_SERVERS.send(port).is_err() {
+        warn!("too many HttpServers; dropping one on :{}", port);
     }
 }
 
@@ -345,16 +352,16 @@ struct ServerExchange {
 /// Requests handed from a [`server_loop`] to the ECS via [`drain_server_requests`].
 static SERVER_EXCHANGES: Queue<ServerExchange, 4> = Queue::new();
 
-/// Spawn an accept loop for each [`HttpServer`] entity. Exclusive so it can read
-/// the non-send [`Stack`]/[`Spawner`]; runs in `PostStartup`, after
-/// [`start_wifi`].
+/// Spawn an accept loop for each [`HttpServer`] recorded in [`PENDING_SERVERS`].
+/// Exclusive so it can read the non-send [`Stack`]/[`Spawner`]; runs in
+/// `PostStartup`, after [`start_wifi`] has created the [`Stack`].
 fn spawn_servers(world: &mut World) {
     let stack = *world.non_send::<Stack<'static>>();
     let spawner = *world.non_send::<Spawner>();
 
-    let mut query = world.query::<&HttpServer>();
-    let ports: Vec<u16> = query.iter(world).map(|server| server.port).collect();
-    for port in ports {
+    // Drain the ports recorded by `esp_start_server` (beet's `on_add` hook) and
+    // give each its own accept loop, now that the `Stack` exists.
+    while let Some(port) = PENDING_SERVERS.try_recv() {
         spawn_driver(spawner, server_loop(stack, port));
     }
 }
@@ -429,7 +436,7 @@ fn drain_server_requests(world: &mut World) {
     {
         let mut query = world.query::<(&HttpServer, &ServerHandler)>();
         for (server, handler) in query.iter(world) {
-            handlers.push((server.port, handler.0));
+            handlers.push((server.port.unwrap_or(DEFAULT_HTTP_PORT), handler.0));
         }
     }
 
