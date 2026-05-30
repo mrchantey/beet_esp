@@ -7,8 +7,9 @@
 //! - a **client** speaking beet's `Request::get(url).send().await` shape. The
 //!   ESP32 transport is registered with beet via [`set_http_client`], so calling
 //!   [`Request::send`] anywhere routes through the [`client_driver`]: the request
-//!   is encoded to HTTP/1.1, handed over the [`bridge`](crate::bridge) [`Queue`],
-//!   and the awaited [`Response`] comes back through a one-shot signal;
+//!   is encoded to HTTP/1.1, handed over an
+//!   [`AsyncBridge`](crate::async_bridge::AsyncBridge), and the awaited
+//!   [`Response`] comes back on that call's reply;
 //! - a **server** as a component. Spawn [`HttpServer`] with a handler system
 //!   (`In<Request>` → [`Response`]) via [`WifiAppExt::add_http_server`], mirroring
 //!   beet's `HttpServer` + `Action::<Request, Response>` pattern. Each request is
@@ -18,9 +19,9 @@
 //! [`WifiPlugin`] brings the station up, runs DHCP, and shares the
 //! [`Stack`] so both drivers can open sockets.
 
-use crate::bridge::Queue;
-use crate::bridge::spawn_driver;
-use alloc::sync::Arc;
+use crate::async_bridge::AsyncBridge;
+use crate::async_bridge::Queue;
+use crate::async_bridge::spawn_driver;
 use beet::exports::bevy::ecs::system::SystemId;
 use beet::prelude::*;
 use defmt::info;
@@ -33,8 +34,6 @@ use embassy_net::Stack;
 use embassy_net::StackResources;
 use embassy_net::dns::DnsQueryType;
 use embassy_net::tcp::TcpSocket;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::signal::Signal;
 use embassy_time::Duration;
 use embassy_time::Timer;
 use embedded_io_async::Write as _;
@@ -179,10 +178,11 @@ async fn net_loop(mut runner: Runner<'static, Interface<'static>>) {
 // Client: beet's `Request::get(url).send().await`, via `set_http_client`
 // ---------------------------------------------------------------------------
 
-/// Pending client requests handed from [`esp_send`] to [`client_driver`].
-static CLIENT_JOBS: Queue<ClientJob, 4> = Queue::new();
+/// Pending client requests handed from [`esp_send`] to [`client_driver`], each
+/// awaiting the [`Response`] the driver produces (or the [`BevyError`] it hit).
+static CLIENT_BRIDGE: AsyncBridge<ClientJob, Result<Response, BevyError>, 4> = AsyncBridge::new();
 
-/// A request encoded and queued for the driver, with the channel to reply on.
+/// A request encoded and queued for the driver.
 struct ClientJob {
     /// Authority host to resolve (an IP literal or a DNS name).
     host: String,
@@ -190,8 +190,6 @@ struct ClientJob {
     port: u16,
     /// The full HTTP/1.1 request, ready to write to the socket.
     bytes: Vec<u8>,
-    /// One-shot reply channel for the awaited [`Response`].
-    reply: Arc<Signal<CriticalSectionRawMutex, Result<Response, BevyError>>>,
 }
 
 /// beet's transport hook (see [`set_http_client`]): encode the [`Request`], queue
@@ -214,31 +212,28 @@ fn esp_send(request: Request) -> MaybeSendBoxedFuture<'static, Result<Response>>
         let body = body.into_bytes().await?;
         let bytes = encode_request(&parts, &authority, &body);
 
-        let reply = Arc::new(Signal::new());
-        let job = ClientJob {
-            host,
-            port,
-            bytes,
-            reply: reply.clone(),
-        };
-        CLIENT_JOBS
-            .send(job)
-            .map_err(|_| bevyhow!("Wi-Fi client queue full"))?;
-        reply.wait().await
+        let job = ClientJob { host, port, bytes };
+        // Outer `Err` is a full queue (no reply will arrive); the inner
+        // `Result<Response, BevyError>` is the actual transport outcome.
+        CLIENT_BRIDGE
+            .call(job)
+            .await
+            .map_err(|_| bevyhow!("Wi-Fi client queue full"))?
     })
 }
 
-/// Services [`CLIENT_JOBS`]: one TCP request at a time, replying on each job's
-/// signal. Owns a copy of the [`Stack`]; waits for DHCP before the first job.
+/// Services [`CLIENT_BRIDGE`]: one TCP request at a time, sending the result back
+/// on each call's reply. Owns a copy of the [`Stack`]; waits for DHCP before the
+/// first job.
 async fn client_driver(stack: Stack<'static>) {
     stack.wait_config_up().await;
     if let Some(cfg) = stack.config_v4() {
         info!("Wi-Fi up: {}", cfg);
     }
     loop {
-        let job = CLIENT_JOBS.recv().await;
-        let result = exchange(stack, &job).await;
-        job.reply.signal(result);
+        let ex = CLIENT_BRIDGE.recv().await;
+        let (job, reply) = ex.split();
+        reply.send(exchange(stack, &job).await);
     }
 }
 
@@ -385,18 +380,11 @@ impl WifiAppExt for App {
 #[derive(Component)]
 struct RouterServer;
 
-/// An accepted request awaiting an ECS-produced [`Response`].
-struct ServerExchange {
-    /// The port the request arrived on (selects the handler).
-    port: u16,
-    /// The parsed incoming request.
-    request: Request,
-    /// One-shot channel the drain system replies on.
-    reply: Arc<Signal<CriticalSectionRawMutex, Response>>,
-}
-
-/// Requests handed from a [`server_loop`] to the ECS via [`drain_server_requests`].
-static SERVER_EXCHANGES: Queue<ServerExchange, 4> = Queue::new();
+/// Accepted requests handed from a [`server_loop`] to the ECS, each carrying the
+/// port it arrived on (which selects the handler) and a reply slot for the
+/// drain system. Drained by [`drain_server_requests`] (sync) or
+/// [`drain_router_requests`] (async).
+static SERVER_BRIDGE: AsyncBridge<(u16, Request), Response, 4> = AsyncBridge::new();
 
 /// Spawn an accept loop for each [`HttpServer`] recorded in [`PENDING_SERVERS`].
 /// Exclusive so it can read the non-send [`Stack`]/[`Spawner`]; runs in
@@ -445,23 +433,19 @@ async fn server_loop(stack: Stack<'static>, port: u16) {
             }
         };
 
-        let reply = Arc::new(Signal::new());
-        let exchange = ServerExchange {
-            port,
-            request,
-            reply: reply.clone(),
+        let response = match SERVER_BRIDGE.call((port, request)).await {
+            Ok(response) => response,
+            Err(_) => {
+                warn!("server queue full; dropping request on :{}", port);
+                let _ = socket
+                    .write_all(b"HTTP/1.1 503 Service Unavailable\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+                    .await;
+                let _ = socket.flush().await;
+                socket.close();
+                continue;
+            }
         };
-        if SERVER_EXCHANGES.send(exchange).is_err() {
-            warn!("server queue full; dropping request on :{}", port);
-            let _ = socket
-                .write_all(b"HTTP/1.1 503 Service Unavailable\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
-                .await;
-            let _ = socket.flush().await;
-            socket.close();
-            continue;
-        }
 
-        let response = reply.wait().await;
         let bytes = serialize_response(response).await;
         if let Err(e) = socket.write_all(&bytes).await {
             warn!("write failed: {:?}", e);
@@ -473,8 +457,8 @@ async fn server_loop(stack: Stack<'static>, port: u16) {
     }
 }
 
-/// Drain queued [`ServerExchange`]s, run each through its [`HttpServer`]'s handler
-/// system, and reply with the produced [`Response`].
+/// Drain queued requests from [`SERVER_BRIDGE`], run each through its
+/// [`HttpServer`]'s handler system, and reply with the produced [`Response`].
 ///
 /// The synchronous path, used when the `action` feature is off: a handler is a
 /// plain one-shot system, run inline on the ECS. With `action` on, requests are
@@ -491,25 +475,26 @@ fn drain_server_requests(world: &mut World) {
         }
     }
 
-    while let Some(exchange) = SERVER_EXCHANGES.try_recv() {
+    while let Some(exchange) = SERVER_BRIDGE.try_recv() {
+        let ((port, request), reply) = exchange.split();
         let handler = handlers
             .iter()
-            .find(|(port, _)| *port == exchange.port)
+            .find(|(p, _)| *p == port)
             .map(|(_, id)| *id);
         let response = match handler {
             Some(id) => world
-                .run_system_with(id, exchange.request)
+                .run_system_with(id, request)
                 .unwrap_or_else(|_| {
-                    warn!("server handler errored on :{}", exchange.port);
+                    warn!("server handler errored on :{}", port);
                     Response::internal_error()
                 }),
             None => Response::not_found(),
         };
-        exchange.reply.signal(response);
+        reply.send(response);
     }
 }
 
-/// Drain queued [`ServerExchange`]s through beet's async action layer.
+/// Drain queued requests from [`SERVER_BRIDGE`] through beet's async action layer.
 ///
 /// The async path, used when the `action` feature is on. For each request it
 /// spawns a short-lived bridge task (via [`AsyncCommands`]) that dispatches the
@@ -546,12 +531,8 @@ fn drain_router_requests(
         ));
     }
 
-    while let Some(exchange) = SERVER_EXCHANGES.try_recv() {
-        let ServerExchange {
-            port,
-            request,
-            reply,
-        } = exchange;
+    while let Some(exchange) = SERVER_BRIDGE.try_recv() {
+        let ((port, request), reply) = exchange.split();
         let entry = table.iter().find(|(p, ..)| *p == port).copied();
         match entry {
             Some((_, entity, is_router, handler)) => {
@@ -582,10 +563,10 @@ fn drain_router_requests(
                     } else {
                         Response::not_found()
                     };
-                    reply.signal(response);
+                    reply.send(response);
                 });
             }
-            None => reply.signal(Response::not_found()),
+            None => reply.send(Response::not_found()),
         }
     }
 }

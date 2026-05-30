@@ -1,8 +1,8 @@
 //! On-board addressable LED: the WS2812 RMT driver, its Bevy components and
 //! hue-fade animation, and the GRB wire encoding a [`Color`] becomes.
 
-use crate::bridge::Latest;
-use crate::bridge::spawn_driver;
+use crate::async_bridge::Latest;
+use crate::async_bridge::spawn_driver;
 use beet::prelude::*;
 use embassy_executor::Spawner;
 use esp_hal::Async;

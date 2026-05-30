@@ -16,7 +16,7 @@ pub use beet_esp_macros::main;
 
 #[cfg(feature = "action")]
 pub mod async_utils;
-pub mod bridge;
+pub mod async_bridge;
 #[cfg(feature = "clock")]
 pub mod clock;
 pub mod esp32_plugin;
@@ -31,7 +31,7 @@ pub mod wifi;
 pub mod prelude {
 	#[cfg(feature = "action")]
 	pub use crate::async_utils::*;
-	pub use crate::bridge::*;
+	pub use crate::async_bridge::*;
 	#[cfg(feature = "clock")]
 	pub use crate::clock::*;
 	pub use crate::esp32_plugin::*;

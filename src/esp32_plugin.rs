@@ -3,7 +3,7 @@
 //! system, exposes the raw peripherals as non-send resources, and installs a
 //! runner so a bare-metal app is driven by plain [`App::run`].
 
-use crate::bridge::spawn_driver;
+use crate::async_bridge::spawn_driver;
 use beet::prelude::*;
 use defmt::info;
 use embassy_time::Duration;
@@ -31,7 +31,7 @@ pub fn start_embassy(
 /// It is LED-agnostic — it only ticks the schedule and exposes the raw
 /// peripherals as non-send resources. Each domain plugin (e.g.
 /// [`LedPlugin`](crate::led::LedPlugin)) assembles its own drivers from those
-/// peripherals and spawns its own async driver via the [`bridge`](crate::bridge)
+/// peripherals and spawns its own async driver via the [`async_bridge`](crate::async_bridge)
 /// using the [`Spawner`](embassy_executor::Spawner) resource. See
 /// [`init_esp!`](crate::init_esp).
 pub struct Esp32Plugin;
