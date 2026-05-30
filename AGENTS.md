@@ -5,6 +5,15 @@ project. `no_std` Rust on `esp-hal`.
 
 Always begin a conversation with 'gday pete'.
 
+## Context
+
+This is a downstream library from our primary project called beet. We're working
+off a work tree so that we can make changes freely. You have permission to make
+changes to the worktree as required, but do not commit changes so the user can
+review them.
+
+beet worktree: `/home/pete/me/worktrees/beet/embedded/beet`
+
 **Never create git commits.** Only Pete commits. The agent may stage or edit
 files, but committing is Pete's job alone.
 

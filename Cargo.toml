@@ -45,6 +45,11 @@ random = ["dep:getrandom", "beet/rand"]
 # `BeetAsyncSyncPoint` driver the behavior_tree example drives. No extra esp
 # crates — just turns on more of beet. Kept opt-in so non-action builds stay lean.
 action = ["beet/action"]
+# beet_router on this no_std target: route incoming `Request`s to per-path
+# actions, served over the `wifi` HTTP server. Pulls beet's no_std router
+# (`router_embedded`) plus the `action` async layer it dispatches on. See
+# `examples/ecs_router.rs`.
+router = ["action", "wifi", "beet/router_embedded"]
 # Wi-Fi + BLE coexistence — both radios at once. Required by the default bin.
 coex = ["wifi", "ble", "esp-radio/coex"]
 
@@ -81,6 +86,10 @@ required-features = ["led", "wifi"]
 [[example]]
 name             = "behavior_tree"
 required-features = ["action"]
+
+[[example]]
+name             = "ecs_router"
+required-features = ["router"]
 
 [[example]]
 name             = "random"

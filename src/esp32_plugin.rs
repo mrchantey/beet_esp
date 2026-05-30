@@ -62,6 +62,7 @@ impl Plugin for Esp32Plugin {
 fn bring_up(world: &mut World) {
     let p = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()));
     start_embassy(p.TIMG0, p.SW_INTERRUPT);
+    install_bevy_clock();
     // Each esp-hal peripheral is a distinct type, so they key cleanly as
     // separate resources. A domain plugin removes whichever ones it owns; only
     // expose the ones a compiled-in domain plugin can actually claim.
@@ -77,6 +78,24 @@ fn bring_up(world: &mut World) {
     // only here to keep `bring_up` an exclusive system that runs in `PreStartup`.
     #[cfg(not(any(feature = "led", feature = "wifi")))]
     let _ = world;
+}
+
+/// Point bevy's monotonic [`Instant`] at embassy's clock.
+///
+/// On this `no_std` target `bevy_platform`'s `Instant::now()` has no backend and
+/// panics (it only auto-detects x86/aarch64 cycle counters). beet code paths
+/// that time themselves — notably the router's `RequestLogger` and the action
+/// layer — call it, so install an elapsed-time getter backed by embassy's
+/// monotonic clock. Must run after [`start_embassy`] so the timer is live.
+fn install_bevy_clock() {
+    use beet::exports::bevy::platform::time::Instant;
+    /// Monotonic microseconds since boot, from embassy's timer.
+    fn elapsed() -> core::time::Duration {
+        core::time::Duration::from_micros(embassy_time::Instant::now().as_micros())
+    }
+    // SAFETY: `elapsed` is a plain fn pointer with no shared mutable state; the
+    // getter is installed once here, before any `Instant::now()` can run.
+    unsafe { Instant::set_elapsed(elapsed) };
 }
 
 /// How long the schedule sleeps between ticks.

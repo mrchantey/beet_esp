@@ -457,7 +457,6 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "web-time",
 ]
 
 [[package]]
@@ -526,7 +525,6 @@ name = "beet_net"
 version = "0.0.9-dev.11"
 dependencies = [
  "async-channel",
- "async-io",
  "async-lock",
  "async-process",
  "base64 0.22.1",
@@ -539,7 +537,6 @@ dependencies = [
  "extend",
  "futures",
  "futures-core",
- "futures-lite",
  "heck",
  "http",
  "js-sys",
@@ -616,7 +613,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
- "uuid",
  "variadics_please",
  "webbrowser",
 ]
@@ -6598,17 +6594,7 @@ dependencies = [
  "getrandom 0.4.2",
  "js-sys",
  "serde_core",
- "uuid-rng-internal",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "uuid-rng-internal"
-version = "1.23.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1409d2323564d9b8d01192a77a0604a46bf29eb42e9b535aca34dec65482652b"
-dependencies = [
- "getrandom 0.4.2",
 ]
 
 [[package]]

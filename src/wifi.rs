@@ -82,8 +82,17 @@ impl Plugin for WifiPlugin {
             password: self.password,
         })
         .add_systems(Startup, start_wifi)
-        .add_systems(PostStartup, spawn_servers)
-        .add_systems(Update, drain_server_requests);
+        .add_systems(PostStartup, spawn_servers);
+
+        // The accept loops queue requests; a drain system services them on the
+        // ECS. Without the async bridge (`action` off), handlers are plain
+        // one-shot systems run synchronously. With `action` on, requests are
+        // dispatched through the async action layer so beet's router (and any
+        // `Action<Request, Response>`) can run.
+        #[cfg(not(feature = "action"))]
+        app.add_systems(Update, drain_server_requests);
+        #[cfg(feature = "action")]
+        app.add_systems(Update, drain_router_requests);
     }
 }
 
@@ -325,6 +334,23 @@ pub trait WifiAppExt {
         port: u16,
         handler: impl IntoSystem<In<Request>, Response, M> + 'static,
     ) -> &mut Self;
+
+    /// Spawn an [`HttpServer`] on `port` whose requests are routed by a beet
+    /// router to the matching action. `routes` is the router bundle, typically
+    /// `(router(), children![exchange_route("path", Action), ...])`.
+    ///
+    /// Requires the `action` feature: routing runs on beet's async action
+    /// layer, so each request is dispatched through [`drain_router_requests`]
+    /// rather than a one-shot handler system.
+    ///
+    /// ```ignore
+    /// app.add_router(8080, (router(), children![
+    ///     exchange_route("", Home),
+    ///     exchange_route("about", About),
+    /// ]));
+    /// ```
+    #[cfg(feature = "action")]
+    fn add_router<B: Bundle>(&mut self, port: u16, routes: B) -> &mut Self;
 }
 
 impl WifiAppExt for App {
@@ -337,7 +363,27 @@ impl WifiAppExt for App {
         self.world_mut().spawn((HttpServer::new(port), ServerHandler(id)));
         self
     }
+
+    #[cfg(feature = "action")]
+    fn add_router<B: Bundle>(&mut self, port: u16, routes: B) -> &mut Self {
+        // RouterServer marks this server as router-dispatched so the drain calls
+        // the entity's `Action<Request, Response>` (the router) rather than a
+        // one-shot handler system. Spawning the HttpServer fires `esp_start_server`
+        // (recording the port) and the RouterPlugin observers (building the
+        // RouteTree from the route children) in one shot.
+        self.world_mut()
+            .spawn((HttpServer::new(port), RouterServer, routes));
+        self
+    }
 }
+
+/// Marks an [`HttpServer`] entity whose requests are dispatched through beet's
+/// router (an `Action<Request, Response>` on the same entity), as opposed to a
+/// one-shot [`ServerHandler`] system. Inserted by
+/// [`add_router`](WifiAppExt::add_router).
+#[cfg(feature = "action")]
+#[derive(Component)]
+struct RouterServer;
 
 /// An accepted request awaiting an ECS-produced [`Response`].
 struct ServerExchange {
@@ -429,6 +475,11 @@ async fn server_loop(stack: Stack<'static>, port: u16) {
 
 /// Drain queued [`ServerExchange`]s, run each through its [`HttpServer`]'s handler
 /// system, and reply with the produced [`Response`].
+///
+/// The synchronous path, used when the `action` feature is off: a handler is a
+/// plain one-shot system, run inline on the ECS. With `action` on, requests are
+/// instead serviced by [`drain_router_requests`].
+#[cfg(not(feature = "action"))]
 fn drain_server_requests(world: &mut World) {
     // Snapshot (port, handler) pairs; the query borrow must end before we call
     // `run_system_with` (which needs `&mut World`).
@@ -455,6 +506,87 @@ fn drain_server_requests(world: &mut World) {
             None => Response::not_found(),
         };
         exchange.reply.signal(response);
+    }
+}
+
+/// Drain queued [`ServerExchange`]s through beet's async action layer.
+///
+/// The async path, used when the `action` feature is on. For each request it
+/// spawns a short-lived bridge task (via [`AsyncCommands`]) that dispatches the
+/// request to the server entity and signals the reply:
+///
+/// - a [`RouterServer`] entity carries a router [`Action<Request, Response>`];
+///   [`AsyncEntity::exchange`] runs it, routing to the matched route's action.
+/// - a plain [`ServerHandler`] entity (from
+///   [`add_http_server`](WifiAppExt::add_http_server)) has its one-shot system
+///   run via the exclusive-world bridge, so the sync handler API still works.
+///
+/// Both await the bridge sync-point, so a request may span a few frames; that is
+/// the same `BeetAsyncSyncPoint` machinery the behavior-tree example drives.
+#[cfg(feature = "action")]
+fn drain_router_requests(
+    commands: AsyncCommands,
+    servers: Query<(
+        Entity,
+        &HttpServer,
+        Option<&RouterServer>,
+        Option<&ServerHandler>,
+    )>,
+) {
+    // Snapshot how each port should be dispatched; the query borrow ends here so
+    // the spawned tasks can take the world via the bridge.
+    let mut table: Vec<(u16, Entity, bool, Option<SystemId<In<Request>, Response>>)> =
+        Vec::new();
+    for (entity, server, router, handler) in servers.iter() {
+        table.push((
+            server.port.unwrap_or(DEFAULT_HTTP_PORT),
+            entity,
+            router.is_some(),
+            handler.map(|handler| handler.0),
+        ));
+    }
+
+    while let Some(exchange) = SERVER_EXCHANGES.try_recv() {
+        let ServerExchange {
+            port,
+            request,
+            reply,
+        } = exchange;
+        let entry = table.iter().find(|(p, ..)| *p == port).copied();
+        match entry {
+            Some((_, entity, is_router, handler)) => {
+                commands.run_local(async move |world: AsyncWorld| {
+                    let response = if is_router {
+                        // dispatch the request through the router action on the
+                        // entity (same as beet's `AsyncEntity::exchange`).
+                        world
+                            .entity(entity)
+                            .call::<Request, Response>(request)
+                            .await
+                            .unwrap_or_else(|err| {
+                                warn!(
+                                    "router dispatch failed: {}",
+                                    defmt::Debug2Format(&err)
+                                );
+                                Response::internal_error()
+                            })
+                    } else if let Some(id) = handler {
+                        world
+                            .with(move |world: &mut World| {
+                                world.run_system_with(id, request).unwrap_or_else(|_| {
+                                    warn!("server handler errored on :{}", port);
+                                    Response::internal_error()
+                                })
+                            })
+                            .await
+                    } else {
+                        Response::not_found()
+                    };
+                    reply.signal(response);
+                });
+            }
+            None => reply.signal(Response::not_found()),
+        }
     }
 }
 
