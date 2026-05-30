@@ -1,0 +1,154 @@
+//! Wi-Fi as an ECS-friendly mechanism, using beet's networking types.
+//!
+//! Like [`led`](crate::led) turns the RMT peripheral into Bevy components driven
+//! by an async task, this turns the ESP32 Wi-Fi station + `embassy-net` stack
+//! into beet's transport-agnostic [`Request`]/[`Response`] workflow:
+//!
+//! - a **client** speaking beet's `Request::get(url).send().await` shape (see
+//!   [`http_client`]). The ESP32 transport is registered with beet via
+//!   [`set_http_client`], so calling [`Request::send`] anywhere routes through
+//!   the Wi-Fi stack.
+//! - a **server** as beet's standard [`HttpServer`] component (see
+//!   [`http_server`], gated on the `action` feature). Spawn `(HttpServer,
+//!   exchange_handler(..))` or `(HttpServer, router(), children![..])` and each
+//!   request is dispatched through beet's async action layer.
+//!
+//! [`WifiPlugin`] brings the station up, runs DHCP, and shares the [`Stack`] so
+//! both the client driver and any [`HttpServer`] accept loop can open sockets.
+
+use crate::async_bridge::spawn_driver;
+use beet::prelude::*;
+use defmt::info;
+use defmt::warn;
+use embassy_executor::Spawner;
+use embassy_net::Runner;
+use embassy_net::StackResources;
+use esp_hal::peripherals::WIFI;
+use esp_hal::rng::Rng;
+use esp_radio::wifi::Config as RadioConfig;
+use esp_radio::wifi::ControllerConfig;
+use esp_radio::wifi::Interface;
+use esp_radio::wifi::WifiController;
+use esp_radio::wifi::sta::StationConfig;
+use embassy_time::Duration;
+use embassy_time::Timer;
+use static_cell::StaticCell;
+
+pub mod http_client;
+#[cfg(feature = "action")]
+pub mod http_server;
+
+/// Brings up the Wi-Fi station and `embassy-net` stack, then shares the
+/// [`Stack`] so the client and any [`HttpServer`] can open sockets.
+///
+/// Add it after [`Esp32Plugin`](crate::esp32_plugin::Esp32Plugin) (which exposes
+/// the `WIFI` peripheral). The station joins the given AP via DHCP; once up, the
+/// client driver services [`Request::send`] calls and each [`HttpServer`] entity
+/// gets its own accept loop.
+pub struct WifiPlugin {
+    ssid: &'static str,
+    password: &'static str,
+}
+
+impl WifiPlugin {
+    /// Join the AP named by `ssid` using `password` (e.g. from `env!("SSID")`).
+    pub fn new(ssid: &'static str, password: &'static str) -> Self {
+        Self { ssid, password }
+    }
+}
+
+impl Plugin for WifiPlugin {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(WifiCredentials {
+            ssid: self.ssid,
+            password: self.password,
+        })
+        .add_systems(Startup, start_wifi);
+
+        // The server backend (beet's `HttpServer` component) needs the async
+        // action layer to dispatch through `entity.exchange`, so it is gated on
+        // `action`. Installs the backend + the request-drain system; spawning an
+        // `HttpServer` then drives everything via beet's `on_add` hook.
+        #[cfg(feature = "action")]
+        http_server::add_plugin(app);
+    }
+}
+
+/// Station credentials, stashed by [`WifiPlugin`] for [`start_wifi`] to read.
+#[derive(Resource, Clone)]
+struct WifiCredentials {
+    ssid: &'static str,
+    password: &'static str,
+}
+
+/// Claim the `WIFI` peripheral, join the AP, start DHCP and the network task,
+/// and spawn the client driver. Exclusive so it can pull the non-send peripheral
+/// and [`Spawner`], and publish the resulting [`Stack`].
+///
+/// Runs in `Startup`, after `bring_up`'s `PreStartup` (so the chip, embassy and
+/// the radio scheduler are already running).
+fn start_wifi(world: &mut World) {
+    let creds = world.resource::<WifiCredentials>().clone();
+    let wifi = world
+        .remove_non_send::<WIFI<'static>>()
+        .expect("add Esp32Plugin before WifiPlugin — bring_up provides the WIFI peripheral");
+    let spawner = *world.non_send::<Spawner>();
+
+    let station_config = RadioConfig::Station(
+        StationConfig::default()
+            .with_ssid(creds.ssid)
+            .with_password(creds.password.into()),
+    );
+    let (controller, interfaces) = esp_radio::wifi::new(
+        wifi,
+        ControllerConfig::default().with_initial_config(station_config),
+    )
+    .expect("failed to initialize Wi-Fi controller");
+
+    let net_config = embassy_net::Config::dhcpv4(Default::default());
+    let rng = Rng::new();
+    let seed = ((rng.random() as u64) << 32) | rng.random() as u64;
+
+    static RESOURCES: StaticCell<StackResources<4>> = StaticCell::new();
+    let resources = RESOURCES.init(StackResources::new());
+    let (stack, runner) = embassy_net::new(interfaces.station, net_config, resources, seed);
+
+    info!("Wi-Fi station joining `{}`", creds.ssid);
+    spawn_driver(spawner, connection_loop(controller));
+    spawn_driver(spawner, net_loop(runner));
+    spawn_driver(spawner, http_client::client_driver(stack));
+
+    // Register the ESP32 transport so beet's `Request::send` routes here. It is
+    // a one-time install; a second `WifiPlugin` (or a transport feature compiled
+    // into beet_net) would already own it, so just warn rather than panic.
+    if set_http_client(http_client::esp_send).is_err() {
+        warn!("an HTTP transport was already installed; Request::send will not use Wi-Fi");
+    }
+
+    // Stack is Copy and !Send; keep it as a non-send resource so each server
+    // accept loop (spawned by the `on_add` hook) can hand a copy to its loop.
+    world.insert_non_send(stack);
+}
+
+/// Keep the station associated, reconnecting on drop-out — same shape as the
+/// stock `wifi-client`/`wifi-server` examples.
+async fn connection_loop(mut controller: WifiController<'static>) {
+    loop {
+        match controller.connect_async().await {
+            Ok(info) => {
+                info!("Wi-Fi connected: {:?}", info);
+                let reason = controller.wait_for_disconnect_async().await;
+                warn!("Wi-Fi disconnected: {:?}", reason);
+            }
+            Err(e) => {
+                warn!("connect_async failed: {:?}; retrying in 3s", e);
+                Timer::after(Duration::from_secs(3)).await;
+            }
+        }
+    }
+}
+
+/// Drive the `embassy-net` stack (polls the device, runs DHCP).
+async fn net_loop(mut runner: Runner<'static, Interface<'static>>) {
+    runner.run().await
+}

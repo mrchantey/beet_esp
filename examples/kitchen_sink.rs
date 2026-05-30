@@ -7,11 +7,11 @@
 //! all on one Bevy `World`.
 //!
 //! Run with:
-//!   `cargo run --release --no-default-features --features led,wifi --example kitchen_sink`
+//!   `cargo run --release --no-default-features --features led,wifi,action --example kitchen_sink`
 //!
 //! The default 96 KiB heap is *not* enough for this combination (Wi-Fi alone is
-//! ~165 KiB of the 172 KiB total), so the heap is bumped below — see the health
-//! report for the resulting headroom.
+//! ~165 KiB of the 172 KiB total, and the action layer + task pool add more), so
+//! the heap is bumped below — see the health report for the resulting headroom.
 
 #![no_std]
 #![no_main]
@@ -44,9 +44,10 @@ const SCENE_JSON: &str = r#"{
   }
 }"#;
 
-// Reclaim idle stack RAM into the heap: the stack only ever uses ~16 KiB, so a
-// 176 KiB main heap (+ the 72 KiB reclaimed region) still leaves a huge stack.
-#[beet_esp::main(heap_size = 176 * 1024)]
+// Reclaim idle stack RAM into the heap: the action layer + task pool push the
+// baseline up, so give the main heap 224 KiB (+ the 72 KiB reclaimed region);
+// the stack only ever uses ~19 KiB while serving, so headroom is still ample.
+#[beet_esp::main(heap_size = 224 * 1024)]
 fn main() {
     let mut app = App::new();
     app.add_plugins((
@@ -57,7 +58,9 @@ fn main() {
     ));
     app.init_resource::<AppTypeRegistry>();
     app.register_type::<HelloWorld>();
-    app.add_http_server(8080, on_request);
+    // beet's standard server bundle: the `HttpServer` component plus its
+    // `Action<Request, Response>` handler. Spawning it starts the accept loop.
+    app.spawn((HttpServer::new(8080), Handler));
     app.add_systems(
         Startup,
         (setup_led, ping, dump_canonical, load_scene, greet).chain(),
@@ -84,8 +87,12 @@ fn ping(world: &mut World) {
     });
 }
 
-fn on_request(request: In<Request>) -> Response {
-    info!("server request on `{}`", request.0.path_string().as_str());
+/// The server's request handler: a beet `Action<Request, Response>` on the
+/// server entity, dispatched by `entity.exchange`.
+#[action(handler_only)]
+#[derive(Default, Clone, Component)]
+fn Handler(cx: In<ActionContext<Request>>) -> Response {
+    info!("server request on `{}`", cx.input.path_string().as_str());
     Response::ok_body("hello from the beet_esp kitchen sink\n", MediaType::Text)
 }
 

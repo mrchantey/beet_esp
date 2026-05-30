@@ -9,11 +9,12 @@
 //! ## How it routes
 //!
 //! [`RouterPlugin`] (beet's no_std router) registers the observers that build a
-//! [`RouteTree`] from the spawned route hierarchy. [`add_router`] spawns an
-//! [`HttpServer`] carrying [`router()`] plus the routes as children; each
-//! incoming request is dispatched through beet's async action layer (the same
-//! `BeetAsyncSyncPoint` bridge the [`behavior_tree`](../behavior_tree.rs)
-//! example drives) to the matched route's action.
+//! [`RouteTree`] from the spawned route hierarchy. Spawning an [`HttpServer`]
+//! carrying [`router()`] plus the routes as children starts the accept loop
+//! (via beet's `on_add` hook); each incoming request is dispatched through
+//! beet's async action layer (the same `BeetAsyncSyncPoint` bridge the
+//! [`behavior_tree`](../behavior_tree.rs) example drives) to the matched route's
+//! action.
 //!
 //! ## Routes
 //!
@@ -57,9 +58,10 @@ fn main() {
             RouterPlugin,
         ))
         .init_resource::<Visits>()
-        // Serve the router on :8080. `router()` is the dispatch action; the
-        // children are the routes, each binding a path to an action.
-        .add_router(8080, (router(), children![
+        // Serve the router on :8080, beet-style: the `HttpServer` component plus
+        // `router()` (the dispatch action) and the routes as children, each
+        // binding a path to an action. Spawning it starts the accept loop.
+        .spawn((HttpServer::new(8080), router(), children![
             exchange_route("", Home),
             exchange_route("about", About),
             exchange_route("hello/:name", Greet),
