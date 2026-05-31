@@ -7,20 +7,25 @@ mod main_attr;
 /// boilerplate so examples read as pure Bevy.
 ///
 /// Emits the esp-idf app descriptor, an `#[esp_hal::main] fn main() -> !`, the
-/// RTT/`defmt` and heap setup, the user's body, and the trailing divergence the
-/// esp runner needs.
+/// RTT/`defmt` and memory setup (PSRAM as the default bulk pool, internal SRAM
+/// reserved for the radio/hot use — see [`beet_esp::mem`]), the user's body, and
+/// the trailing divergence the esp runner needs.
 ///
 /// # Config
 ///
-/// Heap size (and future knobs) are declared as sibling attributes or as
-/// arguments; both forms are equivalent:
+/// Knobs are declared as sibling attributes or as arguments; both forms are
+/// equivalent. `internal_reserve_kb` is how much internal SRAM to reserve for
+/// the radio + DMA + hot allocations, in **kilobytes** (bytes = kb * 1024); it
+/// defaults to 64 KiB. The big cold structures (World, type registry, request
+/// buffers) live in PSRAM regardless of this value. `heap_size_kb` is kept as a
+/// back-compat alias for `internal_reserve_kb`.
 ///
 /// ```ignore
 /// #[beet_esp::main]
-/// #[heap_size(96 * 1024)]   // sibling form (default 96 KiB when absent)
+/// #[internal_reserve_kb(64)]   // sibling form (default 64 KiB when absent)
 /// fn main() { App::new().run(); }
 ///
-/// #[beet_esp::main(heap_size = 96 * 1024)]   // argument form
+/// #[beet_esp::main(internal_reserve_kb = 64)]   // argument form
 /// fn main() { App::new().run(); }
 /// ```
 #[proc_macro_attribute]

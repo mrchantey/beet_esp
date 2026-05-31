@@ -6,11 +6,12 @@
 //! a [`static`](CLIENT_BRIDGE) [`AsyncBridge`] to [`client_driver`], and the
 //! awaited [`Response`] comes back on that call's reply.
 //!
-//! Pure transport — no `action` dependency. The encode/parse here is the
-//! *client* direction (encode a [`Request`], parse a [`Response`]); the
-//! *server* direction reuses beet's shared `http_ext` helpers.
+//! Pure transport — no `action` dependency. The HTTP/1.1 wire encode/parse lives
+//! upstream in beet's shared [`http_ext`] module (`encode_request` /
+//! `parse_response`); this file is just the bridge plus the socket IO.
 
 use crate::async_bridge::AsyncBridge;
+use crate::async_bridge::run_worker;
 use beet::prelude::*;
 use defmt::info;
 use defmt::warn;
@@ -55,9 +56,12 @@ pub(crate) fn esp_send(
         }
         let (host, port) = split_authority(&authority, 80);
 
+        // Collect any streamed body into memory so the wire encoder (which only
+        // serialises `Body::Bytes`) can handle it, then encode to HTTP/1.1.
         let (parts, body) = request.into_parts();
         let body = body.into_bytes().await?;
-        let bytes = encode_request(&parts, &authority, &body);
+        let request = Request::from_parts(parts, body.into());
+        let bytes = http_ext::encode_request(&request)?;
 
         let job = ClientJob { host, port, bytes };
         // Outer `Err` is a full queue (no reply will arrive); the inner
@@ -72,21 +76,35 @@ pub(crate) fn esp_send(
 /// Services [`CLIENT_BRIDGE`]: one TCP request at a time, sending the result back
 /// on each call's reply. Owns a copy of the [`Stack`]; waits for DHCP before the
 /// first job.
+///
+/// The recv/reply loop is the request/reply toolkit's [`run_worker`]; all this
+/// adds is the one-time DHCP wait and the per-job `worker` ([`exchange`]).
 pub(crate) async fn client_driver(stack: Stack<'static>) {
     stack.wait_config_up().await;
     if let Some(cfg) = stack.config_v4() {
         info!("Wi-Fi up: {}", cfg);
     }
-    loop {
-        let ex = CLIENT_BRIDGE.recv().await;
-        let (job, reply) = ex.split();
-        reply.send(exchange(stack, &job).await);
-    }
+    run_worker(&CLIENT_BRIDGE, |job: ClientJob| exchange(stack, job)).await;
 }
 
 /// Resolve the host, open a socket, send the encoded request, and read the whole
 /// response into a beet [`Response`].
-async fn exchange(stack: Stack<'static>, job: &ClientJob) -> Result<Response> {
+async fn exchange(stack: Stack<'static>, job: ClientJob) -> Result<Response> {
+    // `.local` names are not in unicast DNS; resolve them over mDNS multicast via
+    // the responder/resolver task (only present under the `mdns` feature, and only
+    // running if an `MDns` server is up). Falls through to unicast DNS otherwise,
+    // so a `.local` lookup with no mDNS task simply fails the normal way.
+    #[cfg(feature = "mdns")]
+    if job.host.ends_with(".local") {
+        info!("resolving `{}` via mDNS", job.host.as_str());
+        let addr = super::mdns::resolve(&job.host).await.ok_or_else(|| {
+            bevyhow!("mDNS lookup for `{}` failed (no answer)", job.host.as_str())
+        })?;
+        info!("mDNS resolved `{}` -> {:?}", job.host.as_str(), addr.octets());
+        let remote = IpEndpoint::new(IpAddress::Ipv4(addr), job.port);
+        return exchange_on(stack, remote, job).await;
+    }
+
     // `dns_query` short-circuits IP literals, so this covers both `1.1.1.1` and
     // real hostnames (DNS servers come from the DHCP lease).
     let addrs = stack
@@ -98,7 +116,17 @@ async fn exchange(stack: Stack<'static>, job: &ClientJob) -> Result<Response> {
         .next()
         .ok_or_else(|| bevyhow!("no DNS results for `{}`", job.host.as_str()))?;
     let remote = IpEndpoint::new(addr, job.port);
+    exchange_on(stack, remote, job).await
+}
 
+/// Open a TCP socket to `remote`, send the encoded request, and read the whole
+/// response into a beet [`Response`]. The transport tail shared by the unicast-DNS
+/// and `.local`/mDNS resolution paths.
+async fn exchange_on(
+    stack: Stack<'static>,
+    remote: IpEndpoint,
+    job: ClientJob,
+) -> Result<Response> {
     let mut rx = [0u8; 1536];
     let mut tx = [0u8; 1536];
     let mut socket = TcpSocket::new(stack, &mut rx, &mut tx);
@@ -125,12 +153,8 @@ async fn exchange(stack: Stack<'static>, job: &ClientJob) -> Result<Response> {
             }
         }
     }
-    Ok(parse_response(&raw))
+    http_ext::parse_response(&raw)
 }
-
-// ---------------------------------------------------------------------------
-// HTTP/1.1 wire helpers (client direction: encode Request, parse Response)
-// ---------------------------------------------------------------------------
 
 /// Split an authority into `(host, port)`, falling back to `default_port`.
 fn split_authority(authority: &str, default_port: u16) -> (String, u16) {
@@ -138,98 +162,4 @@ fn split_authority(authority: &str, default_port: u16) -> (String, u16) {
         Some((host, port)) => (host.to_string(), port.parse().unwrap_or(default_port)),
         None => (authority.to_string(), default_port),
     }
-}
-
-/// The uppercase HTTP token for a method (the [`HttpMethod`] `Display` is
-/// title-case, e.g. `Get`, so it can't be used on the wire).
-fn method_token(method: &HttpMethod) -> &'static str {
-    match method {
-        HttpMethod::Get => "GET",
-        HttpMethod::Post => "POST",
-        HttpMethod::Put => "PUT",
-        HttpMethod::Patch => "PATCH",
-        HttpMethod::Delete => "DELETE",
-        HttpMethod::Options => "OPTIONS",
-        HttpMethod::Head => "HEAD",
-        HttpMethod::Trace => "TRACE",
-        HttpMethod::Connect => "CONNECT",
-    }
-}
-
-/// Headers the encoder sets itself; user-supplied copies are skipped to avoid
-/// duplicates.
-fn is_managed_header(key: &str) -> bool {
-    key.eq_ignore_ascii_case("host")
-        || key.eq_ignore_ascii_case("content-length")
-        || key.eq_ignore_ascii_case("connection")
-}
-
-/// Serialise a [`Request`] to raw HTTP/1.1 bytes (origin-form target).
-fn encode_request(parts: &RequestParts, authority: &str, body: &[u8]) -> Vec<u8> {
-    let path = parts.path_string();
-    let query = parts.query_string();
-    let target = if query.is_empty() {
-        path
-    } else {
-        format!("{path}?{query}")
-    };
-
-    let mut head = format!("{} {} HTTP/1.1\r\n", method_token(parts.method()), target);
-    head.push_str(&format!("Host: {authority}\r\n"));
-    for (key, values) in parts.headers().iter_all() {
-        if is_managed_header(key) {
-            continue;
-        }
-        for value in values {
-            head.push_str(&format!("{key}: {value}\r\n"));
-        }
-    }
-    head.push_str(&format!("Content-Length: {}\r\n", body.len()));
-    head.push_str("Connection: close\r\n\r\n");
-
-    let mut bytes = head.into_bytes();
-    bytes.extend_from_slice(body);
-    bytes
-}
-
-/// Parse raw HTTP/1.1 response bytes into a beet [`Response`].
-fn parse_response(raw: &[u8]) -> Response {
-    let (header_section, body) = split_head_body(raw);
-    let header_str = String::from_utf8_lossy(header_section);
-    let mut lines = header_str.lines();
-
-    let status = lines.next().and_then(parse_status_line).unwrap_or(0);
-    let mut parts = ResponseParts::new(StatusCode::new(status));
-    for line in lines {
-        if line.is_empty() {
-            break;
-        }
-        if let Some((key, value)) = line.split_once(':') {
-            parts.headers.set_raw(key.trim(), value.trim());
-        }
-    }
-    Response::new(parts, body.to_vec().into())
-}
-
-/// Pull the status code out of an HTTP status line (`HTTP/1.1 200 OK`).
-fn parse_status_line(line: &str) -> Option<u16> {
-    line.split_whitespace().nth(1)?.parse().ok()
-}
-
-/// Split a raw HTTP message into `(headers, body)` on the blank-line separator.
-fn split_head_body(raw: &[u8]) -> (&[u8], &[u8]) {
-    if let Some(pos) = find_subslice(raw, b"\r\n\r\n") {
-        (&raw[..pos], &raw[pos + 4..])
-    } else if let Some(pos) = find_subslice(raw, b"\n\n") {
-        (&raw[..pos], &raw[pos + 2..])
-    } else {
-        (raw, &[])
-    }
-}
-
-/// First index of `needle` within `haystack`.
-fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack
-        .windows(needle.len())
-        .position(|window| window == needle)
 }

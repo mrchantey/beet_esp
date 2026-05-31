@@ -192,6 +192,23 @@ pub fn snapshot() -> MemSnapshot {
 static BOOT: critical_section::Mutex<core::cell::Cell<Option<MemSnapshot>>> =
     critical_section::Mutex::new(core::cell::Cell::new(None));
 
+/// PSRAM bring-up result, recorded by [`init_esp!`](crate::init_esp) via
+/// [`set_psram_info`] so the report can show whether the bulk pool came up and
+/// how large it is.
+static PSRAM: critical_section::Mutex<core::cell::Cell<Option<crate::mem::PsramInfo>>> =
+    critical_section::Mutex::new(core::cell::Cell::new(None));
+
+/// Record the PSRAM bring-up result. Called from [`init_esp!`](crate::init_esp)
+/// after [`mem::init_mem`](crate::mem::init_mem).
+pub fn set_psram_info(info: crate::mem::PsramInfo) {
+    critical_section::with(|cs| PSRAM.borrow(cs).set(Some(info)));
+}
+
+/// Read the recorded PSRAM info, if any.
+fn psram_info() -> Option<crate::mem::PsramInfo> {
+    critical_section::with(|cs| PSRAM.borrow(cs).get())
+}
+
 /// Paint the stack and record the boot snapshot. Called from
 /// [`init_esp!`](crate::init_esp) at the top of `main`, before `App::new()`.
 pub fn on_boot() {
@@ -235,6 +252,14 @@ impl Plugin for HealthPlugin {
 fn capture_baseline(mut state: ResMut<HealthState>) {
     let pre = snapshot();
     info!("── health: baseline ──");
+    match psram_info() {
+        Some(p) if p.present() => info!(
+            "psram:       {} B mapped at {=usize:#x} (bulk pool: World, registry, request buffers)",
+            p.size, p.start
+        ),
+        Some(_) => warn!("psram:       not detected — bulk allocations fall back to internal SRAM"),
+        None => info!("psram:       (not initialised via init_esp!)"),
+    }
     if let Some(boot) = boot_snapshot() {
         info!(
             "boot:        heap {}/{} B used, stack region {} B",
@@ -245,6 +270,8 @@ fn capture_baseline(mut state: ResMut<HealthState>) {
         "pre-startup: heap {}/{} B used ({} B free), stack peak {} B",
         pre.heap_used, pre.heap_size, pre.heap_free, pre.stack_peak_used
     );
+    // Per-region breakdown so internal vs PSRAM occupancy is visible at baseline.
+    info!("{}", esp_alloc::HEAP.stats());
     state.prestartup = Some(pre);
     state.last = Some(pre);
 }

@@ -10,8 +10,8 @@
 //!   the Wi-Fi stack.
 //! - a **server** as beet's standard [`HttpServer`] component (see
 //!   [`http_server`], gated on the `action` feature). Spawn `(HttpServer,
-//!   exchange_handler(..))` or `(HttpServer, router(), children![..])` and each
-//!   request is dispatched through beet's async action layer.
+//!   exchange_handler(..))` or `(HttpServer, default_router(children![..]))` and
+//!   each request is dispatched through beet's async action layer.
 //!
 //! [`WifiPlugin`] brings the station up, runs DHCP, and shares the [`Stack`] so
 //! both the client driver and any [`HttpServer`] accept loop can open sockets.
@@ -37,6 +37,15 @@ use static_cell::StaticCell;
 pub mod http_client;
 #[cfg(feature = "action")]
 pub mod http_server;
+#[cfg(feature = "mdns")]
+pub mod mdns;
+#[cfg(feature = "mdns")]
+pub mod mdns_browser;
+
+#[cfg(feature = "mdns")]
+pub use mdns::MDns;
+#[cfg(feature = "mdns")]
+pub use mdns_browser::{EmbassyUdpEndpoint, EmbassyUdpSocket};
 
 /// Brings up the Wi-Fi station and `embassy-net` stack, then shares the
 /// [`Stack`] so the client and any [`HttpServer`] can open sockets.
@@ -69,8 +78,26 @@ impl Plugin for WifiPlugin {
         // action layer to dispatch through `entity.exchange`, so it is gated on
         // `action`. Installs the backend + the request-drain system; spawning an
         // `HttpServer` then drives everything via beet's `on_add` hook.
+        //
+        // Both the server drain and the client `run_local` path go through
+        // beet's async bridge, which needs `AsyncPlugin` (it inserts the
+        // `AsyncWorld` resource) and `ActionPlugin`. `RouterPlugin` also adds
+        // these, but a plain client/server app has no router, so add them here
+        // too. `init_plugin` is idempotent, so it is safe when both are present.
         #[cfg(feature = "action")]
-        http_server::add_plugin(app);
+        {
+            app.init_plugin::<ActionPlugin>().init_plugin::<AsyncPlugin>();
+            http_server::add_plugin(app);
+        }
+
+        // The mDNS service browser: beet_net's agnostic browser engine
+        // (`MdnsBrowserPlugin` + `handle_udp_packet` observer + `DiscoveredServices`)
+        // plus this crate's embassy browser task and the `UdpPacket` queue drain.
+        // Spawning an `MdnsBrowser { service_type }` entity then starts browsing
+        // once the Stack is up. `mdns` implies `action`, so the engine's commands
+        // and the drain's observers are available.
+        #[cfg(feature = "mdns")]
+        mdns_browser::add_plugin(app);
     }
 }
 
@@ -109,7 +136,12 @@ fn start_wifi(world: &mut World) {
     let rng = Rng::new();
     let seed = ((rng.random() as u64) << 32) | rng.random() as u64;
 
-    static RESOURCES: StaticCell<StackResources<4>> = StaticCell::new();
+    // smoltcp socket budget. DHCP holds one for the stack's life; an HTTP server
+    // accept loop and an HTTP client GET each take one; the `mdns` responder/
+    // resolver task adds a persistent UDP socket. With mDNS active, a client GET
+    // issued while the server is listening pushed past the old budget of 4 and
+    // smoltcp panicked ("adding a socket to a full SocketSet"), so allow 6.
+    static RESOURCES: StaticCell<StackResources<6>> = StaticCell::new();
     let resources = RESOURCES.init(StackResources::new());
     let (stack, runner) = embassy_net::new(interfaces.station, net_config, resources, seed);
 

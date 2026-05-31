@@ -50,6 +50,7 @@ action = ["beet/action"]
 # (`router_embedded`) plus the `action` async layer it dispatches on. See
 # `examples/ecs_router.rs`.
 router = ["action", "wifi", "beet/router_embedded"]
+mdns = ["wifi", "action", "embassy-net/multicast", "beet/mdns"]
 # Wi-Fi + BLE coexistence — both radios at once. Required by the default bin.
 coex = ["wifi", "ble", "esp-radio/coex"]
 
@@ -65,7 +66,7 @@ required-features = ["led"]
 
 [[example]]
 name             = "http_client"
-required-features = ["wifi"]
+required-features = ["wifi", "action"]
 
 [[example]]
 name             = "http_server"
@@ -86,6 +87,14 @@ required-features = ["action"]
 [[example]]
 name             = "ecs_router"
 required-features = ["router"]
+
+[[example]]
+name             = "mdns_server"
+required-features = ["mdns"]
+
+[[example]]
+name             = "mdns_browser"
+required-features = ["mdns"]
 
 [[example]]
 name             = "random"

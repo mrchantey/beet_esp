@@ -44,10 +44,11 @@ const SCENE_JSON: &str = r#"{
   }
 }"#;
 
-// Reclaim idle stack RAM into the heap: the action layer + task pool push the
-// baseline up, so give the main heap 224 KiB (+ the 72 KiB reclaimed region);
-// the stack only ever uses ~19 KiB while serving, so headroom is still ample.
-#[beet_esp::main(heap_size = 224 * 1024)]
+// The action layer + task pool + Wi-Fi push the baseline up, but the bulk now
+// lives in PSRAM (see `beet_esp::mem`), so internal SRAM only holds the radio +
+// DMA + stack. The default 64 KiB internal reserve (+ the ~72 KiB reclaimed
+// region) is ample; the stack only ever uses ~19 KiB while serving.
+#[beet_esp::main(internal_reserve_kb = 64)]
 fn main() {
     let mut app = App::new();
     app.add_plugins((

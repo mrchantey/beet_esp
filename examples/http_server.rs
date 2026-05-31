@@ -30,10 +30,11 @@ extern crate alloc;
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
 
-// ECS + reflection + async-bridge + task-pool + the Wi-Fi stack has a heavy
-// baseline; the default 96 KiB heap OOMs. 224 KiB leaves the stack ~32 KiB while
-// giving the heap room for per-request allocations while serving.
-#[beet_esp::main(heap_size = 224 * 1024)]
+// The World/registry/request bulk lives in PSRAM now (see `beet_esp::mem`), so
+// internal SRAM only has to hold the radio + DMA + stack. The default 64 KiB
+// internal reserve (+ the ~72 KiB reclaimed region) is plenty; the stack keeps
+// the rest of the DRAM pool (peak use ~19 KiB while serving).
+#[beet_esp::main(internal_reserve_kb = 64)]
 fn main() {
     App::new()
         .add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::new(SSID, PASSWORD)))

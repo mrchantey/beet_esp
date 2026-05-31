@@ -2,19 +2,21 @@
 //!
 //! Where [`ecs_wifi`](../ecs_wifi.rs) serves every request through a single
 //! handler system, this mirrors beet's `examples/router/router.rs` — a
-//! [`router()`] dispatches each [`Request`] to the action whose path matches,
-//! the same `Request -> Response` action pattern, now running `no_std` on bare
-//! metal.
+//! [`default_router`] dispatches each [`Request`] to the action whose path
+//! matches, the same `Request -> Response` action pattern, now running `no_std`
+//! on bare metal.
 //!
 //! ## How it routes
 //!
 //! [`RouterPlugin`] (beet's no_std router) registers the observers that build a
 //! [`RouteTree`] from the spawned route hierarchy. Spawning an [`HttpServer`]
-//! carrying [`router()`] plus the routes as children starts the accept loop
-//! (via beet's `on_add` hook); each incoming request is dispatched through
-//! beet's async action layer (the same `BeetAsyncSyncPoint` bridge the
+//! carrying [`default_router(routes)`] starts the accept loop (via beet's
+//! `on_add` hook); each incoming request is dispatched through beet's async
+//! action layer (the same `BeetAsyncSyncPoint` bridge the
 //! [`behavior_tree`](../behavior_tree.rs) example drives) to the matched route's
-//! action.
+//! action. On `no_std`, `default_router` is the lean dispatch bundle (just the
+//! [`Router`] action plus the [`RequestLogger`]); the std-only middleware and
+//! the app-info/analytics routes are compiled out.
 //!
 //! ## Routes
 //!
@@ -43,11 +45,13 @@ const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
 
 // ECS + reflection + async-bridge + task-pool + router + the Wi-Fi stack has a
-// heavy baseline; the default 96 KiB heap OOMs. The heap and stack share one
-// ~256 KiB DRAM pool, so this trades against stack headroom: 224 KiB leaves the
-// stack ~32 KiB (peak request-handling use is ~19 KiB) while giving the heap
-// room for per-request allocations while serving.
-#[beet_esp::main(heap_size = 224 * 1024)]
+// heavy baseline that used to OOM at every internal-heap size (the World + type
+// registry + per-request buffers competed with the radio for internal SRAM).
+// With the bulk now in PSRAM (see `beet_esp::mem`), the only thing internal SRAM
+// has to hold is the radio + DMA + stack, so a small reserve is plenty: the 64
+// KiB default below plus the ~72 KiB reclaimed region keeps the radio healthy
+// while the World/registry/request churn all lands in the 8 MiB of PSRAM.
+#[beet_esp::main(internal_reserve_kb = 64)]
 fn main() {
     App::new()
         .add_plugins((
@@ -58,15 +62,16 @@ fn main() {
             RouterPlugin,
         ))
         .init_resource::<Visits>()
-        // Serve the router on :8080, beet-style: the `HttpServer` component plus
-        // `router()` (the dispatch action) and the routes as children, each
-        // binding a path to an action. Spawning it starts the accept loop.
-        .spawn((HttpServer::new(8080), router(), children![
+        // Serve the router on :8080, beet-style: the `HttpServer` component
+        // alongside `default_router(routes)` (the single router builder), which
+        // wraps the user routes, each binding a path to an action. Spawning it
+        // starts the accept loop.
+        .spawn((HttpServer::new(8080), default_router(children![
             exchange_route("", Home),
             exchange_route("about", About),
             exchange_route("hello/:name", Greet),
             exchange_route("count", Visit),
-        ]))
+        ])))
         .run();
 }
 

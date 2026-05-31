@@ -8,10 +8,33 @@ use beet::prelude::*;
 use defmt::info;
 use embassy_time::Duration;
 use embassy_time::Timer;
-use esp_hal::clock::CpuClock;
+use esp_hal::peripherals::Peripherals;
 use esp_hal::timer::timg::TimerGroup;
 use esp_rtos::embassy::Executor;
 use static_cell::StaticCell;
+
+/// Hand-off slot for the chip peripherals.
+///
+/// `esp_hal::init()` may only run once, and it has to run in `main` (inside
+/// [`init_esp!`](crate::init_esp)) so PSRAM is mapped and registered *before*
+/// `App::new()` builds the `World` and its type registry. The resulting
+/// [`Peripherals`] are parked here for [`bring_up`] (a `PreStartup` system) to
+/// collect, instead of `bring_up` calling `esp_hal::init()` a second time.
+static PERIPHERALS: critical_section::Mutex<core::cell::Cell<Option<Peripherals>>> =
+    critical_section::Mutex::new(core::cell::Cell::new(None));
+
+/// Park the chip peripherals for [`bring_up`] to collect. Called once from
+/// [`init_esp!`](crate::init_esp) after `esp_hal::init()`.
+pub fn stash_peripherals(p: Peripherals) {
+    critical_section::with(|cs| PERIPHERALS.borrow(cs).set(Some(p)));
+}
+
+/// Collect the peripherals parked by [`stash_peripherals`]. Panics if they were
+/// never stashed (i.e. `init_esp!` / `#[beet_esp::main]` was not used).
+fn take_peripherals() -> Peripherals {
+    critical_section::with(|cs| PERIPHERALS.borrow(cs).take())
+        .expect("peripherals not initialised — call init_esp!/#[beet_esp::main] before App::run")
+}
 
 /// Start the embassy executor on `esp-rtos` using timer group 0. Call once,
 /// after peripheral init, before spawning tasks or running an [`App`].
@@ -60,7 +83,9 @@ impl Plugin for Esp32Plugin {
 /// `Executor::run` first, and this system runs inside the spawned tick task
 /// before any embassy timer is awaited.
 fn bring_up(world: &mut World) {
-    let p = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()));
+    // `esp_hal::init()` already ran in `init_esp!` (so PSRAM could be mapped
+    // before the `World` was built); collect the peripherals it parked.
+    let p = take_peripherals();
     start_embassy(p.TIMG0, p.SW_INTERRUPT);
     install_bevy_clock();
     // Each esp-hal peripheral is a distinct type, so they key cleanly as

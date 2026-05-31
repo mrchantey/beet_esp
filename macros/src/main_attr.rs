@@ -12,19 +12,26 @@ use syn::punctuated::Punctuated;
 /// Recognised config knobs. Sibling attributes with these names are parsed and
 /// stripped from the entry `fn`; any other attribute is left in place. Extend
 /// this list (and [`Config`]/[`Config::set`]) to add knobs.
-const KNOBS: &[&str] = &["heap_size"];
+///
+/// `heap_size_kb` is the old whole-heap knob, kept as a back-compat alias for
+/// `internal_reserve_kb` now that the bulk allocations live in PSRAM.
+const KNOBS: &[&str] = &["internal_reserve_kb", "heap_size_kb"];
 
 /// Entry-point config, gathered from `#[beet_esp::main(name = expr, …)]` args
 /// and from sibling `#[name(expr)]` attributes.
 struct Config {
-    heap_size: Expr,
+    /// The internal SRAM reserve size, in **bytes**. Set from
+    /// `internal_reserve_kb` (or the `heap_size_kb` alias) as `(kb) * 1024`, so
+    /// it can be forwarded straight to `init_esp!`.
+    internal_reserve: Expr,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            // 96 KiB: room for a Bevy `World` + schedules on this board.
-            heap_size: syn::parse_quote!(96 * 1024),
+            // 64 KiB internal reserve: ample for the radio + DMA + hot
+            // allocations now that the World/registry/request bulk is in PSRAM.
+            internal_reserve: syn::parse_quote!(64 * 1024),
         }
     }
 }
@@ -32,7 +39,12 @@ impl Default for Config {
 impl Config {
     fn set(&mut self, name: &Ident, value: Expr) -> syn::Result<()> {
         match name.to_string().as_str() {
-            "heap_size" => self.heap_size = value,
+            // Kilobytes in, bytes out: wrap the user expr in `(..) * 1024` so the
+            // stored value is always a byte count `init_esp!` can take verbatim.
+            // `heap_size_kb` is an alias kept so existing call sites still build.
+            "internal_reserve_kb" | "heap_size_kb" => {
+                self.internal_reserve = syn::parse_quote!((#value) * 1024)
+            }
             other => {
                 return Err(syn::Error::new_spanned(
                     name,
@@ -100,7 +112,7 @@ pub fn impl_main_attr(
     }
     config.take_sibling_attrs(&mut func.attrs)?;
 
-    let heap_size = &config.heap_size;
+    let internal_reserve = &config.internal_reserve;
     let attrs = &func.attrs;
     let block = &func.block;
 
@@ -116,9 +128,9 @@ pub fn impl_main_attr(
         #(#attrs)*
         #[::beet_esp::esp_hal::main]
         fn main() -> ! {
-            // Binary-local statics (RTT/`defmt` logging + the heap), shared with
-            // the manual `init_esp!` path so they can't drift.
-            ::beet_esp::init_esp!(heap_size: #heap_size);
+            // Binary-local statics (RTT/`defmt` logging + the memory layout),
+            // shared with the manual `init_esp!` path so they can't drift.
+            ::beet_esp::init_esp!(internal_reserve: #internal_reserve);
 
             #block
 

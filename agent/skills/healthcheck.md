@@ -163,7 +163,7 @@ grep -nE "Max usage|Used:|stack: peak" /tmp/ks.log | tail
 ```
 
 This tells you the **peak heap** the combination actually needs (e.g. ~183 KB).
-Note: the heap bump in that example (`#[beet_esp::main(heap_size = 176 * 1024)]`)
+Note: the heap bump in that example (`#[beet_esp::main(heap_size_kb = 176)]`)
 is required — the default 172 KB can't hold the combo (see "failure mode").
 
 ### Step 2 — find the silicon budget (linker map)
@@ -232,7 +232,7 @@ Just raise the heap; the stack region automatically shrinks to whatever's left,
 and the watermark confirms it's still plenty:
 
 ```rust
-#[beet_esp::main(heap_size = 176 * 1024)]   // 96 KB default → 176 KB
+#[beet_esp::main(heap_size_kb = 176)]   // 96 KB default → 176 KB
 ```
 
 Re-run the healthcheck and confirm `min headroom` is still large (kitchen_sink:

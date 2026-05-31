@@ -58,10 +58,10 @@ async fn LogStep(cx: ActionContext) -> Result<Outcome> {
 }
 
 // The ECS + reflection + async-bridge + task-pool machinery has a heavy
-// baseline (~139 KB at pre-startup), so the default 96 KB main heap OOMs almost
-// immediately. Reclaim the over-provisioned stack region (peak use ~13 KB of
-// ~210 KB) into a larger heap.
-#[beet_esp::main(heap_size = 192 * 1024)]
+// baseline, but it now lives in PSRAM (see `beet_esp::mem`), so internal SRAM
+// only holds the stack and any hot allocation. The default 64 KiB internal
+// reserve (+ the ~72 KiB reclaimed region) is ample.
+#[beet_esp::main(internal_reserve_kb = 64)]
 fn main() {
     App::new()
         .add_plugins((Esp32Plugin, HealthPlugin, ActionPlugin))

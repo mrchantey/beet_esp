@@ -11,7 +11,6 @@ use bt_hci::controller::ExternalController;
 use defmt::info;
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
-use esp_hal::clock::CpuClock;
 use esp_hal::timer::timg::TimerGroup;
 use esp_radio::ble::controller::BleConnector;
 use panic_rtt_target as _;
@@ -37,12 +36,22 @@ async fn main(spawner: Spawner) -> ! {
 
     rtt_target::rtt_init_defmt!();
 
-    let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
-    let peripherals = esp_hal::init(config);
-
-    esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: 73744);
-    // COEX needs more RAM - so we've added some more
-    esp_alloc::heap_allocator!(size: 64 * 1024);
+    // Memory layout (see `beet_esp::mem`): bring PSRAM up and register it as the
+    // default (first) heap region, then donate two internal SRAM regions for the
+    // radio's DMA allocations. COEX (Wi-Fi + BLE at once) is the heaviest radio
+    // case, so the internal reserve is sized generously here. `init_mem` calls
+    // `esp_hal::init` for us and returns the peripherals.
+    const RESERVE: usize = 64 * 1024;
+    static mut RESERVE_MEM: core::mem::MaybeUninit<[u8; RESERVE]> = core::mem::MaybeUninit::uninit();
+    #[esp_hal::ram(reclaimed)]
+    static mut RECLAIMED_MEM: core::mem::MaybeUninit<[u8; 73744]> = core::mem::MaybeUninit::uninit();
+    let (peripherals, psram) = unsafe {
+        beet_esp::mem::init_mem(
+            ((&raw mut RESERVE_MEM) as *mut u8, RESERVE),
+            ((&raw mut RECLAIMED_MEM) as *mut u8, 73744),
+        )
+    };
+    info!("PSRAM present: {}, {} bytes", psram.present(), psram.size);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     let sw_interrupt =

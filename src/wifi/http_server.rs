@@ -1,8 +1,9 @@
 //! beet's [`HttpServer`] component on this no_std target, served over Wi-Fi.
 //!
-//! Spawning `(HttpServer, exchange_handler(..))` or `(HttpServer, router(),
-//! children![..])` is the standard beet pattern; here it is backed by the
-//! ESP32 embassy + `embedded-net` TCP stack instead of `async-io`/hyper.
+//! Spawning `(HttpServer, exchange_handler(..))` or `(HttpServer,
+//! default_router(children![..]))` is the standard beet pattern; here it is
+//! backed by the ESP32 embassy + `embedded-net` TCP stack instead of
+//! `async-io`/hyper.
 //!
 //! The backend is installed once via [`set_http_server`]. When an [`HttpServer`]
 //! is added, beet's `on_add` hook dispatches [`start_esp_server`] on the async
@@ -22,6 +23,7 @@
 //! embassy task would live-lock (see `async_utils`), hence the bridge.
 
 use crate::async_bridge::AsyncBridge;
+use crate::async_bridge::drain_to_async;
 use crate::async_bridge::spawn_driver;
 use beet::prelude::*;
 use defmt::info;
@@ -31,9 +33,6 @@ use embassy_net::Stack;
 use embassy_net::tcp::TcpSocket;
 use embassy_time::Duration;
 use embedded_io_async::Write as _;
-
-/// Default port used when an [`HttpServer`] leaves `port` unset (`None`).
-const DEFAULT_HTTP_PORT: u16 = 8080;
 
 /// Accepted requests handed from a [`server_loop`] to the ECS, each carrying the
 /// server [`Entity`] it arrived on (which selects the dispatch action) and a
@@ -62,8 +61,18 @@ fn start_esp_server(entity: AsyncEntity) -> MaybeSendBoxedFuture<'static, Result
     Box::pin(async move {
         let id = entity.id();
         let port = entity
-            .get::<HttpServer, u16>(|server| server.port.unwrap_or(DEFAULT_HTTP_PORT))
+            .get::<HttpServer, u16>(|server| server.port.unwrap_or(DEFAULT_SERVER_PORT))
             .await?;
+
+        // If the server entity also carries an `MDns` component, grab its hostname
+        // so the accept-loop spawn can also start the mDNS responder advertising
+        // `hostname.local`. `entity.get` errors when the component is absent, so a
+        // plain `HttpServer` (no mDNS) just yields `None`.
+        #[cfg(feature = "mdns")]
+        let mdns_hostname: Option<&'static str> = entity
+            .get::<super::mdns::MDns, &'static str>(|m| m.hostname)
+            .await
+            .ok();
 
         // The hook may fire before `start_wifi` has published the Stack. Each
         // `world().with(..)` round-trips a full sync window, so this naturally
@@ -80,6 +89,12 @@ fn start_esp_server(entity: AsyncEntity) -> MaybeSendBoxedFuture<'static, Result
                     };
                     let spawner = *world.non_send::<Spawner>();
                     spawn_driver(spawner, server_loop(stack, port, id));
+                    // One mDNS task per server entity that asked for it; it owns
+                    // the multicast socket and serves both responder and resolver.
+                    #[cfg(feature = "mdns")]
+                    if let Some(hostname) = mdns_hostname {
+                        spawn_driver(spawner, super::mdns::mdns_task(stack, hostname));
+                    }
                     true
                 })
                 .await;
@@ -112,7 +127,7 @@ async fn server_loop(stack: Stack<'static>, port: u16, entity: Entity) {
         }
 
         let raw = read_http(&mut socket).await;
-        let request = match parse_http_request(&raw) {
+        let request = match http_ext::parse_http_request(&raw) {
             Ok(request) => request,
             Err(e) => {
                 warn!("malformed request: {}", defmt::Debug2Format(&e));
@@ -138,7 +153,7 @@ async fn server_loop(stack: Stack<'static>, port: u16, entity: Entity) {
             }
         };
 
-        let bytes = match serialize_http_response(response).await {
+        let bytes = match http_ext::serialize_http_response(response).await {
             Ok(bytes) => bytes,
             Err(e) => {
                 warn!("serialise failed: {}", defmt::Debug2Format(&e));
@@ -164,15 +179,18 @@ async fn server_loop(stack: Stack<'static>, port: u16, entity: Entity) {
 /// `Action<Request, Response>`. The dispatch spans the async action layer, so a
 /// request may take a few frames — the same `BeetAsyncSyncPoint` machinery the
 /// behavior-tree example drives.
+///
+/// The drain/dispatch/reply boilerplate is the request/reply toolkit's
+/// [`drain_to_async`] (the ECS-responder mirror of `run_worker`); this supplies
+/// only the `worker` — route the `(entity, request)` through `entity.exchange`.
 fn drain_server_requests(commands: AsyncCommands) {
-    while let Some(exchange) = SERVER_BRIDGE.try_recv() {
-        let ((target, request), reply) = exchange.split();
-        commands.run_local(async move |world: AsyncWorld| {
-            let entity = world.entity(target);
-            let response = entity.exchange(request).await;
-            reply.send(response);
-        });
-    }
+    drain_to_async(
+        &SERVER_BRIDGE,
+        commands,
+        |world: AsyncWorld, (target, request)| async move {
+            world.entity(target).exchange(request).await
+        },
+    );
 }
 
 /// Read a full HTTP message off the socket: headers, plus the body if a
@@ -186,8 +204,9 @@ async fn read_http(socket: &mut TcpSocket<'_>) -> Vec<u8> {
             Ok(0) => break,
             Ok(n) => {
                 buf.extend_from_slice(&chunk[..n]);
-                if let Some(header_end) = find_header_end(&buf) {
-                    let content_length = parse_content_length(&buf[..header_end]);
+                if let Some(header_end) = http_ext::find_header_end(&buf) {
+                    let content_length =
+                        http_ext::parse_content_length(&buf[..header_end]);
                     if buf.len() >= header_end + content_length {
                         break;
                     }
