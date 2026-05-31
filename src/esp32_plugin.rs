@@ -113,7 +113,9 @@ fn bring_up(world: &mut World) {
 /// layer — call it, so install an elapsed-time getter backed by embassy's
 /// monotonic clock. Must run after [`start_embassy`] so the timer is live.
 fn install_bevy_clock() {
-    use beet::exports::bevy::platform::time::Instant;
+    // `Instant` here is bevy_platform's, brought in via `use beet::prelude::*`
+    // (beet_core re-exports `bevy::prelude::*`). Its `set_elapsed` hook lets us
+    // back bevy's monotonic clock with embassy's timer on this no_std target.
     /// Monotonic microseconds since boot, from embassy's timer.
     fn elapsed() -> core::time::Duration {
         core::time::Duration::from_micros(embassy_time::Instant::now().as_micros())

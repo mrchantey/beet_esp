@@ -13,12 +13,11 @@ mod main_attr;
 ///
 /// # Config
 ///
-/// Knobs are declared as sibling attributes or as arguments; both forms are
+/// Attributes are declared as sibling attributes or as arguments; both forms are
 /// equivalent. `internal_reserve_kb` is how much internal SRAM to reserve for
 /// the radio + DMA + hot allocations, in **kilobytes** (bytes = kb * 1024); it
 /// defaults to 64 KiB. The big cold structures (World, type registry, request
-/// buffers) live in PSRAM regardless of this value. `heap_size_kb` is kept as a
-/// back-compat alias for `internal_reserve_kb`.
+/// buffers) live in PSRAM regardless of this value.
 ///
 /// ```ignore
 /// #[beet_esp::main]

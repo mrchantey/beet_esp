@@ -17,8 +17,6 @@ use defmt::info;
 use embassy_time::Duration;
 use embassy_time::Instant;
 
-const SSID: &str = env!("SSID");
-const PASSWORD: &str = env!("PASSWORD");
 
 #[beet_esp::main]
 fn main() {
@@ -26,7 +24,7 @@ fn main() {
         .add_plugins((
             Esp32Plugin,
             HealthPlugin,
-            WifiPlugin::new(SSID, PASSWORD),
+            WifiPlugin::from_env(),
             ClockPlugin::default(),
         ))
         .add_systems(Update, report_time)

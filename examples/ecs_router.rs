@@ -41,9 +41,6 @@ use defmt::info;
 
 extern crate alloc;
 
-const SSID: &str = env!("SSID");
-const PASSWORD: &str = env!("PASSWORD");
-
 // ECS + reflection + async-bridge + task-pool + router + the Wi-Fi stack has a
 // heavy baseline that used to OOM at every internal-heap size (the World + type
 // registry + per-request buffers competed with the radio for internal SRAM).
@@ -57,21 +54,21 @@ fn main() {
         .add_plugins((
             Esp32Plugin,
             HealthPlugin,
-            WifiPlugin::new(SSID, PASSWORD),
+            WifiPlugin::from_env(),
             // beet's no_std router: builds the RouteTree from the routes below.
             RouterPlugin,
         ))
         .init_resource::<Visits>()
         // Serve the router on :8080, beet-style: the `HttpServer` component
-        // alongside `default_router(routes)` (the single router builder), which
-        // wraps the user routes, each binding a path to an action. Spawning it
-        // starts the accept loop.
-        .spawn((HttpServer::new(8080), default_router(children![
+        // alongside `default_router()` (the single router builder) and the user
+        // routes as a sibling `children![..]`, each binding a path to an action.
+        // Spawning it starts the accept loop.
+        .spawn((HttpServer::new(8080), default_router(), children![
             exchange_route("", Home),
             exchange_route("about", About),
             exchange_route("hello/:name", Greet),
             exchange_route("count", Visit),
-        ])))
+        ]))
         .run();
 }
 

@@ -27,8 +27,6 @@ use defmt::info;
 
 extern crate alloc;
 
-const SSID: &str = env!("SSID");
-const PASSWORD: &str = env!("PASSWORD");
 
 // The World/registry/request bulk lives in PSRAM now (see `beet_esp::mem`), so
 // internal SRAM only has to hold the radio + DMA + stack. The default 64 KiB
@@ -37,7 +35,7 @@ const PASSWORD: &str = env!("PASSWORD");
 #[beet_esp::main(internal_reserve_kb = 64)]
 fn main() {
     App::new()
-        .add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::new(SSID, PASSWORD)))
+        .add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::from_env()))
         .init_resource::<Visits>()
         // beet's standard server bundle: the `HttpServer` component plus its
         // `Action<Request, Response>` handler on the same entity. Spawning it

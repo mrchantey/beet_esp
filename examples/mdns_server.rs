@@ -39,8 +39,6 @@ use embassy_time::Instant;
 
 extern crate alloc;
 
-const SSID: &str = env!("SSID");
-const PASSWORD: &str = env!("PASSWORD");
 
 /// The `.local` name this device advertises (without the `.local` suffix).
 const HOSTNAME: &str = "beet-esp";
@@ -56,7 +54,7 @@ const PROBE_SECS: u64 = 4;
 #[beet_esp::main(internal_reserve_kb = 64)]
 fn main() {
     App::new()
-        .add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::new(SSID, PASSWORD)))
+        .add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::from_env()))
         .init_resource::<Visits>()
         // beet's standard server bundle plus `MDns`: spawning it fires the
         // `on_add` hook, which starts the accept loop AND the mDNS responder

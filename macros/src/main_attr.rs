@@ -9,20 +9,17 @@ use syn::Token;
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 
-/// Recognised config knobs. Sibling attributes with these names are parsed and
-/// stripped from the entry `fn`; any other attribute is left in place. Extend
-/// this list (and [`Config`]/[`Config::set`]) to add knobs.
-///
-/// `heap_size_kb` is the old whole-heap knob, kept as a back-compat alias for
-/// `internal_reserve_kb` now that the bulk allocations live in PSRAM.
-const KNOBS: &[&str] = &["internal_reserve_kb", "heap_size_kb"];
+/// Recognised config attributes. Sibling attributes with these names are parsed
+/// and stripped from the entry `fn`; any other attribute is left in place. Extend
+/// this list (and [`Config`]/[`Config::set`]) to add attributes.
+const ATTRIBUTES: &[&str] = &["internal_reserve_kb"];
 
 /// Entry-point config, gathered from `#[beet_esp::main(name = expr, …)]` args
 /// and from sibling `#[name(expr)]` attributes.
 struct Config {
     /// The internal SRAM reserve size, in **bytes**. Set from
-    /// `internal_reserve_kb` (or the `heap_size_kb` alias) as `(kb) * 1024`, so
-    /// it can be forwarded straight to `init_esp!`.
+    /// `internal_reserve_kb` as `(kb) * 1024`, so it can be forwarded straight to
+    /// `init_esp!`.
     internal_reserve: Expr,
 }
 
@@ -41,21 +38,20 @@ impl Config {
         match name.to_string().as_str() {
             // Kilobytes in, bytes out: wrap the user expr in `(..) * 1024` so the
             // stored value is always a byte count `init_esp!` can take verbatim.
-            // `heap_size_kb` is an alias kept so existing call sites still build.
-            "internal_reserve_kb" | "heap_size_kb" => {
+            "internal_reserve_kb" => {
                 self.internal_reserve = syn::parse_quote!((#value) * 1024)
             }
             other => {
                 return Err(syn::Error::new_spanned(
                     name,
-                    format!("#[beet_esp::main]: unknown config knob `{other}`"),
+                    format!("#[beet_esp::main]: unknown config attribute `{other}`"),
                 ));
             }
         }
         Ok(())
     }
 
-    /// Apply `name = expr` knobs from the `#[beet_esp::main(...)]` arguments.
+    /// Apply `name = expr` attributes from the `#[beet_esp::main(...)]` arguments.
     fn apply_args(&mut self, args: Punctuated<MetaNameValue, Token![,]>) -> syn::Result<()> {
         for nv in args {
             let name = nv.path.require_ident()?.clone();
@@ -69,11 +65,11 @@ impl Config {
     fn take_sibling_attrs(&mut self, attrs: &mut Vec<Attribute>) -> syn::Result<()> {
         let mut kept = Vec::with_capacity(attrs.len());
         for attr in core::mem::take(attrs) {
-            let is_knob = attr
+            let is_attribute = attr
                 .path()
                 .get_ident()
-                .is_some_and(|id| KNOBS.contains(&id.to_string().as_str()));
-            if is_knob {
+                .is_some_and(|id| ATTRIBUTES.contains(&id.to_string().as_str()));
+            if is_attribute {
                 let name = attr.path().get_ident().unwrap().clone();
                 let value: Expr = attr.parse_args()?;
                 self.set(&name, value)?;

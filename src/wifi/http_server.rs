@@ -1,7 +1,7 @@
 //! beet's [`HttpServer`] component on this no_std target, served over Wi-Fi.
 //!
 //! Spawning `(HttpServer, exchange_handler(..))` or `(HttpServer,
-//! default_router(children![..]))` is the standard beet pattern; here it is
+//! default_router(), children![..])` is the standard beet pattern; here it is
 //! backed by the ESP32 embassy + `embedded-net` TCP stack instead of
 //! `async-io`/hyper.
 //!
@@ -39,12 +39,14 @@ use embedded_io_async::Write as _;
 /// reply slot. Drained by [`drain_server_requests`].
 static SERVER_BRIDGE: AsyncBridge<(Entity, Request), Response, 4> = AsyncBridge::new();
 
-/// Install the ESP32 server backend and the drain system.
+/// Plugin: install the ESP32 server backend and the drain system.
 ///
-/// Called once from [`WifiPlugin::build`](super::WifiPlugin) under the `action`
-/// feature. The install must precede any [`HttpServer`] spawn so the `on_add`
-/// hook finds a backend; a second install would already own it, so just warn.
-pub(crate) fn add_plugin(app: &mut App) {
+/// A plain `fn(&mut App)` *is* a Bevy [`Plugin`], so this is added with
+/// `app.add_plugins(http_server_plugin)` (see [`WifiPlugin::build`](super::WifiPlugin),
+/// under the `action` feature). The install must precede any [`HttpServer`]
+/// spawn so the `on_add` hook finds a backend; a second install would already own
+/// it, so just warn.
+pub(crate) fn http_server_plugin(app: &mut App) {
     if set_http_server(start_esp_server).is_err() {
         warn!("an HTTP server backend was already installed");
     }

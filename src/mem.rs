@@ -156,3 +156,31 @@ pub unsafe fn init_mem(
 
     (p, info)
 }
+
+/// Full boot-time memory bring-up: map + register the heaps, park the
+/// peripherals, record the PSRAM result, and snapshot/paint the stack.
+///
+/// This is the orchestration [`init_esp!`](crate::init_esp) used to inline. The
+/// macro now only declares the two per-binary linker statics (which it must own)
+/// and forwards them here as `(ptr, len)` pairs, so all the *logic* lives in this
+/// module rather than expanded in every binary. Order matters and is the same as
+/// before: [`init_mem`] (PSRAM-first), then stash the peripherals for
+/// [`Esp32Plugin`](crate::esp32_plugin)'s `PreStartup` system, record the PSRAM
+/// info for [`HealthPlugin`](crate::health), and finally paint the stack +
+/// capture the boot snapshot before anything allocates.
+///
+/// Call once, from the entry macro, before `App::new()`.
+///
+/// # Safety
+///
+/// Same contract as [`init_mem`]: `reserve` and `reclaimed` must each be a
+/// `'static`, exclusively-owned, non-overlapping byte region with non-zero
+/// length, and must not be registered elsewhere.
+pub unsafe fn boot(reserve: (*mut u8, usize), reclaimed: (*mut u8, usize)) {
+    let (peripherals, psram) = unsafe { init_mem(reserve, reclaimed) };
+    crate::esp32_plugin::stash_peripherals(peripherals);
+    crate::health::set_psram_info(psram);
+    // Paint the stack and record the boot memory snapshot, before anything
+    // allocates. Picked up by `HealthPlugin` in `PreStartup`.
+    crate::health::on_boot();
+}

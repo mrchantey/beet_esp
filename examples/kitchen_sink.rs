@@ -25,9 +25,6 @@ use embassy_executor::Spawner;
 use embassy_time::Duration;
 use embassy_time::Timer;
 
-const SSID: &str = env!("SSID");
-const PASSWORD: &str = env!("PASSWORD");
-
 #[derive(Component, Reflect, Default)]
 #[reflect(Component)]
 #[type_path = "beet_esp"]
@@ -55,7 +52,7 @@ fn main() {
         Esp32Plugin,
         HealthPlugin,
         LedPlugin,
-        WifiPlugin::new(SSID, PASSWORD),
+        WifiPlugin::from_env(),
     ));
     app.init_resource::<AppTypeRegistry>();
     app.register_type::<HelloWorld>();
@@ -75,7 +72,7 @@ fn setup_led(mut commands: Commands) {
 
 fn ping(world: &mut World) {
     let spawner = *world.non_send::<Spawner>();
-    spawn_driver(spawner, async move {
+    async_bridge::spawn_driver(spawner, async move {
         loop {
             match Request::get("http://example.com").send().await {
                 Ok(response) => {

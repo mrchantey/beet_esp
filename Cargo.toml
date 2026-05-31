@@ -4,12 +4,6 @@ name         = "beet_esp"
 rust-version = "1.88"
 version      = "0.1.0"
 
-[[bin]]
-name             = "beet_esp"
-path             = "./src/bin/main.rs"
-required-features = ["coex"]
-test             = false
-
 [[test]]
 harness = false
 name    = "hello_test"

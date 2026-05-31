@@ -32,7 +32,9 @@ pub mod wifi;
 pub mod prelude {
 	#[cfg(feature = "action")]
 	pub use crate::async_utils::*;
-	pub use crate::async_bridge::*;
+	// Re-export the module, not its contents, so callers reach the primitives via
+	// the `async_bridge::` prefix (e.g. `async_bridge::spawn_worker`).
+	pub use crate::async_bridge;
 	#[cfg(feature = "clock")]
 	pub use crate::clock::*;
 	pub use crate::esp32_plugin::*;
@@ -81,11 +83,10 @@ pub const RECLAIMED_INTERNAL_BYTES: usize = 73744;
 /// - **Internal SRAM is held in reserve** for the radio and any explicitly
 ///   [`Internal`](crate::mem::Internal) allocation. Its size is the knob below.
 ///
-/// The knob is [`internal_reserve_kb`]: how much fresh internal SRAM to carve for
-/// the hot/DMA reserve (on top of the always-present ~72 KiB bootloader-reclaimed
-/// region). It used to be `heap_size_kb` and sized the *whole* heap; now that the
-/// bulk lives in PSRAM, it only sizes the internal reserve. `heap_size_kb` is
-/// kept as a back-compat alias so existing call sites still build.
+/// The attribute is `internal_reserve_kb`: how much fresh internal SRAM to carve
+/// for the hot/DMA reserve (on top of the always-present ~72 KiB
+/// bootloader-reclaimed region). Now that the bulk lives in PSRAM, it only sizes
+/// the internal reserve.
 ///
 /// Invoke at the top of `main`, before `App::new()`. It expands per-binary linker
 /// statics (`_SEGGER_RTT`, the internal heap arrays), so it must live in the
