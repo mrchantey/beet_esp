@@ -34,11 +34,7 @@ struct Sensors {
 }
 
 /// Log the full sensor set every half second.
-fn log_sensors(
-    time: Res<Time>,
-    mut elapsed: Local<f32>,
-    robot: Single<Sensors, With<AlvikRobot>>,
-) {
+fn log_sensors(time: Res<Time>, mut elapsed: Local<f32>, robot: Single<Sensors, With<AlvikRobot>>) {
     *elapsed += time.delta_secs();
     if *elapsed < 0.5 {
         return;
@@ -56,9 +52,9 @@ fn log_sensors(
     );
     info!(
         "COLOR raw=({}, {}, {}) label={}",
-        robot.color.raw.0,
-        robot.color.raw.1,
-        robot.color.raw.2,
+        robot.color.raw().0,
+        robot.color.raw().1,
+        robot.color.raw().2,
         Debug2Format(&color_to_label(&robot.color.as_color()))
     );
     info!(
@@ -77,7 +73,10 @@ fn log_sensors(
         robot.imu.gyro.z
     );
     let euler = robot.orientation.0.to_euler(EulerRot::XYZ);
-    info!("ORIENT roll={} pitch={} yaw={} (rad)", euler.0, euler.1, euler.2);
+    info!(
+        "ORIENT roll={} pitch={} yaw={} (rad)",
+        euler.0, euler.1, euler.2
+    );
     info!(
         "BATT  {}% charging={}",
         robot.battery.percent, robot.battery.charging

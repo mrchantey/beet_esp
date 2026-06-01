@@ -127,21 +127,21 @@ pub struct LineSensors {
 /// Color sensor (`c` status): the raw per-channel counts plus the calibrated
 /// reading cached as a [`Color`]. [`apply_status`](super::systems::apply_status)
 /// refreshes `color` from `raw` via [`ColorSensor::normalize_color`].
-#[derive(Component, Default, Clone, Copy)]
+#[derive(Component, Default, Clone, Copy, Get)]
 pub struct ColorSensor {
-    pub raw: (i16, i16, i16),
-    pub color: Color,
+    raw: (i16, i16, i16),
+    color: Color,
 }
 
 impl ColorSensor {
-    /// The latest calibrated reading as a [`Color`].
-    pub fn as_color(&self) -> Color {
-        self.color
+    pub fn update(&mut self, red: i16, green: i16, blue: i16) {
+        self.raw = (red, green, blue);
+        self.color = Self::normalize_color(red, green, blue);
     }
 
     /// Normalize the raw counts against the black/white calibration into a
     /// [`Color`], mirroring upstream `_normalize_color`.
-    pub fn normalize_color(&self) -> Color {
+    fn normalize_color(red: i16, green: i16, blue: i16) -> Color {
         /// Per-channel white reference (`WHITE_CAL` in the upstream constants).
         const WHITE_CAL: (f32, f32, f32) = (450.0, 500.0, 510.0);
         /// Per-channel black reference (`BLACK_CAL`).
@@ -151,9 +151,9 @@ impl ColorSensor {
             (value - black) / (white - black)
         };
         Color::srgb(
-            channel(self.raw.0, BLACK_CAL.0, WHITE_CAL.0),
-            channel(self.raw.1, BLACK_CAL.1, WHITE_CAL.1),
-            channel(self.raw.2, BLACK_CAL.2, WHITE_CAL.2),
+            channel(red, BLACK_CAL.0, WHITE_CAL.0),
+            channel(green, BLACK_CAL.1, WHITE_CAL.1),
+            channel(blue, BLACK_CAL.2, WHITE_CAL.2),
         )
     }
 }

@@ -10,6 +10,7 @@
 			},
 			"initialization_options": {
 				"cargo": {
+					"features": ["alvik"],
 					"allTargets": false,
 					"target": "xtensa-esp32s3-none-elf",
 					"extraEnv": {

@@ -137,8 +137,7 @@ pub fn apply_status(
             line.right = snapshot.line.2;
         }
         if let Some(color) = robot.color.as_mut() {
-            color.raw = snapshot.color;
-            color.color = color.normalize_color();
+            color.update(snapshot.color.0, snapshot.color.1, snapshot.color.2);
         }
         if let Some(tof) = robot.tof.as_mut() {
             tof.left = snapshot.tof_left;
