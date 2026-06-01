@@ -13,7 +13,7 @@
 
 use beet::prelude::*;
 use beet_esp::alvik::protocol::Command;
-use beet_esp::alvik::protocol::Side;
+use beet_esp::alvik::types::Side;
 use beet_esp::alvik::protocol::Status;
 use beet_esp::alvik::ucpack::Decoder;
 use beet_esp::alvik::ucpack::Encoder;

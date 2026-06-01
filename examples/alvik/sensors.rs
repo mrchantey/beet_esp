@@ -16,9 +16,6 @@ use defmt::info;
 fn main() {
     App::new()
         .add_plugins((Esp32Plugin, HealthPlugin, AlvikPlugin))
-        .add_systems(Startup, |mut commands: Commands| {
-            spawn_robot(&mut commands);
-        })
         .add_systems(Update, log_sensors)
         .run();
 }
@@ -31,8 +28,8 @@ struct Sensors {
     tof: &'static Tof,
     imu: &'static Imu,
     orientation: &'static Orientation,
-    battery: &'static BatterySoc,
-    touch: &'static Touch,
+    battery: &'static BatterState,
+    touch: &'static TouchValue,
     connected: &'static Connected,
 }
 
@@ -62,7 +59,7 @@ fn log_sensors(
         robot.color.raw.0,
         robot.color.raw.1,
         robot.color.raw.2,
-        Debug2Format(&robot.color.label)
+        Debug2Format(&color_to_label(&robot.color.as_color()))
     );
     info!(
         "TOF   l={}mm c={}mm r={}mm",

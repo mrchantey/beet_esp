@@ -9,6 +9,7 @@
 //!
 //! The cross-unit ratios mirror `arduino-alvik`'s `conversions.py`.
 
+use beet::prelude::*;
 use core::f32::consts::PI;
 use core::f32::consts::TAU;
 use core::ops::Add;
@@ -35,10 +36,13 @@ impl Angle {
 
 /// An angular velocity. Inner unit is **radians per second**.
 ///
+/// Also a [`Component`]: the Alvik robot root carries one as its measured
+/// turn rate (the `v` status), in the spirit of Avian's velocity components.
+///
 /// The `%`-of-max forms are context-dependent (`MOTOR_MAX_RPM` for a wheel,
 /// `ROBOT_MAX_DEG_S` for the robot), so they live on the robot/wheel helpers,
 /// not here.
-#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, defmt::Format)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, Component, defmt::Format)]
 pub struct AngularVelocity(f32);
 
 impl AngularVelocity {
@@ -70,7 +74,10 @@ impl Distance {
 }
 
 /// A linear velocity. Inner unit is **millimeters per second**.
-#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, defmt::Format)]
+///
+/// Also a [`Component`]: the Alvik robot root carries one as its measured
+/// forward speed (the `v` status), in the spirit of Avian's velocity components.
+#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, Component, defmt::Format)]
 pub struct LinearVelocity(f32);
 
 impl LinearVelocity {

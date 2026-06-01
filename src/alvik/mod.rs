@@ -1,12 +1,13 @@
 //! Arduino Alvik support: drive the robot's STM32 carrier over UART from a Bevy
 //! app, with all data as components and all behaviour as systems / observers.
 //!
-//! Add [`AlvikPlugin`] (after [`Esp32Plugin`](crate::esp32_plugin)); it claims
-//! UART1 and the STM32 control GPIOs, runs the bring-up handshake on an embassy
-//! task, and installs the per-frame transport systems. Spawn the robot entity
-//! tree with [`spawn_robot`], then read sensor components and write command
-//! components (`WheelTarget`, `DifferentialDrive`, `Servo`, `LedColor`); the
-//! systems carry them to and from the wire.
+//! Add [`AlvikPlugin`](plugin::AlvikPlugin) (after
+//! [`Esp32Plugin`](crate::esp32_plugin)); it claims UART1 and the STM32 control
+//! GPIOs, runs the bring-up handshake on an embassy task, installs the per-frame
+//! transport systems, and spawns the robot entity tree. Apps then read sensor
+//! components and write command components (`WheelTarget`, `DifferentialDrive`,
+//! `Servo`, `LedColor`); the systems carry them to and from the wire. To run
+//! logic when the robot appears, add an observer on `On<Add, AlvikRobot>`.
 //!
 //! The wire protocol (ucPack framing, command/status codes) lives in
 //! [`ucpack`] and [`protocol`]; see `agent/plans/alvik-plan.md` for the decode.
@@ -66,107 +67,23 @@ pub mod components;
 pub mod driver;
 pub mod events;
 pub mod pinout;
+pub mod plugin;
 pub mod protocol;
 pub mod systems;
+pub mod types;
 pub mod ucpack;
 
-use crate::led::LedColor;
-use crate::units::AngularVelocity;
-use beet::prelude::*;
-
 pub mod prelude {
-    pub use super::AlvikPlugin;
     pub use super::components::*;
     pub use super::driver::ALVIK_EVENTS;
     pub use super::driver::ALVIK_OUT;
     pub use super::driver::ALVIK_STATE;
     pub use super::events::*;
+    pub use super::plugin::AlvikPlugin;
+    pub use super::plugin::spawn_robot;
     pub use super::protocol::Command;
-    pub use super::protocol::Side;
     pub use super::protocol::Status;
-    pub use super::spawn_robot;
-}
-
-use components::*;
-use protocol::Side;
-
-/// Installs the Alvik driver and transport. Add after [`Esp32Plugin`] (which
-/// exposes UART1 + the Alvik GPIOs) and [`LedPlugin`](crate::led::LedPlugin)
-/// (the `AlvikLed` backend reuses `LedColor`).
-pub struct AlvikPlugin;
-
-impl Plugin for AlvikPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(Startup, driver::spawn_alvik_driver)
-            // Read sensors, then detect touch/move edges off the fresh state.
-            .add_systems(
-                PreUpdate,
-                (systems::apply_status, events::detect_events).chain(),
-            )
-            // Write any changed command components after app logic.
-            .add_systems(
-                PostUpdate,
-                (
-                    systems::flush_wheels,
-                    systems::flush_drive,
-                    systems::flush_servos,
-                    systems::flush_alvik_leds,
-                ),
-            );
-    }
-}
-
-/// Spawn the Alvik robot entity tree: the [`AlvikRobot`] root carrying every
-/// sensor/state component, with two wheel, two servo and two RGB-LED children.
-/// Apps read and write these components; unused ones cost only a default.
-pub fn spawn_robot(commands: &mut Commands) -> Entity {
-    commands
-        .spawn((
-            AlvikRobot,
-            // Grouped into sub-bundles: a flat tuple would exceed the 15-element
-            // `Bundle` impl. State, then sensors.
-            (
-                Connected::default(),
-                FwVersion::default(),
-                Behaviour::default(),
-                BatterySoc::default(),
-                DifferentialDrive::default(),
-                Illuminator(true),
-                BuiltinLed(false),
-            ),
-            (
-                LineSensors::default(),
-                ColorSensor::default(),
-                Tof::default(),
-                Imu::default(),
-                Orientation::default(),
-                RobotPose::default(),
-                RobotVelocity::default(),
-                Touch::default(),
-                Motion::default(),
-            ),
-            children![
-                (
-                    Wheel { side: Side::Left },
-                    WheelState::default(),
-                    WheelTarget::Speed(AngularVelocity::default()),
-                ),
-                (
-                    Wheel { side: Side::Right },
-                    WheelState::default(),
-                    WheelTarget::Speed(AngularVelocity::default()),
-                ),
-                (Servo {
-                    id: ServoId::A,
-                    position: crate::units::Angle::from_degrees(90.0),
-                }),
-                (Servo {
-                    id: ServoId::B,
-                    position: crate::units::Angle::from_degrees(90.0),
-                }),
-                (AlvikLed { side: Side::Left }, LedColor::default()),
-                (AlvikLed { side: Side::Right }, LedColor::default()),
-            ],
-        ))
-        .id()
+    pub use super::types::Side;
+    pub use super::types::TiltAxis;
+    pub use super::types::TouchButton;
 }

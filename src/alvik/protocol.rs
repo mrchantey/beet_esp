@@ -6,6 +6,7 @@
 //! converted to the wire's fixed units (deg, rpm, mm, mm/s, deg/s) here, at the
 //! encode/decode boundary, and nowhere else.
 
+use crate::alvik::types::Side;
 use crate::alvik::ucpack::Encoder;
 use crate::alvik::ucpack::Frame;
 use crate::units::Angle;
@@ -13,29 +14,11 @@ use crate::units::AngularVelocity;
 use crate::units::Distance;
 use crate::units::LinearVelocity;
 
-/// Which wheel a per-wheel command addresses. The discriminant is the wire
-/// label byte the STM32 expects.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, defmt::Format)]
-pub enum Side {
-    Left,
-    Right,
-}
-
-impl Side {
-    /// The ucPack label byte (`'L'` / `'R'`).
-    pub fn label(self) -> u8 {
-        match self {
-            Side::Left => b'L',
-            Side::Right => b'R',
-        }
-    }
-}
-
 /// A command sent to the STM32 carrier.
 #[derive(Debug, Clone, Copy, PartialEq, defmt::Format)]
 pub enum Command {
-    /// `B` — set behaviour code.
-    SetBehaviour(u8),
+    /// `B` — set behavior code.
+    SetBehavior(u8),
     /// `R` — rotate in place by an angle.
     Rotate(Angle),
     /// `G` — move forward/back by a distance.
@@ -86,7 +69,7 @@ impl Command {
     /// Frame this command into `enc`'s scratch buffer, ready for the UART.
     pub fn encode<'a>(&self, enc: &'a mut Encoder) -> &'a [u8] {
         match *self {
-            Command::SetBehaviour(b) => enc.c1b(b'B', b),
+            Command::SetBehavior(b) => enc.c1b(b'B', b),
             Command::Rotate(angle) => enc.c1f(b'R', angle.as_degrees()),
             Command::Move(distance) => enc.c1f(b'G', distance.as_millimeters()),
             Command::SetWheelSpeeds { left, right } => {
@@ -167,8 +150,8 @@ pub enum Status {
     Touch(u8),
     /// `m` — move/tilt bitmask.
     Motion(u8),
-    /// `b` — current behaviour code.
-    Behaviour(u8),
+    /// `b` — current behavior code.
+    Behavior(u8),
     /// `v` — robot linear + angular velocity.
     Velocity {
         linear: LinearVelocity,
@@ -245,7 +228,7 @@ impl Status {
             },
             b't' => Status::Touch(frame.u8(0)),
             b'm' => Status::Motion(frame.u8(0)),
-            b'b' => Status::Behaviour(frame.u8(0)),
+            b'b' => Status::Behavior(frame.u8(0)),
             b'v' => Status::Velocity {
                 linear: LinearVelocity::from_mm_per_sec(frame.f32(0)),
                 angular: AngularVelocity::from_deg_per_sec(frame.f32(4)),

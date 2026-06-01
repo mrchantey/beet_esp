@@ -6,6 +6,13 @@ targeting the **ESP32-S3** (Xtensa).
 `no_std` Rust on `esp-hal`, with async via embassy and connectivity via
 `esp-radio` (Wi-Fi + BLE).
 
+## Quickstart
+
+```sh
+. $HOME/export-esp.sh && cargo run --example blinky
+```
+
+
 ## Stack
 
 - **HAL:** `esp-hal` 1.1 (`no_std`, bare metal)
@@ -40,9 +47,3 @@ cargo test                     # on-hardware tests (embedded-test)
 
 The target (`xtensa-esp32s3-none-elf`), runner and `build-std` are configured in
 `.cargo/config.toml`.
-
-## Notes
-
-- Scaffolded with [`esp-generate`](https://github.com/esp-rs/esp-generate); the
-  exact options are recorded as a comment at the top of `src/bin/main.rs`.
-- CI runs basic checks via GitHub Actions (`.github/workflows/rust_ci.yml`).

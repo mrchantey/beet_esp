@@ -16,9 +16,6 @@ use defmt::info;
 fn main() {
     App::new()
         .add_plugins((Esp32Plugin, HealthPlugin, AlvikPlugin))
-        .add_systems(Startup, |mut commands: Commands| {
-            spawn_robot(&mut commands);
-        })
         .add_systems(Update, sweep_servos)
         .run();
 }

@@ -17,9 +17,6 @@ use defmt::info;
 fn main() {
     App::new()
         .add_plugins((Esp32Plugin, HealthPlugin, AlvikPlugin))
-        .add_systems(Startup, |mut commands: Commands| {
-            spawn_robot(&mut commands);
-        })
         .add_observer(on_touch)
         .add_observer(on_shake)
         .add_observer(on_lift)

@@ -1,20 +1,22 @@
 //! Per-frame transport systems: flush command components to [`ALVIK_OUT`] and
 //! apply incoming status from [`ALVIK_STATE`] / [`ALVIK_EVENTS`] to the sensor
 //! and state components. Continuous state rides the snapshot; discrete messages
-//! (touch, move, behaviour, ack, firmware) ride the event queue.
+//! (touch, move, behavior, ack, firmware) ride the event queue.
 
 use crate::alvik::components::*;
 use crate::alvik::driver::ALVIK_EVENTS;
 use crate::alvik::driver::ALVIK_OUT;
 use crate::alvik::driver::ALVIK_STATE;
 use crate::alvik::protocol::Command;
-use crate::alvik::protocol::Side;
 use crate::alvik::protocol::Status;
+use crate::alvik::types::Side;
 use crate::led::LedColor;
+use crate::units::AngularVelocity;
+use crate::units::LinearVelocity;
 use beet::prelude::*;
 
 /// Queue a per-wheel speed/position command whenever a [`WheelTarget`] changes.
-pub fn flush_wheels(query: Query<(&Wheel, &WheelTarget), Changed<WheelTarget>>) {
+pub fn flush_wheels(query: Populated<(&Wheel, &WheelTarget), Changed<WheelTarget>>) {
     for (wheel, target) in &query {
         let command = match *target {
             WheelTarget::Speed(speed) => Command::WheelSpeed {
@@ -31,7 +33,7 @@ pub fn flush_wheels(query: Query<(&Wheel, &WheelTarget), Changed<WheelTarget>>) 
 }
 
 /// Queue a drive command whenever the [`DifferentialDrive`] changes.
-pub fn flush_drive(query: Query<&DifferentialDrive, Changed<DifferentialDrive>>) {
+pub fn flush_drive(query: Populated<&DifferentialDrive, Changed<DifferentialDrive>>) {
     for drive in &query {
         let _ = ALVIK_OUT.send(Command::Drive {
             linear: drive.linear,
@@ -42,7 +44,7 @@ pub fn flush_drive(query: Query<&DifferentialDrive, Changed<DifferentialDrive>>)
 
 /// Compose both servo positions into one `S` command when either changes.
 /// Aggregated (not per-entity) because the wire packet carries A and B together.
-pub fn flush_servos(mut last: Local<Option<(u8, u8)>>, servos: Query<&Servo>) {
+pub fn flush_servos(mut last: Local<Option<(u8, u8)>>, servos: Populated<&Servo>) {
     let mut positions = (None, None);
     for servo in &servos {
         match servo.id {
@@ -103,7 +105,10 @@ pub fn flush_alvik_leds(
 /// Apply the latest continuous sensor snapshot and drain discrete status events
 /// onto the robot's components. All components are optional, so an app spawns
 /// only the ones it reads.
-pub fn apply_status(robot: Single<AlvikComponents, With<AlvikRobot>>, mut wheels: Query<(&Wheel, &mut WheelState)>) {
+pub fn apply_status(
+    robot: Single<AlvikComponents, With<AlvikRobot>>,
+    mut wheels: Query<(&Wheel, &mut WheelState)>,
+) {
     let mut robot = robot;
     if let Some(snapshot) = ALVIK_STATE.try_recv() {
         if let Some(pose) = robot.pose.as_mut() {
@@ -133,8 +138,7 @@ pub fn apply_status(robot: Single<AlvikComponents, With<AlvikRobot>>, mut wheels
         }
         if let Some(color) = robot.color.as_mut() {
             color.raw = snapshot.color;
-            color.normalized = normalize_color(snapshot.color);
-            color.label = hsv_to_label(rgb_to_hsv(color.normalized));
+            color.color = color.normalize_color();
         }
         if let Some(tof) = robot.tof.as_mut() {
             tof.left = snapshot.tof_left;
@@ -145,9 +149,11 @@ pub fn apply_status(robot: Single<AlvikComponents, With<AlvikRobot>>, mut wheels
             tof.top = snapshot.tof_top;
             tof.bottom = snapshot.tof_bottom;
         }
-        if let Some(velocity) = robot.velocity.as_mut() {
-            velocity.linear = snapshot.velocity.0;
-            velocity.angular = snapshot.velocity.1;
+        if let Some(linear) = robot.linear.as_mut() {
+            **linear = snapshot.velocity.0;
+        }
+        if let Some(angular) = robot.angular.as_mut() {
+            **angular = snapshot.velocity.1;
         }
         if let Some(battery) = robot.battery.as_mut() {
             battery.percent = snapshot.battery.0;
@@ -179,9 +185,9 @@ pub fn apply_status(robot: Single<AlvikComponents, With<AlvikRobot>>, mut wheels
                     motion.0 = bits;
                 }
             }
-            Status::Behaviour(code) => {
-                if let Some(behaviour) = robot.behaviour.as_mut() {
-                    behaviour.0 = code;
+            Status::Behavior(code) => {
+                if let Some(behavior) = robot.behavior.as_mut() {
+                    behavior.0 = code;
                 }
             }
             Status::FwVersion {
@@ -215,11 +221,12 @@ pub struct AlvikComponents {
     line: Option<&'static mut LineSensors>,
     color: Option<&'static mut ColorSensor>,
     tof: Option<&'static mut Tof>,
-    velocity: Option<&'static mut RobotVelocity>,
-    battery: Option<&'static mut BatterySoc>,
-    touch: Option<&'static mut Touch>,
-    motion: Option<&'static mut Motion>,
-    behaviour: Option<&'static mut Behaviour>,
+    linear: Option<&'static mut LinearVelocity>,
+    angular: Option<&'static mut AngularVelocity>,
+    battery: Option<&'static mut BatterState>,
+    touch: Option<&'static mut TouchValue>,
+    motion: Option<&'static mut MotionValue>,
+    behavior: Option<&'static mut BehaviorCode>,
     connected: Option<&'static mut Connected>,
-    firmware: Option<&'static mut FwVersion>,
+    firmware: Option<&'static mut FirmwareVersion>,
 }

@@ -1,10 +1,10 @@
-//! Alvik "hello world": cycle the two RGB UI LEDs and toggle the illuminator
-//! and built-in LED. Mirrors upstream `actuators/leds_setting.py`.
+//! Alvik "hello world": fade the two RGB UI LEDs smoothly around the hue wheel,
+//! the Alvik counterpart to the on-board WS2812 [`blinky`](../blinky.rs) example.
 //!
 //! The LEDs are plain [`LedColor`] components on the `AlvikLed` child entities
-//! that [`spawn_robot`] creates; `AlvikPlugin`'s flush aggregates them into the
-//! single wire byte. The illuminator / built-in LED are bool components on the
-//! robot root.
+//! that `AlvikPlugin` spawns; its flush aggregates them into the single wire
+//! byte, thresholding each channel, so the fade lands on the eight colours the
+//! UI LEDs can show.
 //!
 //! Run with: `cargo run --release --no-default-features --features alvik --example alvik-blinky`
 
@@ -18,46 +18,23 @@ use beet_esp::prelude::*;
 fn main() {
     App::new()
         .add_plugins((Esp32Plugin, HealthPlugin, AlvikPlugin))
-        .add_systems(Startup, |mut commands: Commands| {
-            spawn_robot(&mut commands);
-        })
-        .add_systems(Update, animate_leds)
+        .add_systems(Update, fade_leds)
         .run();
 }
 
-/// One step every second: walk both RGB LEDs through a colour palette and blink
-/// the illuminator / built-in LED in step.
-fn animate_leds(
+/// Advance a shared hue each frame and paint both RGB LEDs from it, the right
+/// LED offset half a turn so the two stay complementary.
+fn fade_leds(
     time: Res<Time>,
-    mut elapsed: Local<f32>,
-    mut step: Local<usize>,
+    mut hue: Local<f32>,
     mut leds: Query<(&AlvikLed, &mut LedColor)>,
-    robot: Single<(&mut Illuminator, &mut BuiltinLed), With<AlvikRobot>>,
 ) {
-    *elapsed += time.delta_secs();
-    if *elapsed < 1.0 {
-        return;
-    }
-    *elapsed = 0.0;
-
-    let palette = [
-        Color::srgb(1.0, 0.0, 0.0),
-        Color::srgb(0.0, 1.0, 0.0),
-        Color::srgb(0.0, 0.0, 1.0),
-        Color::WHITE,
-    ];
-    let index = *step % palette.len();
-    *step += 1;
-
+    *hue = (*hue + time.delta_secs() * 60.0) % 360.0;
     for (led, mut color) in &mut leds {
-        // Offset the right LED so the two are never the same colour.
-        color.0 = match led.side {
-            Side::Left => palette[index],
-            Side::Right => palette[(index + 2) % palette.len()],
+        let hue = match led.side {
+            Side::Left => *hue,
+            Side::Right => (*hue + 180.0) % 360.0,
         };
+        color.0 = Color::hsl(hue, 1.0, 0.5);
     }
-
-    let (mut illuminator, mut builtin) = robot.into_inner();
-    illuminator.0 = index % 2 == 0;
-    builtin.0 = index % 2 == 1;
 }

@@ -42,6 +42,7 @@ use esp_hal::peripherals::GPIO43;
 use esp_hal::peripherals::GPIO44;
 use esp_hal::peripherals::UART1;
 use esp_hal::uart::Config;
+use esp_hal::uart::RxError;
 use esp_hal::uart::Uart;
 
 /// The firmware version this port targets (`__required_firmware_version__`).
@@ -172,7 +173,16 @@ impl AlvikDriver {
                     None
                 }
                 Either::First(Err(e)) => {
-                    defmt::warn!("alvik rx error: {}", e);
+                    // A full hardware RX FIFO while we were mid-write is expected
+                    // under the Alvik's continuous sensor stream: ucPack reframes
+                    // on the next valid frame and continuous state is latest-wins,
+                    // so the dropped bytes are harmless. Log it quietly and only
+                    // warn on the genuine line errors.
+                    if e == RxError::FifoOverflowed {
+                        defmt::debug!("alvik rx fifo overflow (recovered)");
+                    } else {
+                        defmt::warn!("alvik rx error: {}", e);
+                    }
                     None
                 }
                 Either::Second(command) => Some(command),
@@ -236,13 +246,13 @@ impl AlvikDriver {
             defmt::warn!("alvik: no startup ack received — continuing");
         }
 
-        // Init sequence: illuminator on, behaviours 1 & 2, servos centred.
+        // Init sequence: illuminator on, behaviors 1 & 2, servos centred.
         self.send(Command::SetLeds(0b0000_0010)).await;
-        self.send(Command::SetBehaviour(1)).await;
-        self.send(Command::SetBehaviour(2)).await;
+        self.send(Command::SetBehavior(1)).await;
+        self.send(Command::SetBehavior(2)).await;
         self.send(Command::SetServo { a: 90, b: 90 }).await;
 
-        // Tell the ECS the link is up (sets Connected + FwVersion components).
+        // Tell the ECS the link is up (sets Connected + FirmwareVersion).
         if let Some((major, minor, patch)) = firmware {
             let _ = ALVIK_EVENTS.send(Status::FwVersion {
                 major,

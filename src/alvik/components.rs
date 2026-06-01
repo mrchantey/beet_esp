@@ -3,7 +3,7 @@
 //! [`systems`](super::systems) flush command components to the wire and apply
 //! incoming status to the sensor components.
 
-use crate::alvik::protocol::Side;
+use crate::alvik::types::Side;
 use crate::units::Angle;
 use crate::units::AngularVelocity;
 use crate::units::Distance;
@@ -11,7 +11,7 @@ use crate::units::LinearVelocity;
 use beet::prelude::*;
 
 /// Marker for the Alvik robot root entity. Its wheels, servos and LEDs are
-/// child entities; its own continuous state (battery, behaviour, pose, sensors)
+/// child entities; its own continuous state (battery, behavior, pose, sensors)
 /// rides on sibling components.
 #[derive(Component, Default, Clone, Copy)]
 pub struct AlvikRobot;
@@ -22,19 +22,19 @@ pub struct Connected(pub bool);
 
 /// The carrier firmware version reported at bring-up.
 #[derive(Component, Default, Clone, Copy, defmt::Format)]
-pub struct FwVersion {
+pub struct FirmwareVersion {
     pub major: u8,
     pub minor: u8,
     pub patch: u8,
 }
 
-/// The robot's current behaviour code (`b` status).
+/// The robot's current behavior code (`b` status).
 #[derive(Component, Default, Clone, Copy, defmt::Format)]
-pub struct Behaviour(pub u8);
+pub struct BehaviorCode(pub u8);
 
 /// Battery state of charge; `charging` is the sign of the wire value.
 #[derive(Component, Default, Clone, Copy, defmt::Format)]
-pub struct BatterySoc {
+pub struct BatterState {
     pub percent: f32,
     pub charging: bool,
 }
@@ -48,7 +48,7 @@ pub struct Wheel {
 }
 
 /// Commanded wheel intent. Setting it (a change) queues the matching wire
-/// command in [`flush_commands`](super::systems::flush_commands).
+/// command in [`flush_wheels`](super::systems::flush_wheels).
 #[derive(Component, Clone, Copy, defmt::Format)]
 pub enum WheelTarget {
     Speed(AngularVelocity),
@@ -98,8 +98,8 @@ impl Servo {
 // --- LEDs -------------------------------------------------------------------
 
 /// Backend marker: this LED entity is one of the Alvik's two RGB UI LEDs,
-/// written over UART. Pair it with a [`LedColor`]; the colour is thresholded
-/// per channel into the aggregated LED byte by
+/// written over UART. Pair it with a [`LedColor`](crate::led::LedColor); the
+/// colour is thresholded per channel into the aggregated LED byte by
 /// [`flush_alvik_leds`](super::systems::flush_alvik_leds).
 #[derive(Component, Clone, Copy)]
 pub struct AlvikLed {
@@ -124,13 +124,38 @@ pub struct LineSensors {
     pub right: i16,
 }
 
-/// Color sensor (`c` status): raw counts plus the normalized RGB and label the
-/// [`update_color`](super::systems::update_color) system derives.
-#[derive(Component, Default, Clone, Copy, defmt::Format)]
+/// Color sensor (`c` status): the raw per-channel counts plus the calibrated
+/// reading cached as a [`Color`]. [`apply_status`](super::systems::apply_status)
+/// refreshes `color` from `raw` via [`ColorSensor::normalize_color`].
+#[derive(Component, Default, Clone, Copy)]
 pub struct ColorSensor {
     pub raw: (i16, i16, i16),
-    pub normalized: (f32, f32, f32),
-    pub label: ColorLabel,
+    pub color: Color,
+}
+
+impl ColorSensor {
+    /// The latest calibrated reading as a [`Color`].
+    pub fn as_color(&self) -> Color {
+        self.color
+    }
+
+    /// Normalize the raw counts against the black/white calibration into a
+    /// [`Color`], mirroring upstream `_normalize_color`.
+    pub fn normalize_color(&self) -> Color {
+        /// Per-channel white reference (`WHITE_CAL` in the upstream constants).
+        const WHITE_CAL: (f32, f32, f32) = (450.0, 500.0, 510.0);
+        /// Per-channel black reference (`BLACK_CAL`).
+        const BLACK_CAL: (f32, f32, f32) = (160.0, 200.0, 190.0);
+        let channel = |value: i16, black: f32, white: f32| {
+            let value = (value as f32).clamp(black, white);
+            (value - black) / (white - black)
+        };
+        Color::srgb(
+            channel(self.raw.0, BLACK_CAL.0, WHITE_CAL.0),
+            channel(self.raw.1, BLACK_CAL.1, WHITE_CAL.1),
+            channel(self.raw.2, BLACK_CAL.2, WHITE_CAL.2),
+        )
+    }
 }
 
 /// Time-of-flight distance sensors (`d` short read; `f` adds top/bottom).
@@ -160,20 +185,28 @@ pub struct Orientation(pub Quat);
 #[derive(Component, Default, Deref)]
 pub struct RobotPose(pub Pose);
 
-/// Robot velocity from the `v` status.
+/// Touch button bitmask (`t` status). See
+/// [`TouchButton`](super::types::TouchButton).
 #[derive(Component, Default, Clone, Copy, defmt::Format)]
-pub struct RobotVelocity {
-    pub linear: LinearVelocity,
-    pub angular: AngularVelocity,
-}
+pub struct TouchValue(pub u8);
 
-/// Touch button bitmask (`t` status). See [`TouchButton`](super::events::TouchButton).
-#[derive(Component, Default, Clone, Copy, defmt::Format)]
-pub struct Touch(pub u8);
+impl TouchValue {
+    /// The raw bitmask normalized to `0.0..=1.0`.
+    pub fn normalized(&self) -> f32 {
+        self.0 as f32 / u8::MAX as f32
+    }
+}
 
 /// Move/tilt bitmask (`m` status). Drives the shake/lift/tilt observer events.
 #[derive(Component, Default, Clone, Copy, defmt::Format)]
-pub struct Motion(pub u8);
+pub struct MotionValue(pub u8);
+
+impl MotionValue {
+    /// The raw bitmask normalized to `0.0..=1.0`.
+    pub fn normalized(&self) -> f32 {
+        self.0 as f32 / u8::MAX as f32
+    }
+}
 
 // --- color classification ---------------------------------------------------
 
@@ -197,51 +230,11 @@ pub enum ColorLabel {
     Red,
 }
 
-/// Normalize raw sensor counts to 0..1 against the black/white calibration,
-/// mirroring `_normalize_color`.
-pub fn normalize_color(raw: (i16, i16, i16)) -> (f32, f32, f32) {
-    /// Per-channel white reference (`WHITE_CAL` in the upstream constants).
-    const WHITE_CAL: (f32, f32, f32) = (450.0, 500.0, 510.0);
-    /// Per-channel black reference (`BLACK_CAL`).
-    const BLACK_CAL: (f32, f32, f32) = (160.0, 200.0, 190.0);
-    let channel = |value: i16, black: f32, white: f32| {
-        let value = (value as f32).clamp(black, white);
-        (value - black) / (white - black)
-    };
-    (
-        channel(raw.0, BLACK_CAL.0, WHITE_CAL.0),
-        channel(raw.1, BLACK_CAL.1, WHITE_CAL.1),
-        channel(raw.2, BLACK_CAL.2, WHITE_CAL.2),
-    )
-}
-
-/// Convert normalized RGB to HSV (`h` in degrees), mirroring `rgb2hsv`.
-pub fn rgb_to_hsv(rgb: (f32, f32, f32)) -> (f32, f32, f32) {
-    let (r, g, b) = rgb;
-    let max = r.max(g).max(b);
-    let min = r.min(g).min(b);
-    let delta = max - min;
-    let value = max;
-    if delta < 0.00001 || max <= 0.0 {
-        return (0.0, 0.0, value);
-    }
-    let saturation = delta / max;
-    let mut hue = if r >= max {
-        (g - b) / delta
-    } else if g >= max {
-        2.0 + (b - r) / delta
-    } else {
-        4.0 + (r - g) / delta
-    } * 60.0;
-    if hue < 0.0 {
-        hue += 360.0;
-    }
-    (hue, saturation, value)
-}
-
-/// Classify an HSV triple into a [`ColorLabel`], a direct port of `hsv2label`.
-pub fn hsv_to_label(hsv: (f32, f32, f32)) -> ColorLabel {
-    let (h, s, v) = hsv;
+/// Classify a [`Color`] into a [`ColorLabel`], a port of upstream `hsv2label`
+/// over the colour's HSV channels.
+pub fn color_to_label(color: &Color) -> ColorLabel {
+    let hsv = Hsva::from(*color);
+    let (h, s, v) = (hsv.hue, hsv.saturation, hsv.value);
     if s < 0.1 {
         if v < 0.05 {
             ColorLabel::Black
