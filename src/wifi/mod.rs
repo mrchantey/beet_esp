@@ -21,8 +21,11 @@ use beet::prelude::*;
 use defmt::info;
 use defmt::warn;
 use embassy_executor::Spawner;
+use embassy_net::Ipv4Address;
+use embassy_net::Ipv4Cidr;
 use embassy_net::Runner;
 use embassy_net::StackResources;
+use embassy_net::StaticConfigV4;
 use embassy_time::Duration;
 use embassy_time::Timer;
 use esp_hal::peripherals::WIFI;
@@ -57,12 +60,20 @@ pub use mdns_browser::{EmbassyUdpEndpoint, EmbassyUdpSocket};
 pub struct WifiPlugin {
     ssid: &'static str,
     password: &'static str,
+    /// An optional static IPv4 for the station; `None` uses DHCP. The device's
+    /// address is a link concern, shared by every socket (server, client, mDNS),
+    /// so it lives here on the connection, not on a single `HttpServer`.
+    static_ip: Option<[u8; 4]>,
 }
 
 impl WifiPlugin {
     /// Join the AP named by `ssid` using `password` (e.g. from `env!("SSID")`).
     pub fn new(ssid: &'static str, password: &'static str) -> Self {
-        Self { ssid, password }
+        Self {
+            ssid,
+            password,
+            static_ip: None,
+        }
     }
 
     /// Join the AP named by the `WIFI_SSID`/`WIFI_PASSWORD` env vars, which `build.rs`
@@ -70,13 +81,21 @@ impl WifiPlugin {
     pub fn from_env() -> Self {
         Self::new(env!("WIFI_SSID"), env!("WIFI_PASSWORD"))
     }
+
+    /// Assign a static IPv4 instead of DHCP, so the device is reachable at a
+    /// known address. A `/24` is assumed with the gateway at `.1`.
+    pub fn with_static_ip(mut self, ip: [u8; 4]) -> Self {
+        self.static_ip = Some(ip);
+        self
+    }
 }
 
 impl Plugin for WifiPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(WifiCredentials {
+        app.insert_resource(WifiConfig {
             ssid: self.ssid,
             password: self.password,
+            static_ip: self.static_ip,
         })
         .add_systems(Startup, start_wifi);
 
@@ -108,11 +127,13 @@ impl Plugin for WifiPlugin {
     }
 }
 
-/// Station credentials, stashed by [`WifiPlugin`] for [`start_wifi`] to read.
+/// Station config, stashed by [`WifiPlugin`] for [`start_wifi`] to read: the AP
+/// credentials plus an optional static IPv4 (`None` = DHCP).
 #[derive(Resource, Clone)]
-struct WifiCredentials {
+struct WifiConfig {
     ssid: &'static str,
     password: &'static str,
+    static_ip: Option<[u8; 4]>,
 }
 
 /// Claim the `WIFI` peripheral, join the AP, start DHCP and the network task,
@@ -122,7 +143,7 @@ struct WifiCredentials {
 /// Runs in `Startup`, after `bring_up`'s `PreStartup` (so the chip, embassy and
 /// the radio scheduler are already running).
 fn start_wifi(world: &mut World) {
-    let creds = world.resource::<WifiCredentials>().clone();
+    let config = world.resource::<WifiConfig>().clone();
     let wifi = world
         .remove_non_send::<WIFI<'static>>()
         .expect("add Esp32Plugin before WifiPlugin — bring_up provides the WIFI peripheral");
@@ -130,8 +151,8 @@ fn start_wifi(world: &mut World) {
 
     let station_config = RadioConfig::Station(
         StationConfig::default()
-            .with_ssid(creds.ssid)
-            .with_password(creds.password.into()),
+            .with_ssid(config.ssid)
+            .with_password(config.password.into()),
     );
     let (controller, interfaces) = esp_radio::wifi::new(
         wifi,
@@ -139,7 +160,18 @@ fn start_wifi(world: &mut World) {
     )
     .expect("failed to initialize Wi-Fi controller");
 
-    let net_config = embassy_net::Config::dhcpv4(Default::default());
+    // A static IP (a `/24` with the gateway at `.1`) brings the stack up at a
+    // known address; otherwise DHCP assigns one. Configured here at station
+    // bring-up so every socket — server, client, mDNS — sees the same address
+    // from the start.
+    let net_config = match config.static_ip {
+        Some([a, b, c, d]) => embassy_net::Config::ipv4_static(StaticConfigV4 {
+            address: Ipv4Cidr::new(Ipv4Address::new(a, b, c, d), 24),
+            gateway: Some(Ipv4Address::new(a, b, c, 1)),
+            dns_servers: Default::default(),
+        }),
+        None => embassy_net::Config::dhcpv4(Default::default()),
+    };
     let rng = Rng::new();
     let seed = ((rng.random() as u64) << 32) | rng.random() as u64;
 
@@ -152,7 +184,7 @@ fn start_wifi(world: &mut World) {
     let resources = RESOURCES.init(StackResources::new());
     let (stack, runner) = embassy_net::new(interfaces.station, net_config, resources, seed);
 
-    info!("Wi-Fi station joining `{}`", creds.ssid);
+    info!("Wi-Fi station joining `{}`", config.ssid);
     spawn_driver(spawner, connection_loop(controller));
     spawn_driver(spawner, net_loop(runner));
     spawn_driver(spawner, http_client::client_driver(stack));

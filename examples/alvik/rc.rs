@@ -6,9 +6,10 @@
 //! for motion, [`LedColor`] on the [`AlvikLed`] children for the lights — and the
 //! Alvik transport systems carry the change to the wire on the next frame.
 //!
-//! The server binds a **static IP** ([`ALVIK_IP`]) via [`HttpServer::with_ip`],
-//! so a controller can reach it at a fixed address with no lookup (see the
-//! `controller/` CLI). The drive routes set a *continuous* velocity — the robot
+//! The station binds a **static IP** ([`ALVIK_IP`]) via
+//! [`WifiPlugin::with_static_ip`], so a controller can reach it at a fixed
+//! address with no lookup (see the `controller/` CLI). The drive routes set a
+//! *continuous* velocity — the robot
 //! keeps moving until `/drive/stop` (true RC semantics), so always stop it when
 //! done.
 //!
@@ -49,15 +50,15 @@ fn main() {
         .add_plugins((
             Esp32Plugin,
             HealthPlugin,
-            WifiPlugin::from_env(),
+            WifiPlugin::from_env().with_static_ip(ALVIK_IP),
             AlvikPlugin,
             RouterPlugin,
         ))
-        // beet-style: the `HttpServer` (pinned to a static IP) carries the
-        // router and the routes as sibling children, each binding a path to an
-        // action. Spawning it starts the accept loop once Wi-Fi is up.
+        // beet-style: the `HttpServer` carries the router and the routes as
+        // sibling children, each binding a path to an action. Spawning it starts
+        // the accept loop once Wi-Fi is up (at the static IP set above).
         .spawn((
-            HttpServer::new(8080).with_ip(ALVIK_IP),
+            HttpServer::new(8080),
             default_router(),
             children![
                 exchange_route("", Home),
