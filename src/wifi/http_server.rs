@@ -29,7 +29,11 @@ use beet::prelude::*;
 use defmt::info;
 use defmt::warn;
 use embassy_executor::Spawner;
+use embassy_net::ConfigV4;
+use embassy_net::Ipv4Address;
+use embassy_net::Ipv4Cidr;
 use embassy_net::Stack;
+use embassy_net::StaticConfigV4;
 use embassy_net::tcp::TcpSocket;
 use embassy_time::Duration;
 use embedded_io_async::Write as _;
@@ -65,6 +69,11 @@ fn start_esp_server(entity: AsyncEntity) -> MaybeSendBoxedFuture<'static, Result
         let port = entity
             .get::<HttpServer, u16>(|server| server.port.unwrap_or(DEFAULT_SERVER_PORT))
             .await?;
+        // An optional static IPv4 the io layer honours: configure the stack with
+        // this address (DHCP otherwise) so the device is reachable at a known IP.
+        let ip = entity
+            .get::<HttpServer, Option<[u8; 4]>>(|server| server.ip)
+            .await?;
 
         // If the server entity also carries an `MDns` component, grab its hostname
         // so the accept-loop spawn can also start the mDNS responder advertising
@@ -90,7 +99,7 @@ fn start_esp_server(entity: AsyncEntity) -> MaybeSendBoxedFuture<'static, Result
                         return false;
                     };
                     let spawner = *world.non_send::<Spawner>();
-                    spawn_driver(spawner, server_loop(stack, port, id));
+                    spawn_driver(spawner, server_loop(stack, port, id, ip));
                     // One mDNS task per server entity that asked for it; it owns
                     // the multicast socket and serves both responder and resolver.
                     #[cfg(feature = "mdns")]
@@ -111,7 +120,26 @@ fn start_esp_server(entity: AsyncEntity) -> MaybeSendBoxedFuture<'static, Result
 /// Accept connections forever; parse each into a beet [`Request`], hand it to the
 /// ECS for a [`Response`] via [`SERVER_BRIDGE`], and serialise the reply back to
 /// the socket. Runs as an embassy task.
-async fn server_loop(stack: Stack<'static>, port: u16, entity: Entity) {
+async fn server_loop(
+    stack: Stack<'static>,
+    port: u16,
+    entity: Entity,
+    ip: Option<[u8; 4]>,
+) {
+    // A static IP overrides the DHCP config `start_wifi` set on the stack: a
+    // /24 with the gateway at `.1`, so the device comes up reachable at a known
+    // address without a lookup. Without one, DHCP (already configured) stands.
+    if let Some([a, b, c, d]) = ip {
+        let address = Ipv4Cidr::new(Ipv4Address::new(a, b, c, d), 24);
+        let gateway = Ipv4Address::new(a, b, c, 1);
+        stack.set_config_v4(ConfigV4::Static(StaticConfigV4 {
+            address,
+            gateway: Some(gateway),
+            dns_servers: Default::default(),
+        }));
+        info!("HTTP server: static IP {}.{}.{}.{}", a, b, c, d);
+    }
+
     stack.wait_config_up().await;
     if let Some(cfg) = stack.config_v4() {
         info!("HTTP server: http://{}:{}", cfg.address.address(), port);

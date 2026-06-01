@@ -146,6 +146,11 @@ name             = "alvik-touch-move"
 path             = "examples/alvik/touch_move.rs"
 required-features = ["alvik"]
 
+[[example]]
+name             = "alvik-rc"
+path             = "examples/alvik/rc.rs"
+required-features = ["alvik", "router"]
+
 [dependencies]
 # Local beet worktree, no_std build exposing bevy_color etc.
 beet = { path = "/home/pete/me/worktrees/beet/embedded/beet", default-features = false, features = [

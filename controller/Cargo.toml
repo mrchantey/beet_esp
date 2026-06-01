@@ -1,0 +1,23 @@
+[package]
+name = "alvik-controller"
+edition = "2024"
+version = "0.1.0"
+
+[[bin]]
+name = "alvik"
+path = "src/main.rs"
+
+[dependencies]
+# The same beet as the firmware, but the std `router` (CLI dispatch) + a real
+# HTTP client (`ureq` + `rustls-tls`) so route actions can fetch the robot.
+beet = { path = "/home/pete/me/worktrees/beet/embedded/beet", default-features = false, features = [
+  "router",
+  "ureq",
+  "rustls-tls",
+  "json",
+] }
+
+# Pin away from libm 0.2.16, whose `cbrt` has a typo (`kff`) that fails to
+# compile on fma-capable hosts like x86_64. The firmware avoids it via a
+# different (no-fma) cfg path; the host build needs an older, working release.
+libm = "=0.2.15"

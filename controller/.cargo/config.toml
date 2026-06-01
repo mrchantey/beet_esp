@@ -1,0 +1,19 @@
+# This crate sits inside the firmware repo, whose `../../.cargo/config.toml`
+# forces the `xtensa-esp32s3-none-elf` target, `build-std`, and bare-metal link
+# flags on everything nested under it. The controller is a normal host binary,
+# so undo all of that here:
+#
+# - build for the host triple, not the chip.
+# - an explicit (empty) per-target `rustflags` shadows the parent's
+#   `build.rustflags` (eg `-nostartfiles`), which cargo only applies when no
+#   target-specific flags are set. The host linker flags come from the global
+#   `~/.cargo/config.toml` instead.
+#
+# `build-std` is sidestepped by pinning the stable toolchain (see
+# `rust-toolchain.toml`): stable ignores the unstable `-Z build-std` the parent
+# requests, so std is taken prebuilt as usual.
+[build]
+target = "x86_64-unknown-linux-gnu"
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = []
