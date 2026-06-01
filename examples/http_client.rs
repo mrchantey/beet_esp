@@ -2,7 +2,7 @@
 //!
 //! Mirrors beet's `examples/net/http_client.rs` on the ESP32, the same way
 //! [`blinky`](../blinky.rs) mirrors an LED: [`WifiPlugin`] joins the AP named by
-//! the `SSID`/`PASSWORD` env vars (from `.env`), installs the ESP32 transport,
+//! the `WIFI_SSID`/`WIFI_PASSWORD` env vars (from `.env`), installs the ESP32 transport,
 //! shares the network stack, and (under `action`) spawns the background
 //! `client_driver` that services the request bridge.
 //!

@@ -8,7 +8,7 @@ fn main() {
 }
 
 // Expose KEY=VALUE pairs from a local `.env` to the crate via `env!()`.
-// Lets examples read secrets (e.g. SSID/PASSWORD) without committing them.
+// Lets examples read secrets (e.g. WIFI_SSID/WIFI_PASSWORD) without committing them.
 fn load_dotenv() {
     println!("cargo:rerun-if-changed=.env");
     let Ok(contents) = std::fs::read_to_string(".env") else {

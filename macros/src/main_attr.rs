@@ -18,8 +18,8 @@ const ATTRIBUTES: &[&str] = &["internal_reserve_kb"];
 /// and from sibling `#[name(expr)]` attributes.
 struct Config {
     /// The internal SRAM reserve size, in **bytes**. Set from
-    /// `internal_reserve_kb` as `(kb) * 1024`, so it can be forwarded straight to
-    /// `init_esp!`.
+    /// `internal_reserve_kb` as `(kb) * 1024`, so it can be used straight as the
+    /// `Reserve<N>` const-generic size.
     internal_reserve: Expr,
 }
 
@@ -37,7 +37,7 @@ impl Config {
     fn set(&mut self, name: &Ident, value: Expr) -> syn::Result<()> {
         match name.to_string().as_str() {
             // Kilobytes in, bytes out: wrap the user expr in `(..) * 1024` so the
-            // stored value is always a byte count `init_esp!` can take verbatim.
+            // stored value is always a byte count usable as the `Reserve<N>` size.
             "internal_reserve_kb" => {
                 self.internal_reserve = syn::parse_quote!((#value) * 1024)
             }
@@ -121,12 +121,22 @@ pub fn impl_main_attr(
         // static, so it is emitted as a sibling of `main` rather than inside it.
         ::beet_esp::esp_app_desc!();
 
+        // The internal SRAM reserve: a binary-local linker static (a heap region
+        // must be `'static`, and a generic fn can't size a `static` from its own
+        // const param, so the size lands here at the macro site as a const
+        // generic). Declared at module scope, *not* inside `main`: the
+        // xtensa-lx-rt `#[entry]` that `#[esp_hal::main]` wraps rewrites any
+        // `static mut` inside the entry fn into a `&'static mut`, which would
+        // change its type out from under `init_esp`.
+        static mut __BEET_ESP_RESERVE: ::beet_esp::mem::Reserve<{ #internal_reserve }> =
+            ::beet_esp::mem::Reserve::uninit();
+
         #(#attrs)*
         #[::beet_esp::esp_hal::main]
         fn main() -> ! {
-            // Binary-local statics (RTT/`defmt` logging + the memory layout),
-            // shared with the manual `init_esp!` path so they can't drift.
-            ::beet_esp::init_esp!(internal_reserve: #internal_reserve);
+            // Hand the reserve to `mem::init_esp`, which does the actual bring-up
+            // — RTT/`defmt` logging, PSRAM + heap registration, the boot snapshot.
+            unsafe { ::beet_esp::mem::init_esp(&raw mut __BEET_ESP_RESERVE) };
 
             #block
 

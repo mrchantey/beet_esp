@@ -16,24 +16,25 @@ use static_cell::StaticCell;
 /// Hand-off slot for the chip peripherals.
 ///
 /// `esp_hal::init()` may only run once, and it has to run in `main` (inside
-/// [`init_esp!`](crate::init_esp)) so PSRAM is mapped and registered *before*
-/// `App::new()` builds the `World` and its type registry. The resulting
+/// [`mem::init_esp`](crate::mem::init_esp), via
+/// [`#[beet_esp::main]`](crate::main)) so PSRAM is mapped and registered
+/// *before* `App::new()` builds the `World` and its type registry. The resulting
 /// [`Peripherals`] are parked here for [`bring_up`] (a `PreStartup` system) to
 /// collect, instead of `bring_up` calling `esp_hal::init()` a second time.
 static PERIPHERALS: critical_section::Mutex<core::cell::Cell<Option<Peripherals>>> =
     critical_section::Mutex::new(core::cell::Cell::new(None));
 
 /// Park the chip peripherals for [`bring_up`] to collect. Called once from
-/// [`init_esp!`](crate::init_esp) after `esp_hal::init()`.
+/// [`mem::init_esp`](crate::mem::init_esp) after `esp_hal::init()`.
 pub fn stash_peripherals(p: Peripherals) {
     critical_section::with(|cs| PERIPHERALS.borrow(cs).set(Some(p)));
 }
 
 /// Collect the peripherals parked by [`stash_peripherals`]. Panics if they were
-/// never stashed (i.e. `init_esp!` / `#[beet_esp::main]` was not used).
+/// never stashed (i.e. `#[beet_esp::main]` was not used).
 fn take_peripherals() -> Peripherals {
     critical_section::with(|cs| PERIPHERALS.borrow(cs).take())
-        .expect("peripherals not initialised — call init_esp!/#[beet_esp::main] before App::run")
+        .expect("peripherals not initialised — use #[beet_esp::main] before App::run")
 }
 
 /// Start the embassy executor on `esp-rtos` using timer group 0. Call once,
@@ -56,7 +57,7 @@ pub fn start_embassy(
 /// [`LedPlugin`](crate::led::LedPlugin)) assembles its own drivers from those
 /// peripherals and spawns its own async driver via the [`async_bridge`](crate::async_bridge)
 /// using the [`Spawner`](embassy_executor::Spawner) resource. See
-/// [`init_esp!`](crate::init_esp).
+/// [`#[beet_esp::main]`](crate::main).
 pub struct Esp32Plugin;
 
 impl Plugin for Esp32Plugin {
@@ -92,7 +93,7 @@ impl Plugin for Esp32Plugin {
 /// `Executor::run` first, and this system runs inside the spawned tick task
 /// before any embassy timer is awaited.
 fn bring_up(world: &mut World) {
-    // `esp_hal::init()` already ran in `init_esp!` (so PSRAM could be mapped
+    // `esp_hal::init()` already ran in `mem::init_esp` (so PSRAM could be mapped
     // before the `World` was built); collect the peripherals it parked.
     let p = take_peripherals();
     start_embassy(p.TIMG0, p.SW_INTERRUPT);
@@ -123,7 +124,7 @@ fn bring_up(world: &mut World) {
 /// elapsed-time getter backed by a monotonic clock.
 ///
 /// Backed by [`esp_hal::time`] (the `SYSTIMER`), which is live the moment
-/// `esp_hal::init` returns (in [`mem::boot`](crate::mem::boot), before
+/// `esp_hal::init` returns (in [`mem::init_esp`](crate::mem::init_esp), before
 /// `App::new()`) — *not* embassy's clock, which only starts at [`start_embassy`].
 /// Called at the top of [`Esp32Plugin::build`], before it adds `TimePlugin`.
 fn install_bevy_clock() {

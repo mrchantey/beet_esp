@@ -24,7 +24,8 @@ that SRAM, and you must keep each one inside its lines yourself:
 
 - **Heap** — backs `Box`, `Vec`, `String`, and the whole Bevy `World`. Unlike a
   server, the heap is a **fixed-size region you choose at compile time** (the
-  `heap_allocator!` / `init_esp!(heap_size: …)` number). Allocate past it and the
+  `heap_allocator!` / `#[beet_esp::main(internal_reserve_kb = …)]` number, plus
+  PSRAM). Allocate past it and the
   allocator returns null → an allocation-error handler fires → the program dies.
   There is no "ask the OS for more".
 - **Stack** — function call frames + locals. It grows *downward* from a fixed top
@@ -62,7 +63,7 @@ App::new()
 
 It takes three kinds of snapshot:
 
-1. **boot** — captured by `init_esp!` (inside `#[beet_esp::main]`) *before*
+1. **boot** — captured by `mem::init_esp` (inside `#[beet_esp::main]`) *before*
    `App::new()`, when the heap is empty. This is also where it **paints the
    stack** (see below). Stored in a static.
 2. **pre-startup** — taken in `PreStartup`, after the chip/embassy are up but

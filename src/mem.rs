@@ -69,7 +69,7 @@ use esp_hal::psram::Psram;
 use esp_hal::psram::PsramConfig;
 
 /// A binary-local internal-SRAM reserve buffer of `N` bytes, donated to the
-/// internal heap by [`boot`].
+/// internal heap by [`init_esp`].
 ///
 /// A heap region must be a `'static` linker static, so this can't be allocated
 /// by a library fn — the entry macro declares one as a `static mut` in the
@@ -84,14 +84,15 @@ impl<const N: usize> Reserve<N> {
     }
 
     /// `(ptr, len)` over the whole buffer, for registering as a heap region.
-    fn region(&'static mut self) -> (*mut u8, usize) {
+    /// The pointer's `'static` validity comes from the caller's static storage.
+    fn region(&mut self) -> (*mut u8, usize) {
         (self.0.as_mut_ptr() as *mut u8, N)
     }
 }
 
 /// The bootloader-reclaimed internal SRAM region (linker section `dram2_seg`),
 /// otherwise unused. Fixed-size and config-independent, so it lives here rather
-/// than in the macro; [`boot`] registers it as an [`Internal`] heap region so
+/// than in the macro; [`init_esp`] registers it as an [`Internal`] heap region so
 /// radio DMA can use it.
 #[esp_hal::ram(reclaimed)]
 static mut RECLAIMED: MaybeUninit<[u8; crate::RECLAIMED_INTERNAL_BYTES]> = MaybeUninit::uninit();
@@ -116,7 +117,7 @@ impl PsramInfo {
 /// Bring PSRAM up, register it as the **default** (first) heap region, then add
 /// the internal SRAM regions the caller donated.
 ///
-/// Called once by [`boot`], before `App::new()` so the Bevy `World` and the
+/// Called once by [`init_esp`], before `App::new()` so the Bevy `World` and the
 /// reflection registry it builds during `add_plugins` land in PSRAM.
 ///
 /// `reclaimed` is the bootloader-reclaimed internal region ([`RECLAIMED`]) and
@@ -131,7 +132,7 @@ impl PsramInfo {
 /// # Safety
 ///
 /// `reserve` and `reclaimed` must each be a `'static`, exclusively-owned,
-/// non-overlapping byte region with non-zero length. The caller ([`boot`]) must
+/// non-overlapping byte region with non-zero length. The caller ([`init_esp`]) must
 /// not register those regions itself.
 unsafe fn init_mem(
     reserve: (*mut u8, usize),
@@ -182,15 +183,17 @@ unsafe fn init_mem(
     (p, info)
 }
 
-/// Full boot-time bring-up, and the only thing [`init_esp!`](crate::init_esp)
-/// has to call: start defmt/RTT logging, map + register the heaps, park the
-/// peripherals, record the PSRAM result, and snapshot/paint the stack.
+/// Full boot-time bring-up, and the only thing
+/// [`#[beet_esp::main]`](crate::main) has to call: start defmt/RTT logging,
+/// map + register the heaps, park the peripherals, record the PSRAM result, and
+/// snapshot/paint the stack.
 ///
 /// The macro's sole remaining job is to declare the [`Reserve`] linker static
-/// (a heap region must be `'static`, so it must be binary-local) and hand it
-/// here; all the *logic* lives in this module rather than expanded in every
-/// binary. Order matters: logging first, then [`init_mem`] (PSRAM-first, also
-/// the [`RECLAIMED`] internal region), then stash the peripherals for
+/// (a heap region must be `'static`, so it must be binary-local — a generic fn
+/// can't size a `static` from its own const param) and hand it here; all the
+/// *logic* lives in this module rather than expanded in every binary. Order
+/// matters: logging first, then [`init_mem`] (PSRAM-first, also the
+/// [`RECLAIMED`] internal region), then stash the peripherals for
 /// [`Esp32Plugin`](crate::esp32_plugin)'s `PreStartup` system, record the PSRAM
 /// info for [`HealthPlugin`](crate::health), and finally paint the stack +
 /// capture the boot snapshot before anything allocates.
@@ -199,14 +202,17 @@ unsafe fn init_mem(
 ///
 /// # Safety
 ///
-/// `reserve` must be a `'static`, exclusively-owned reserve registered nowhere
-/// else — exactly the `static mut Reserve<N>` the entry macro declares. Must be
-/// called once.
-pub unsafe fn boot<const N: usize>(reserve: &'static mut Reserve<N>) {
+/// `reserve` must point to a `'static`, exclusively-owned reserve registered
+/// nowhere else — exactly the `static mut Reserve<N>` the entry macro declares
+/// and passes by `&raw mut`. Must be called once.
+pub unsafe fn init_esp<const N: usize>(reserve: *mut Reserve<N>) {
     // Start defmt-over-RTT before anything logs. Declares the `_SEGGER_RTT`
     // control block; guarded against a double call, so it's safe here.
     crate::rtt_target::rtt_init_defmt!();
 
+    // The static is `'static` and only touched here, so the exclusive borrow is
+    // sound for the duration of registration.
+    let reserve = unsafe { &mut *reserve };
     let reclaimed = (
         (&raw mut RECLAIMED) as *mut u8,
         crate::RECLAIMED_INTERNAL_BYTES,
