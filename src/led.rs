@@ -1,11 +1,16 @@
-//! On-board addressable LED: the WS2812 RMT driver, its Bevy components and
-//! hue-fade animation, and the GRB wire encoding a [`Color`] becomes.
+//! Entity-based LED backends. [`LedColor`] is the one universal component every
+//! backend reads; a per-entity marker selects the *write path*:
+//!
+//! - [`Ws2812Led`] — an addressable LED over RMT (this module).
+//! - [`AlvikLed`](crate::alvik::AlvikLed) — an Alvik UI LED over UART, written
+//!   by the `alvik` module (it aggregates several LEDs into one wire byte).
+//!
+//! [`LedPlugin`] is registration-only: it installs the [`Ws2812Drivers`]
+//! resource, the driver-claim and flush systems, but spawns no LED entity. Apps
+//! spawn `(LedColor::default(), Ws2812Led)` (see `examples/blinky.rs`).
 
-use crate::async_bridge::Latest;
-use crate::async_bridge::spawn_driver;
 use beet::prelude::*;
-use embassy_executor::Spawner;
-use esp_hal::Async;
+use esp_hal::Blocking;
 use esp_hal::gpio::Level;
 use esp_hal::gpio::interconnect::PeripheralOutput;
 use esp_hal::peripherals::GPIO48;
@@ -18,47 +23,63 @@ use esp_hal::rmt::TxChannelConfig;
 use esp_hal::rmt::TxChannelCreator;
 use esp_hal::time::Rate;
 
-/// Latest-wins pipe carrying the desired LED colour from Bevy systems to the
-/// async RMT driver. Systems push via [`flush_led`]; the driver pulls the newest
-/// value and writes it, dropping any colour superseded while a write is in
-/// flight — exactly the "hold off until the current write completes" behaviour.
-pub static LED_IN: Latest<Color> = Latest::new();
+/// Backend marker: this LED entity is an addressable WS2812 driven over RMT.
+/// Pair it with a [`LedColor`]; [`flush_ws2812`] writes the colour to hardware.
+#[derive(Component, Clone, Copy, Default)]
+pub struct Ws2812Led;
 
-/// Claims the on-board WS2812's peripherals and spawns its async RMT driver at
-/// startup. Spawning LED entities and animating them is left to the app — see
-/// [`LedColor`], [`cycle_hue`] and [`flush_led`].
+/// The WS2812 drivers in play, keyed by their LED entity. A non-send resource
+/// because RMT channels are `!Send`. Populated at [`PostStartup`] by
+/// [`claim_ws2812_drivers`] from the peripherals [`bring_up`](crate::esp32_plugin)
+/// exposed; an entry's [`Ws2812`] drop resets the peripheral.
+#[derive(Default)]
+pub struct Ws2812Drivers(pub HashMap<Entity, Ws2812>);
+
+/// Registers the WS2812 backend: the [`Ws2812Drivers`] resource, the
+/// [`PostStartup`] claim of the on-board LED's peripherals, and the per-frame
+/// [`flush_ws2812`] write. Spawns no entity — the app does that.
 pub struct LedPlugin;
 
 impl Plugin for LedPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_led_driver)
-            .add_systems(Update, (cycle_hue, flush_led).chain());
+        app.insert_non_send(Ws2812Drivers::default())
+            .add_systems(PostStartup, claim_ws2812_drivers)
+            .add_systems(Update, (cycle_hue, flush_ws2812).chain())
+            .add_observer(release_ws2812_driver);
     }
 }
 
-/// Claim the LED's peripherals (`RMT` + `GPIO48`) that
-/// [`bring_up`](crate::esp32_plugin) exposed, build the [`Ws2812`], and spawn
-/// the async driver that writes the latest [`LED_IN`] colour over RMT — holding
-/// off the next pull until the in-flight write completes.
+/// Build a [`Ws2812`] for each [`Ws2812Led`] entity from the on-board LED's
+/// peripherals (`RMT` + `GPIO48`) and store it keyed by the entity.
 ///
-/// Exclusive so it can pull the non-send peripherals and the [`Spawner`] from
-/// the world. Runs in `Startup`, after `bring_up`'s `PreStartup`.
-fn spawn_led_driver(world: &mut World) {
+/// Exclusive so it can pull the non-send peripherals. Runs in [`PostStartup`],
+/// after the app's [`Startup`] spawns its LED entity. Only the single on-board
+/// LED is wired up here; supporting more would draw pins from a pool.
+fn claim_ws2812_drivers(world: &mut World) {
+    let entities = world.with_state::<Query<Entity, With<Ws2812Led>>, _>(|query| {
+        query.iter().collect::<alloc::vec::Vec<_>>()
+    });
+    let Some(&entity) = entities.first() else {
+        return;
+    };
     let rmt = world
         .remove_non_send::<RMT<'static>>()
         .expect("add Esp32Plugin before LedPlugin — bring_up provides the RMT peripheral");
     let pin = world
         .remove_non_send::<GPIO48<'static>>()
         .expect("add Esp32Plugin before LedPlugin — bring_up provides GPIO48");
-    let spawner = *world.non_send::<Spawner>();
+    let led = Ws2812::new(rmt, pin);
+    world
+        .get_non_send_mut::<Ws2812Drivers>()
+        .expect("LedPlugin inserts Ws2812Drivers")
+        .0
+        .insert(entity, led);
+}
 
-    let mut led = Ws2812::new(rmt, pin);
-    spawn_driver(spawner, async move {
-        loop {
-            let color = LED_IN.recv().await;
-            led.write(color).await;
-        }
-    });
+/// Drop a [`Ws2812Led`] entity's driver when the marker is removed, freeing the
+/// channel (its [`Ws2812`] drop resets the peripheral).
+fn release_ws2812_driver(remove: On<Remove, Ws2812Led>, mut drivers: NonSendMut<Ws2812Drivers>) {
+    drivers.0.remove(&remove.entity);
 }
 
 /// Advances every [`HueFade`] and writes the resulting colour to its [`LedColor`].
@@ -69,11 +90,15 @@ fn cycle_hue(mut query: Query<(&mut HueFade, &mut LedColor)>) {
     }
 }
 
-/// Pushes the LED entity's current [`LedColor`] into [`LED_IN`] for the async
-/// driver to pick up.
-fn flush_led(query: Query<&LedColor>) {
-    if let Ok(color) = query.single() {
-        LED_IN.send(color.0);
+/// Writes each changed [`Ws2812Led`] entity's [`LedColor`] to its driver.
+fn flush_ws2812(
+    mut drivers: NonSendMut<Ws2812Drivers>,
+    query: Populated<(Entity, &LedColor), (With<Ws2812Led>, Changed<LedColor>)>,
+) {
+    for (entity, color) in &query {
+        if let Some(led) = drivers.0.get_mut(&entity) {
+            led.write(color.0);
+        }
     }
 }
 
@@ -123,12 +148,15 @@ impl From<Color> for Grb {
     }
 }
 
-/// An on-board addressable LED (WS2812 / SK68xx) driven over RMT in async mode.
+/// An on-board addressable LED (WS2812 / SK68xx) driven over RMT.
 ///
 /// Hides the RMT channel configuration and WS2812 bit-timing so callers just
-/// hand it a [`Color`].
+/// hand it a [`Color`]. The transmit is blocking — one pixel is ~30 us, far
+/// shorter than a schedule frame — so the write happens inline in a system, no
+/// async bridge needed. The channel is parked in an `Option` so each
+/// transmit can consume and return it.
 pub struct Ws2812 {
-    channel: Channel<'static, Async, Tx>,
+    channel: Option<Channel<'static, Blocking, Tx>>,
     buf: [PulseCode; PIXEL_CODES],
     brightness: u8,
 }
@@ -137,9 +165,7 @@ impl Ws2812 {
     /// Configure RMT channel 0 to drive a WS2812 on `pin` (e.g. `GPIO48` on the
     /// official DevKitC-1). Brightness defaults to a non-blinding 24/255.
     pub fn new(rmt: RMT<'static>, pin: impl PeripheralOutput<'static>) -> Self {
-        let rmt = Rmt::new(rmt, Rate::from_mhz(80))
-            .expect("failed to initialise RMT")
-            .into_async();
+        let rmt = Rmt::new(rmt, Rate::from_mhz(80)).expect("failed to initialise RMT");
         let channel = rmt
             .channel0
             .configure_tx(
@@ -152,7 +178,7 @@ impl Ws2812 {
             .expect("failed to configure RMT TX channel")
             .with_pin(pin);
         Self {
-            channel,
+            channel: Some(channel),
             buf: [PulseCode::end_marker(); PIXEL_CODES],
             brightness: 24,
         }
@@ -164,17 +190,29 @@ impl Ws2812 {
         self
     }
 
-    /// Encode and transmit a single pixel of the given colour.
-    pub async fn write(&mut self, color: Color) {
+    /// Encode and transmit a single pixel of the given colour, blocking until
+    /// the transmission completes (and parking the channel back for next time).
+    pub fn write(&mut self, color: Color) {
         Grb::from_color(color, self.brightness).encode(&mut self.buf);
-        if let Err(e) = self.channel.transmit(&self.buf).await {
-            defmt::error!("RMT transmit failed: {}", e);
-        }
+        let channel = self.channel.take().expect("channel parked between writes");
+        self.channel = Some(match channel.transmit(&self.buf) {
+            Ok(transaction) => match transaction.wait() {
+                Ok(channel) => channel,
+                Err((e, channel)) => {
+                    defmt::error!("RMT transmit failed: {}", e);
+                    channel
+                }
+            },
+            Err((e, channel)) => {
+                defmt::error!("RMT transmit start failed: {}", e);
+                channel
+            }
+        });
     }
 }
 
 /// The colour an LED entity should currently show. App systems write it; the
-/// async render loop reads it and pushes it to the hardware.
+/// backend flush system reads it and pushes it to the hardware.
 #[derive(Component, Clone, Copy)]
 pub struct LedColor(pub Color);
 

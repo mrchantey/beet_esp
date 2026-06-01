@@ -15,6 +15,10 @@ test = false
 default = ["coex"]
 # On-board WS2812 LED over RMT (the `led` module). No extra crates.
 led = []
+# Arduino Alvik robot driven over UART1 (the `alvik` module). No extra crates —
+# just the always-compiled `async_bridge`. Turns on `led` for the universal
+# `LedColor` component the Alvik RGB UI LEDs reuse.
+alvik = ["led"]
 # Wi-Fi station + embassy-net TCP/HTTP stack (the `wifi` module).
 wifi = [
   "dep:esp-radio",
@@ -99,6 +103,48 @@ name             = "clock"
 required-features = ["clock"]
 
 # world_serde needs neither radio nor LED — core only, no required features.
+
+# Alvik examples live in examples/alvik/ so need explicit paths. The
+# behaviour-tree / observer demos additionally enable `action`.
+[[example]]
+name             = "alvik-codec-selftest"
+path             = "examples/alvik/codec_selftest.rs"
+required-features = ["alvik"]
+
+[[example]]
+name             = "alvik-blinky"
+path             = "examples/alvik/blinky.rs"
+required-features = ["alvik"]
+
+[[example]]
+name             = "alvik-wheels"
+path             = "examples/alvik/wheels.rs"
+required-features = ["alvik"]
+
+[[example]]
+name             = "alvik-drive"
+path             = "examples/alvik/drive.rs"
+required-features = ["alvik"]
+
+[[example]]
+name             = "alvik-servo"
+path             = "examples/alvik/servo.rs"
+required-features = ["alvik"]
+
+[[example]]
+name             = "alvik-sensors"
+path             = "examples/alvik/sensors.rs"
+required-features = ["alvik"]
+
+[[example]]
+name             = "alvik-line-follower"
+path             = "examples/alvik/line_follower.rs"
+required-features = ["alvik"]
+
+[[example]]
+name             = "alvik-touch-move"
+path             = "examples/alvik/touch_move.rs"
+required-features = ["alvik"]
 
 [dependencies]
 # Local beet worktree, no_std build exposing bevy_color etc.

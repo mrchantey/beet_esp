@@ -107,10 +107,22 @@ fn bring_up(world: &mut World) {
     }
     #[cfg(feature = "wifi")]
     world.insert_non_send(p.WIFI);
+    // UART1 + the STM32 control/check GPIOs for the Alvik driver, mirroring the
+    // led/wifi blocks above (see `alvik::pinout`).
+    #[cfg(feature = "alvik")]
+    {
+        world.insert_non_send(p.UART1);
+        world.insert_non_send(p.GPIO43);
+        world.insert_non_send(p.GPIO44);
+        world.insert_non_send(p.GPIO6);
+        world.insert_non_send(p.GPIO5);
+        world.insert_non_send(p.GPIO7);
+        world.insert_non_send(p.GPIO13);
+    }
 
     // Without a domain plugin there are no peripherals to expose; `world` is then
     // only here to keep `bring_up` an exclusive system that runs in `PreStartup`.
-    #[cfg(not(any(feature = "led", feature = "wifi")))]
+    #[cfg(not(any(feature = "led", feature = "wifi", feature = "alvik")))]
     let _ = world;
 }
 

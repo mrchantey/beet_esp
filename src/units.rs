@@ -1,0 +1,112 @@
+//! Typed physical quantities shared across the crate.
+//!
+//! Each is a single-field `f32` newtype with a *hidden* inner unit (like
+//! [`core::time::Duration`]), so callers must go through the named constructors
+//! and accessors and can never confuse, say, degrees for radians. The robot API
+//! takes and returns these rather than bare `f32`; the protocol layer converts
+//! them to the wire's fixed units (deg, rpm, mm, mm/s, deg/s) at the encode
+//! boundary only.
+//!
+//! The cross-unit ratios mirror `arduino-alvik`'s `conversions.py`.
+
+use core::f32::consts::PI;
+use core::f32::consts::TAU;
+use core::ops::Add;
+use core::ops::Mul;
+use core::ops::Neg;
+use core::ops::Sub;
+
+/// An angle. Inner unit is **radians**.
+#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, defmt::Format)]
+pub struct Angle(f32);
+
+impl Angle {
+    pub fn from_radians(radians: f32) -> Self { Self(radians) }
+    pub fn from_degrees(degrees: f32) -> Self { Self(degrees * PI / 180.0) }
+    pub fn from_revolutions(revolutions: f32) -> Self { Self(revolutions * TAU) }
+    /// `1% = 3.6° = one-hundredth of a revolution`, matching `conversions.py`.
+    pub fn from_percent(percent: f32) -> Self { Self(percent * 0.01 * TAU) }
+
+    pub fn as_radians(self) -> f32 { self.0 }
+    pub fn as_degrees(self) -> f32 { self.0 * 180.0 / PI }
+    pub fn as_revolutions(self) -> f32 { self.0 / TAU }
+    pub fn as_percent(self) -> f32 { self.0 / TAU * 100.0 }
+}
+
+/// An angular velocity. Inner unit is **radians per second**.
+///
+/// The `%`-of-max forms are context-dependent (`MOTOR_MAX_RPM` for a wheel,
+/// `ROBOT_MAX_DEG_S` for the robot), so they live on the robot/wheel helpers,
+/// not here.
+#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, defmt::Format)]
+pub struct AngularVelocity(f32);
+
+impl AngularVelocity {
+    pub fn from_rad_per_sec(rad_per_sec: f32) -> Self { Self(rad_per_sec) }
+    pub fn from_deg_per_sec(deg_per_sec: f32) -> Self { Self(deg_per_sec * PI / 180.0) }
+    pub fn from_rpm(rpm: f32) -> Self { Self(rpm * TAU / 60.0) }
+    pub fn from_rev_per_sec(rev_per_sec: f32) -> Self { Self(rev_per_sec * TAU) }
+
+    pub fn as_rad_per_sec(self) -> f32 { self.0 }
+    pub fn as_deg_per_sec(self) -> f32 { self.0 * 180.0 / PI }
+    pub fn as_rpm(self) -> f32 { self.0 * 60.0 / TAU }
+    pub fn as_rev_per_sec(self) -> f32 { self.0 / TAU }
+}
+
+/// A linear distance. Inner unit is **millimeters**.
+#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, defmt::Format)]
+pub struct Distance(f32);
+
+impl Distance {
+    pub fn from_millimeters(mm: f32) -> Self { Self(mm) }
+    pub fn from_centimeters(cm: f32) -> Self { Self(cm * 10.0) }
+    pub fn from_meters(m: f32) -> Self { Self(m * 1000.0) }
+    pub fn from_inches(inches: f32) -> Self { Self(inches * 25.4) }
+
+    pub fn as_millimeters(self) -> f32 { self.0 }
+    pub fn as_centimeters(self) -> f32 { self.0 / 10.0 }
+    pub fn as_meters(self) -> f32 { self.0 / 1000.0 }
+    pub fn as_inches(self) -> f32 { self.0 / 25.4 }
+}
+
+/// A linear velocity. Inner unit is **millimeters per second**.
+#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, defmt::Format)]
+pub struct LinearVelocity(f32);
+
+impl LinearVelocity {
+    pub fn from_mm_per_sec(mm_per_sec: f32) -> Self { Self(mm_per_sec) }
+    pub fn from_cm_per_sec(cm_per_sec: f32) -> Self { Self(cm_per_sec * 10.0) }
+    pub fn from_m_per_sec(m_per_sec: f32) -> Self { Self(m_per_sec * 1000.0) }
+
+    pub fn as_mm_per_sec(self) -> f32 { self.0 }
+    pub fn as_cm_per_sec(self) -> f32 { self.0 / 10.0 }
+    pub fn as_m_per_sec(self) -> f32 { self.0 / 1000.0 }
+}
+
+// Arithmetic. Each quantity adds/subtracts its own kind and scales by a scalar,
+// so callers can write `pose + delta` or `speed * 0.5` without unwrapping.
+macro_rules! impl_quantity_ops {
+    ($ty:ident) => {
+        impl Add for $ty {
+            type Output = Self;
+            fn add(self, rhs: Self) -> Self { Self(self.0 + rhs.0) }
+        }
+        impl Sub for $ty {
+            type Output = Self;
+            fn sub(self, rhs: Self) -> Self { Self(self.0 - rhs.0) }
+        }
+        impl Neg for $ty {
+            type Output = Self;
+            fn neg(self) -> Self { Self(-self.0) }
+        }
+        impl Mul<f32> for $ty {
+            type Output = Self;
+            fn mul(self, rhs: f32) -> Self { Self(self.0 * rhs) }
+        }
+    };
+}
+
+impl_quantity_ops!(Angle);
+impl_quantity_ops!(AngularVelocity);
+impl_quantity_ops!(Distance);
+impl_quantity_ops!(LinearVelocity);

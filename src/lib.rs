@@ -14,6 +14,8 @@ pub use rtt_target;
 /// `#[beet_esp::main]` — wraps `fn main` with the ESP32 entry boilerplate.
 pub use beet_esp_macros::main;
 
+#[cfg(feature = "alvik")]
+pub mod alvik;
 #[cfg(feature = "action")]
 pub mod async_utils;
 pub mod async_bridge;
@@ -26,10 +28,14 @@ pub mod led;
 pub mod mem;
 #[cfg(feature = "random")]
 pub mod random;
+// Crate-wide typed quantities (pure no_std math, no hardware deps).
+pub mod units;
 #[cfg(feature = "wifi")]
 pub mod wifi;
 
 pub mod prelude {
+	#[cfg(feature = "alvik")]
+	pub use crate::alvik::prelude::*;
 	#[cfg(feature = "action")]
 	pub use crate::async_utils::*;
 	// Re-export the module, not its contents, so callers reach the primitives via
@@ -44,6 +50,7 @@ pub mod prelude {
 	#[cfg(feature = "led")]
 	pub use crate::led::*;
 	pub use crate::mem::{External, Internal, PsramInfo};
+	pub use crate::units::*;
 	#[cfg(feature = "wifi")]
 	pub use crate::wifi::*;
 }

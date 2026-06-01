@@ -26,8 +26,9 @@ fn main() {
         .run();
 }
 
-/// Spawn the on-board LED entity with a hue-fade animation. [`LedPlugin`] spawns
-/// the async driver; this creates the entity its [`Update`] systems drive.
+/// Spawn the on-board LED entity with a hue-fade animation. The [`Ws2812Led`]
+/// marker selects the RMT backend; [`LedPlugin`] claims its peripherals at
+/// startup and [`Update`] systems drive its [`HueFade`].
 fn setup(mut commands: Commands) {
-    commands.spawn((LedColor::default(), HueFade::default()));
+    commands.spawn((LedColor::default(), HueFade::default(), Ws2812Led));
 }

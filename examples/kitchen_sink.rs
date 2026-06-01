@@ -67,7 +67,7 @@ fn main() {
 }
 
 fn setup_led(mut commands: Commands) {
-    commands.spawn((LedColor::default(), HueFade::default()));
+    commands.spawn((LedColor::default(), HueFade::default(), Ws2812Led));
 }
 
 fn ping(world: &mut World) {
