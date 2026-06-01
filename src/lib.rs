@@ -88,11 +88,13 @@ pub const RECLAIMED_INTERNAL_BYTES: usize = 73744;
 /// bootloader-reclaimed region). Now that the bulk lives in PSRAM, it only sizes
 /// the internal reserve.
 ///
-/// Invoke at the top of `main`, before `App::new()`. It expands per-binary linker
-/// statics (`_SEGGER_RTT`, the internal heap arrays), so it must live in the
-/// binary, not a library fn. Embassy start and peripheral distribution still
-/// happen later, in [`Esp32Plugin`](crate::esp32_plugin::Esp32Plugin)'s
-/// `PreStartup` system, which collects the peripherals this macro parked.
+/// Invoke at the top of `main`, before `App::new()`. It declares one per-binary
+/// linker static — the internal heap [`Reserve`](crate::mem::Reserve) (a heap
+/// region must be `'static`) — and forwards it to
+/// [`mem::boot`](crate::mem::boot), which does the actual work. Embassy start
+/// and peripheral distribution still happen later, in
+/// [`Esp32Plugin`](crate::esp32_plugin::Esp32Plugin)'s `PreStartup` system,
+/// which collects the peripherals `boot` parked.
 ///
 /// This is the manual counterpart to [`#[beet_esp::main]`](crate::main), which
 /// expands to it — so the setup can't drift between the two paths.
@@ -122,46 +124,12 @@ macro_rules! init_esp {
 		$crate::init_esp!(internal_reserve: ($kb) * 1024);
 	};
 	(internal_reserve: $size:expr) => {
-		$crate::rtt_target::rtt_init_defmt!();
-
-		// The internal SRAM reserve, in the DRAM the stack also uses. Built as a
-		// binary-local linker static here, but *registered* by `init_mem` (after
-		// PSRAM, and tagged Internal) so allocation order and capabilities are
-		// controlled centrally.
-		static mut __BEET_ESP_RESERVE: ::core::mem::MaybeUninit<[u8; $size]> =
-			::core::mem::MaybeUninit::uninit();
-		// The bootloader-reclaimed internal region (linker section `dram2_seg`),
-		// likewise registered by `init_mem`.
-		#[$crate::esp_hal::ram(reclaimed)]
-		static mut __BEET_ESP_RECLAIMED: ::core::mem::MaybeUninit<
-			[u8; $crate::RECLAIMED_INTERNAL_BYTES],
-		> = ::core::mem::MaybeUninit::uninit();
-
-		// Map PSRAM, register PSRAM-first then the two internal regions, and park
-		// the peripherals for `Esp32Plugin`'s `PreStartup` system. Done before
-		// `App::new()` so the World + type registry land in PSRAM.
-		let (__beet_esp_p, __beet_esp_psram) = unsafe {
-			$crate::mem::init_mem(
-				(
-					(&raw mut __BEET_ESP_RESERVE) as *mut u8,
-					$size,
-				),
-				(
-					(&raw mut __BEET_ESP_RECLAIMED) as *mut u8,
-					$crate::RECLAIMED_INTERNAL_BYTES,
-				),
-			)
-		};
-		$crate::esp32_plugin::stash_peripherals(__beet_esp_p);
-		$crate::health::set_psram_info(__beet_esp_psram);
-
-		// Back bevy's `Instant` with the esp-hal `SYSTIMER` before `App::new()`:
-		// `TimePlugin` samples `Instant::now()` while building `Time`, and the
-		// `SYSTIMER` is already live now that `esp_hal::init` (in `init_mem`) ran.
-		$crate::esp32_plugin::install_bevy_clock();
-
-		// Paint the stack and record the boot memory snapshot, before anything
-		// allocates. Picked up by `HealthPlugin` in `PreStartup`.
-		$crate::health::on_boot();
+		// The internal SRAM reserve: a binary-local linker static (a heap region
+		// must be `'static`), sized by const generic so this declaration is the
+		// macro's only job. Everything else — logging, PSRAM mapping, region
+		// registration, the boot snapshot — is done by `mem::boot`.
+		static mut __BEET_ESP_RESERVE: $crate::mem::Reserve<{ $size }> =
+			$crate::mem::Reserve::uninit();
+		unsafe { $crate::mem::boot(&mut *(&raw mut __BEET_ESP_RESERVE)) };
 	};
 }

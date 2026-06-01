@@ -62,10 +62,39 @@ pub use esp_alloc::ExternalMemory as External;
 pub use esp_alloc::InternalMemory as Internal;
 pub use esp_alloc::MemoryCapability;
 
+use core::mem::MaybeUninit;
 use esp_alloc::HeapRegion;
 use esp_hal::peripherals::Peripherals;
 use esp_hal::psram::Psram;
 use esp_hal::psram::PsramConfig;
+
+/// A binary-local internal-SRAM reserve buffer of `N` bytes, donated to the
+/// internal heap by [`boot`].
+///
+/// A heap region must be a `'static` linker static, so this can't be allocated
+/// by a library fn — the entry macro declares one as a `static mut` in the
+/// binary. The size is a const generic so the macro only forwards a number; all
+/// the `MaybeUninit` ceremony lives here instead of expanded in every binary.
+pub struct Reserve<const N: usize>(MaybeUninit<[u8; N]>);
+
+impl<const N: usize> Reserve<N> {
+    /// An uninitialised reserve. `const` so it can initialise a `static`.
+    pub const fn uninit() -> Self {
+        Self(MaybeUninit::uninit())
+    }
+
+    /// `(ptr, len)` over the whole buffer, for registering as a heap region.
+    fn region(&'static mut self) -> (*mut u8, usize) {
+        (self.0.as_mut_ptr() as *mut u8, N)
+    }
+}
+
+/// The bootloader-reclaimed internal SRAM region (linker section `dram2_seg`),
+/// otherwise unused. Fixed-size and config-independent, so it lives here rather
+/// than in the macro; [`boot`] registers it as an [`Internal`] heap region so
+/// radio DMA can use it.
+#[esp_hal::ram(reclaimed)]
+static mut RECLAIMED: MaybeUninit<[u8; crate::RECLAIMED_INTERNAL_BYTES]> = MaybeUninit::uninit();
 
 /// Outcome of bringing PSRAM up, reported once at boot so the placement model is
 /// observable rather than assumed.
@@ -87,15 +116,12 @@ impl PsramInfo {
 /// Bring PSRAM up, register it as the **default** (first) heap region, then add
 /// the internal SRAM regions the caller donated.
 ///
-/// Call once, from [`init_esp!`](crate::init_esp), before `App::new()` so the
-/// Bevy `World` and the reflection registry it builds during `add_plugins` land
-/// in PSRAM.
+/// Called once by [`boot`], before `App::new()` so the Bevy `World` and the
+/// reflection registry it builds during `add_plugins` land in PSRAM.
 ///
-/// `reclaimed` is the bootloader-reclaimed internal region the macro built as a
-/// `static` (it has to be a binary-local linker static, so the macro owns it and
-/// hands it in here as `(ptr, len)`). `reserve` is the freshly-carved internal
-/// reserve region, same shape. Both are tagged [`Internal`] so radio DMA can use
-/// them.
+/// `reclaimed` is the bootloader-reclaimed internal region ([`RECLAIMED`]) and
+/// `reserve` the freshly-carved internal reserve ([`Reserve`]), each as
+/// `(ptr, len)`. Both are tagged [`Internal`] so radio DMA can use them.
 ///
 /// Region order is deliberate: **PSRAM first** (so capability-free allocations
 /// default there), then the two internal regions (so `Internal`-capability radio
@@ -105,10 +131,9 @@ impl PsramInfo {
 /// # Safety
 ///
 /// `reserve` and `reclaimed` must each be a `'static`, exclusively-owned,
-/// non-overlapping byte region with non-zero length — exactly what
-/// `heap_allocator!`'s `static mut HEAP` provides. The caller (the macro) must
+/// non-overlapping byte region with non-zero length. The caller ([`boot`]) must
 /// not register those regions itself.
-pub unsafe fn init_mem(
+unsafe fn init_mem(
     reserve: (*mut u8, usize),
     reclaimed: (*mut u8, usize),
 ) -> (Peripherals, PsramInfo) {
@@ -157,27 +182,36 @@ pub unsafe fn init_mem(
     (p, info)
 }
 
-/// Full boot-time memory bring-up: map + register the heaps, park the
+/// Full boot-time bring-up, and the only thing [`init_esp!`](crate::init_esp)
+/// has to call: start defmt/RTT logging, map + register the heaps, park the
 /// peripherals, record the PSRAM result, and snapshot/paint the stack.
 ///
-/// This is the orchestration [`init_esp!`](crate::init_esp) used to inline. The
-/// macro now only declares the two per-binary linker statics (which it must own)
-/// and forwards them here as `(ptr, len)` pairs, so all the *logic* lives in this
-/// module rather than expanded in every binary. Order matters and is the same as
-/// before: [`init_mem`] (PSRAM-first), then stash the peripherals for
+/// The macro's sole remaining job is to declare the [`Reserve`] linker static
+/// (a heap region must be `'static`, so it must be binary-local) and hand it
+/// here; all the *logic* lives in this module rather than expanded in every
+/// binary. Order matters: logging first, then [`init_mem`] (PSRAM-first, also
+/// the [`RECLAIMED`] internal region), then stash the peripherals for
 /// [`Esp32Plugin`](crate::esp32_plugin)'s `PreStartup` system, record the PSRAM
 /// info for [`HealthPlugin`](crate::health), and finally paint the stack +
 /// capture the boot snapshot before anything allocates.
 ///
-/// Call once, from the entry macro, before `App::new()`.
+/// Call once, from the entry macro, at the top of `main` before `App::new()`.
 ///
 /// # Safety
 ///
-/// Same contract as [`init_mem`]: `reserve` and `reclaimed` must each be a
-/// `'static`, exclusively-owned, non-overlapping byte region with non-zero
-/// length, and must not be registered elsewhere.
-pub unsafe fn boot(reserve: (*mut u8, usize), reclaimed: (*mut u8, usize)) {
-    let (peripherals, psram) = unsafe { init_mem(reserve, reclaimed) };
+/// `reserve` must be a `'static`, exclusively-owned reserve registered nowhere
+/// else — exactly the `static mut Reserve<N>` the entry macro declares. Must be
+/// called once.
+pub unsafe fn boot<const N: usize>(reserve: &'static mut Reserve<N>) {
+    // Start defmt-over-RTT before anything logs. Declares the `_SEGGER_RTT`
+    // control block; guarded against a double call, so it's safe here.
+    crate::rtt_target::rtt_init_defmt!();
+
+    let reclaimed = (
+        (&raw mut RECLAIMED) as *mut u8,
+        crate::RECLAIMED_INTERNAL_BYTES,
+    );
+    let (peripherals, psram) = unsafe { init_mem(reserve.region(), reclaimed) };
     crate::esp32_plugin::stash_peripherals(peripherals);
     crate::health::set_psram_info(psram);
     // Paint the stack and record the boot memory snapshot, before anything

@@ -61,11 +61,15 @@ pub struct Esp32Plugin;
 
 impl Plugin for Esp32Plugin {
     fn build(&self, app: &mut App) {
+        // Back bevy's `Instant` with the esp-hal `SYSTIMER` *before* adding
+        // `TimePlugin` below: that plugin samples `Instant::now()` while building
+        // `Time`, and on this no_std target the clock has no backend until we
+        // install one. Add `Esp32Plugin` first so nothing samples time earlier.
+        install_bevy_clock();
         app.add_systems(PreStartup, bring_up)
             .add_systems(Startup, || info!("esp32 bevy app started"))
-            // Bevy's `Time`, ticked each frame off `Instant::now()` — which
-            // `install_bevy_clock` (in `bring_up`) backs with embassy's monotonic
-            // timer on this no_std target. Gives systems a `Res<Time>` instead of
+            // Bevy's `Time`, ticked each frame off `Instant::now()` (backed by
+            // `install_bevy_clock` above). Gives systems a `Res<Time>` instead of
             // a hand-rolled `Instant` compare.
             .add_plugins(beet::exports::bevy::time::TimePlugin)
             .set_runner(esp_runner);
@@ -119,10 +123,10 @@ fn bring_up(world: &mut World) {
 /// elapsed-time getter backed by a monotonic clock.
 ///
 /// Backed by [`esp_hal::time`] (the `SYSTIMER`), which is live the moment
-/// `esp_hal::init` returns — *not* embassy's clock, which only starts at
-/// [`start_embassy`]. So this is called from [`init_esp!`](crate::init_esp), in
-/// `main`, before `App::new()`, since `TimePlugin` reads the clock at build time.
-pub fn install_bevy_clock() {
+/// `esp_hal::init` returns (in [`mem::boot`](crate::mem::boot), before
+/// `App::new()`) — *not* embassy's clock, which only starts at [`start_embassy`].
+/// Called at the top of [`Esp32Plugin::build`], before it adds `TimePlugin`.
+fn install_bevy_clock() {
     // `Instant` here is bevy_platform's, brought in via `use beet::prelude::*`
     // (beet_core re-exports `bevy::prelude::*`). Its `set_elapsed` hook lets us
     // back bevy's monotonic clock with the hardware timer on this no_std target.
