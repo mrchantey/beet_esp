@@ -1,0 +1,37 @@
+{
+	"lsp": {
+		"rust-analyzer": {
+			// Launcher routes cargo through ~/.local/bin/cargo-ra-shim, which
+			// strips the `--lockfile-path` flag the esp toolchain's older cargo
+			// rejects. See that script for the full explanation.
+			"binary": {
+				"path": "~/.local/bin/rust-analyzer-esp",
+				"ignore_system_version": true,
+			},
+			"initialization_options": {
+				"cargo": {
+					"allTargets": false,
+					"target": "xtensa-esp32s3-none-elf",
+					"extraEnv": {
+						"RUSTUP_TOOLCHAIN": "esp",
+					},
+				},
+				"server": {
+					"extraEnv": {
+						"RUSTUP_TOOLCHAIN": "stable",
+					},
+				},
+			},
+		},
+	},
+	"file_scan_exclusions": [
+		".git",
+		".claude",
+		".github",
+		".vscode",
+		"CLAUDE.md",
+		".clippy.toml",
+		// "agent/reference*"
+	],
+	"file_scan_inclusions": ["agent/plans*"],
+}
