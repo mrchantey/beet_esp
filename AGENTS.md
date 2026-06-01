@@ -96,10 +96,11 @@ If a flash succeeds but no `defmt` ever appears (probe-rs scans for RTT
 forever), the chip is stuck in download mode: **the app isn't running, so don't
 mistake it for a dead peripheral** (a silent app looks exactly like a broken
 LED/sensor). Cold-boot (unplug ~10s, leave `COM` out, replug `USB`) before you
-start debugging hardware. See the "sticky download mode" entry in
-`agent/skills/esp-rust/troubleshooting.md`.
+start debugging hardware. See the "sticky download mode" entry in trouibleshooting.
 
 ## Deeper reference
 
 A full `esp-rust` skill (project generation, hardware setup, esp-hal coding
 patterns, troubleshooting) lives in-repo at `agent/skills/esp-rust/`.
+
+All troubleshooting is located at `agent/skills/esp-rust/troubleshooting.md`

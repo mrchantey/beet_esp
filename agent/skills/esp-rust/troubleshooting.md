@@ -84,6 +84,36 @@ reset-into-download trap.
 | Peripheral misbehaves / DMA never completes after a refactor   | A driver was dropped or `mem::forget`-ten unexpectedly. Don't forget drivers; keep them alive for the transfer's duration. |
 | `Async` driver breaks when moved across cores                  | Async drivers aren't `Send`. Move the `Blocking` version, then `.into_async()` on the target core.           |
 
+### Device client to a same-subnet LAN peer resets (`ConnectionReset`)
+
+Symptom: an outbound `Request::get(...)` from the device to another host on its
+own subnet fails with `ConnectionReset`, while the device can still reach
+internet hosts and serve inbound connections. The peer's listener (e.g. `python3
+-m http.server`) never logs the request.
+
+Cause: usually **the peer host's firewall silently drops the device's SYN**, not
+a device bug. The SYN leaves the device correctly (right on-link ARP, right
+destination MAC) and reaches the peer's NIC, but the firewall drops it before
+the listener, so no SYN-ACK comes back. The device retransmits for its connect
+timeout (~10s) then aborts with its own RST — surfacing as `ConnectionReset` (a
+timeout-then-abort, not a received RST).
+
+Easy to misdiagnose: the host's own `curl` to its LAN IP works (arrives on `lo`,
+which firewalls allow), mDNS works (an explicit `224.0.0.251 udp/5353` allow),
+and host→device works (there the device is the *server*, so the SYN never hits
+the peer's firewall).
+
+Diagnose and fix:
+
+- `tcpdump -ni <iface> 'host <device-ip>'` on the peer **while** the device
+  retries. If the SYN arrives but nothing replies, it's the host. (`tcpdump`
+  taps before the firewall, so a dropped SYN still shows on the wire but never
+  reaches userspace — that gap is the tell.)
+- Check the *active* firewall, not just one tool — `ufw` shows up in `nft list
+  ruleset` as the `ip filter` table full of `ufw-*` chains. `sudo ufw status`.
+- Open it for the LAN: `sudo ufw allow from <subnet>/24 to any port <port> proto
+  tcp`. No device code change.
+
 ## Quick diagnostics
 
 ```shell

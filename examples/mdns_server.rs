@@ -17,13 +17,13 @@
 //! exercise the resolver; it just logs the outcome and is harmless if no such peer
 //! exists.
 //!
-//! The probe is a **throttled periodic retry**, not a one-shot: a one-shot fired
-//! ~2s after DHCP hits the device's early-boot TCP cold-connect flakiness (the SYN
-//! never reaches the peer, the GET resets). Retrying every [`PROBE_SECS`] means a
-//! transient early reset is followed by a successful attempt once the stack is
-//! warm. The timing lives in the *system* (an `Instant`-gated `Update`), since a
-//! `run_local` task can't sleep on the bevy pool — the exact idiom
-//! [`http_client`]'s `poll_example_com` established.
+//! The probe is a **throttled periodic poll**: it re-issues the resolver GET
+//! every [`PROBE_SECS`] so the demo keeps exercising the path. The timing lives
+//! in the *system* (an `Instant`-gated `Update`), since a `run_local` task can't
+//! sleep on the bevy pool, the same idiom [`http_client`]'s `poll_example_com`
+//! uses. (An earlier comment blamed connect resets on early-boot flakiness; the
+//! real cause was a host firewall dropping the device's SYN — see "Device client
+//! to a same-subnet LAN peer resets" in `agent/skills/esp-rust/troubleshooting.md`.)
 //!
 //! Run with:
 //! `cargo run --release --no-default-features --features mdns,action --example mdns_server`
@@ -96,10 +96,8 @@ fn Handler(cx: In<ActionContext<Request>>, mut visits: ResMut<Visits>) -> Respon
 ///
 /// Runs every frame but only fires a request when due. The timing lives in the
 /// *system* — a `run_local` task can't sleep on the bevy pool — and each request
-/// is a one-shot that bridges to the background `client_driver`, whose
-/// `exchange()` routes `.local` hosts through the mDNS task spawned by the `MDns`
-/// server above. Retrying past the early-boot TCP cold-connect window lets a
-/// transient connect reset be followed by a successful attempt.
+/// bridges to the background `client_driver`, whose `exchange()` routes `.local`
+/// hosts through the mDNS task spawned by the `MDns` server above.
 fn probe_peer(commands: AsyncCommands, mut last_tick: Local<Option<Instant>>) {
     let now = Instant::now();
     let due = last_tick.is_none_or(|t| (now - t).as_secs() >= PROBE_SECS);
