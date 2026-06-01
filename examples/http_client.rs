@@ -52,7 +52,6 @@ use beet::prelude::*;
 use beet_esp::prelude::*;
 use defmt::info;
 use defmt::warn;
-use embassy_time::Instant;
 
 
 /// How often [`poll_example_com`] issues its periodic request.
@@ -65,52 +64,28 @@ const POLL_SECS: u64 = 10;
 fn main() {
     App::new()
         .add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::from_env()))
-        // One-shot at startup, then a throttled periodic poll: both are plain
-        // Bevy systems issuing a one-shot `run_local` request; neither sleeps.
-        .add_systems(Startup, ping)
+        .add_systems(Startup, ping_example_com)
         .add_systems(Update, poll_example_com)
         .run();
 }
 
-/// Issue a one-shot GET to `example.com` through the Bevy async layer.
-///
-/// The request bridges to the background `client_driver`; the awaited
-/// [`Response`] comes back on the bevy pool with no driver spawning here.
-fn ping(commands: AsyncCommands) {
-    get_example_com(&commands);
+fn ping_example_com(commands: AsyncCommands) {
+    get_example_com(commands);
 }
 
-/// Periodic poll, throttled to [`POLL_SECS`] with a bevy [`Timer`].
-///
-/// Runs every frame but only fires a request when the timer finishes. There is no
-/// `Time` resource ticked on this bare-metal target (nothing installs bevy's
-/// `TimePlugin`), so the timer is advanced by the elapsed embassy time since the
-/// last frame — a `Timer` driven off the monotonic clock rather than the
-/// handrolled `Instant` compare. A `run_local` task can't sleep on the bevy pool,
-/// so the timing has to live in the *system*; each request is still a one-shot
-/// via [`get_example_com`].
 fn poll_example_com(
     commands: AsyncCommands,
+    time: Res<Time>,
     mut timer: Local<Option<Timer>>,
-    mut last_tick: Local<Option<Instant>>,
 ) {
     let timer = timer
         .get_or_insert_with(|| Timer::new(Duration::from_secs(POLL_SECS), TimerMode::Repeating));
-    let now = Instant::now();
-    let delta = last_tick
-        .replace(now)
-        .map_or(Duration::ZERO, |prev| Duration::from_micros((now - prev).as_micros()));
-    if timer.tick(delta).just_finished() {
-        get_example_com(&commands);
+    if timer.tick(time.delta()).just_finished() {
+        get_example_com(commands);
     }
 }
 
-/// Spawn the one-shot `GET http://example.com` task, logging its status.
-///
-/// Shared by the startup [`ping`] and the periodic [`poll_example_com`]: both
-/// just hand off a one-shot `run_local` request that crosses to the background
-/// `client_driver`.
-fn get_example_com(commands: &AsyncCommands) {
+fn get_example_com(commands: AsyncCommands) {
     commands.run_local(async move |_world: AsyncWorld| {
         match Request::get("http://example.com").send().await {
             Ok(response) => {

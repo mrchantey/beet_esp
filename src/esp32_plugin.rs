@@ -63,6 +63,11 @@ impl Plugin for Esp32Plugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PreStartup, bring_up)
             .add_systems(Startup, || info!("esp32 bevy app started"))
+            // Bevy's `Time`, ticked each frame off `Instant::now()` — which
+            // `install_bevy_clock` (in `bring_up`) backs with embassy's monotonic
+            // timer on this no_std target. Gives systems a `Res<Time>` instead of
+            // a hand-rolled `Instant` compare.
+            .add_plugins(beet::exports::bevy::time::TimePlugin)
             .set_runner(esp_runner);
         // beet's async bridge (the `action` feature) needs a task spawner; on
         // no_std there's no default. Install the bevy-task-pool-backed one —
@@ -87,7 +92,6 @@ fn bring_up(world: &mut World) {
     // before the `World` was built); collect the peripherals it parked.
     let p = take_peripherals();
     start_embassy(p.TIMG0, p.SW_INTERRUPT);
-    install_bevy_clock();
     // Each esp-hal peripheral is a distinct type, so they key cleanly as
     // separate resources. A domain plugin removes whichever ones it owns; only
     // expose the ones a compiled-in domain plugin can actually claim.
@@ -105,23 +109,31 @@ fn bring_up(world: &mut World) {
     let _ = world;
 }
 
-/// Point bevy's monotonic [`Instant`] at embassy's clock.
+/// Point bevy's monotonic [`Instant`] at the esp-hal `SYSTIMER`.
 ///
 /// On this `no_std` target `bevy_platform`'s `Instant::now()` has no backend and
 /// panics (it only auto-detects x86/aarch64 cycle counters). beet code paths
-/// that time themselves — notably the router's `RequestLogger` and the action
-/// layer — call it, so install an elapsed-time getter backed by embassy's
-/// monotonic clock. Must run after [`start_embassy`] so the timer is live.
-fn install_bevy_clock() {
+/// that time themselves — notably bevy's [`TimePlugin`](beet::exports::bevy::time::TimePlugin)
+/// (it samples `Instant::now()` while initialising `Time` during `add_plugins`),
+/// the router's `RequestLogger`, and the action layer — call it, so install an
+/// elapsed-time getter backed by a monotonic clock.
+///
+/// Backed by [`esp_hal::time`] (the `SYSTIMER`), which is live the moment
+/// `esp_hal::init` returns — *not* embassy's clock, which only starts at
+/// [`start_embassy`]. So this is called from [`init_esp!`](crate::init_esp), in
+/// `main`, before `App::new()`, since `TimePlugin` reads the clock at build time.
+pub fn install_bevy_clock() {
     // `Instant` here is bevy_platform's, brought in via `use beet::prelude::*`
     // (beet_core re-exports `bevy::prelude::*`). Its `set_elapsed` hook lets us
-    // back bevy's monotonic clock with embassy's timer on this no_std target.
-    /// Monotonic microseconds since boot, from embassy's timer.
+    // back bevy's monotonic clock with the hardware timer on this no_std target.
+    /// Monotonic microseconds since boot, from the esp-hal `SYSTIMER`.
     fn elapsed() -> core::time::Duration {
-        core::time::Duration::from_micros(embassy_time::Instant::now().as_micros())
+        core::time::Duration::from_micros(
+            esp_hal::time::Instant::now().duration_since_epoch().as_micros(),
+        )
     }
     // SAFETY: `elapsed` is a plain fn pointer with no shared mutable state; the
-    // getter is installed once here, before any `Instant::now()` can run.
+    // getter is installed once, before any `Instant::now()` can run.
     unsafe { Instant::set_elapsed(elapsed) };
 }
 

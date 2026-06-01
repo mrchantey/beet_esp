@@ -23,6 +23,8 @@ use defmt::warn;
 use embassy_executor::Spawner;
 use embassy_net::Runner;
 use embassy_net::StackResources;
+use embassy_time::Duration;
+use embassy_time::Timer;
 use esp_hal::peripherals::WIFI;
 use esp_hal::rng::Rng;
 use esp_radio::wifi::Config as RadioConfig;
@@ -30,8 +32,6 @@ use esp_radio::wifi::ControllerConfig;
 use esp_radio::wifi::Interface;
 use esp_radio::wifi::WifiController;
 use esp_radio::wifi::sta::StationConfig;
-use embassy_time::Duration;
-use embassy_time::Timer;
 use static_cell::StaticCell;
 
 pub mod http_client;
@@ -64,6 +64,12 @@ impl WifiPlugin {
     pub fn new(ssid: &'static str, password: &'static str) -> Self {
         Self { ssid, password }
     }
+
+    /// Join the AP named by the `WIFI_SSID`/`WIFI_PASSWORD` env vars, which `build.rs`
+    /// exposes from the local `.env` (so credentials stay uncommitted).
+    pub fn from_env() -> Self {
+        Self::new(env!("WIFI_SSID"), env!("WIFI_PASSWORD"))
+    }
 }
 
 impl Plugin for WifiPlugin {
@@ -86,8 +92,9 @@ impl Plugin for WifiPlugin {
         // too. `init_plugin` is idempotent, so it is safe when both are present.
         #[cfg(feature = "action")]
         {
-            app.init_plugin::<ActionPlugin>().init_plugin::<AsyncPlugin>();
-            http_server::add_plugin(app);
+            app.init_plugin::<ActionPlugin>()
+                .init_plugin::<AsyncPlugin>()
+                .add_plugins(http_server::http_server_plugin);
         }
 
         // The mDNS service browser: beet_net's agnostic browser engine
@@ -97,7 +104,7 @@ impl Plugin for WifiPlugin {
         // once the Stack is up. `mdns` implies `action`, so the engine's commands
         // and the drain's observers are available.
         #[cfg(feature = "mdns")]
-        mdns_browser::add_plugin(app);
+        app.add_plugins(mdns_browser::mdns_browser_plugin);
     }
 }
 

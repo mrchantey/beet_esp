@@ -155,6 +155,11 @@ macro_rules! init_esp {
 		$crate::esp32_plugin::stash_peripherals(__beet_esp_p);
 		$crate::health::set_psram_info(__beet_esp_psram);
 
+		// Back bevy's `Instant` with the esp-hal `SYSTIMER` before `App::new()`:
+		// `TimePlugin` samples `Instant::now()` while building `Time`, and the
+		// `SYSTIMER` is already live now that `esp_hal::init` (in `init_mem`) ran.
+		$crate::esp32_plugin::install_bevy_clock();
+
 		// Paint the stack and record the boot memory snapshot, before anything
 		// allocates. Picked up by `HealthPlugin` in `PreStartup`.
 		$crate::health::on_boot();

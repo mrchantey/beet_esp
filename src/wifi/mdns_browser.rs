@@ -98,12 +98,14 @@ static PACKETS: Queue<UdpPacket, 8> = Queue::new();
 
 /// Plugin: wire the esp mDNS browser into an [`App`].
 ///
-/// Adds beet_net's agnostic [`MdnsBrowserPlugin`] (the [`DiscoveredServices`]
-/// resource + the [`handle_udp_packet`] observer), this crate's per-frame packet
-/// drain, and [`start_pending_browsers`] — the system that starts an embassy
-/// [`browser_task`] for each [`MdnsBrowser`] entity once Wi-Fi is up. Installed
-/// by [`WifiPlugin`](super::WifiPlugin) under the `mdns` feature.
-pub(crate) fn add_plugin(app: &mut App) {
+/// A plain `fn(&mut App)` *is* a Bevy [`Plugin`], so this is added with
+/// `app.add_plugins(mdns_browser_plugin)` (see [`WifiPlugin::build`](super::WifiPlugin),
+/// under the `mdns` feature). Adds beet_net's agnostic [`MdnsBrowserPlugin`] (the
+/// [`DiscoveredServices`] resource + the [`handle_udp_packet`] observer), this
+/// crate's per-frame packet drain, and [`start_pending_browsers`] — the system
+/// that starts an embassy [`browser_task`] for each [`MdnsBrowser`] entity once
+/// Wi-Fi is up.
+pub(crate) fn mdns_browser_plugin(app: &mut App) {
     app.add_plugins(MdnsBrowserPlugin)
         .add_systems(Update, (start_pending_browsers, drain_browser_packets));
 }
@@ -133,7 +135,7 @@ struct BrowserStarted;
 fn start_pending_browsers(world: &mut World) {
     // Collect the (entity, service_type) of every browser not yet started. Cheap
     // early-out in the steady state once all are marked.
-    let mut pending: Vec<(Entity, String)> = Vec::new();
+    let mut pending: Vec<(Entity, SmolStr)> = Vec::new();
     let mut query =
         world.query_filtered::<(Entity, &MdnsBrowser), Without<BrowserStarted>>();
     for (entity, browser) in query.iter(world) {
@@ -169,7 +171,7 @@ fn start_pending_browsers(world: &mut World) {
 /// [`with_timeout`](embassy_time::with_timeout): each [`QUERY_INTERVAL`] with no
 /// inbound packet re-multicasts the query — the simplest place for the periodic
 /// send (decision: keep the timer in the task, next to the socket).
-async fn browser_task(stack: Stack<'static>, service_type: String) {
+async fn browser_task(stack: Stack<'static>, service_type: SmolStr) {
     stack.wait_config_up().await;
 
     if let Err(e) = stack.join_multicast_group(IpAddress::Ipv4(MDNS_MULTICAST_V4)) {
@@ -201,7 +203,7 @@ async fn browser_task(stack: Stack<'static>, service_type: String) {
     // Build the `PTR` query once (it never changes for a service type), using
     // beet_net's pure wire helper — the same builder the std driver uses.
     let mut query = [0u8; 256];
-    let query_len = match mdns::build_ptr_query(&mut query, &service_type) {
+    let query_len = match build_ptr_query(&mut query, &service_type) {
         Some(len) => len,
         None => {
             warn!("mDNS browser: service type too long to query");
