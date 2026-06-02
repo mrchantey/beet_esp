@@ -47,3 +47,22 @@ cargo test                     # on-hardware tests (embedded-test)
 
 The target (`xtensa-esp32s3-none-elf`), runner and `build-std` are configured in
 `.cargo/config.toml`.
+
+
+
+### ESP32-s3
+
+# ESP32-S3-WROOM-1 Variants
+
+| Variant | Flash | PSRAM | Temp Range | Notes |
+|---|---|---|---|---|
+| N4 | 4 MB (Quad SPI) | — | –40 ~ 85 °C | Entry-level, no PSRAM |
+| N8 | 8 MB (Quad SPI) | — | –40 ~ 85 °C | |
+| N16 | 16 MB (Quad SPI) | — | –40 ~ 85 °C | |
+| H4 | 4 MB (Quad SPI) | — | –40 ~ **105 °C** | High-temp industrial variant |
+| N4R2 | 4 MB (Quad SPI) | 2 MB (Quad SPI) | –40 ~ 85 °C | |
+| N8R2 | 8 MB (Quad SPI) | 2 MB (Quad SPI) | –40 ~ 85 °C | |
+| N16R2 | 16 MB (Quad SPI) | 2 MB (Quad SPI) | –40 ~ 85 °C | |
+| N4R8 | 4 MB (Quad SPI) | 8 MB (Octal SPI) | –40 ~ 65 °C | Octal PSRAM; note narrower temp range |
+| N8R8 | 8 MB (Quad SPI) | 8 MB (Octal SPI) | –40 ~ 65 °C | |
+| N16R8 | 16 MB (Quad SPI) | 8 MB (Octal SPI) | –40 ~ 65 °C | Used by the **Arduino Nano ESP32** (via u-blox NORA-W106) and therefore the **Arduino Alvik** |
