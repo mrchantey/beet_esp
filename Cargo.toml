@@ -50,13 +50,19 @@ action = ["beet/action"]
 router = ["action", "wifi", "beet/router_embedded"]
 mdns = ["wifi", "action", "embassy-net/multicast", "beet/mdns"]
 # Engine-agnostic scripting placeholder; mirrors beet's `scripting`. Does nothing
-# on its own yet — a backend (`rhai`) builds on it.
+# on its own yet — a backend (`rhai` or `quickjs`) builds on it.
 scripting = ["action"]
 # The rhai engine on no_std, reached through `beet::exports::rhai`. Pulls the
 # agnostic `scripting` layer (the backend builds on it, not the reverse).
 # `beet/rhai` turns on the re-export (beet's serde `Script` runtime stays off
 # without std); `dep:rhai` selects rhai's `no_std` mode for this target.
 rhai = ["scripting", "beet/rhai", "dep:rhai"]
+# The QuickJS engine on no_std, reached through `beet::exports::rquickjs`. Like
+# `rhai`, builds on the agnostic `scripting` layer. `beet/quickjs` turns on the
+# re-export (beet's serde `Script` runtime stays std-only); `dep:rquickjs` with
+# `rust-alloc` (and no `std`) selects the bare-metal allocator mode, routing the
+# C engine's allocations through esp-alloc's global allocator.
+quickjs = ["scripting", "beet/quickjs", "dep:rquickjs"]
 # Wi-Fi + BLE coexistence — both radios at once. Required by the default bin.
 coex = ["wifi", "ble", "esp-radio/coex"]
 
@@ -173,6 +179,11 @@ name             = "scripting"
 path             = "examples/scripting.rs"
 required-features = ["rhai"]
 
+[[example]]
+name             = "scripting_quickjs"
+path             = "examples/scripting_quickjs.rs"
+required-features = ["quickjs"]
+
 [dependencies]
 # rhai's no_std build. The engine itself is reached through `beet::exports::rhai`
 # (re-exported by `beet_action`); this edge exists only to select rhai's `no_std`
@@ -180,6 +191,17 @@ required-features = ["rhai"]
 # in by the `scripting` feature, unified with the rhai `beet_action` re-exports.
 rhai = { version = "1", default-features = false, features = [
   "no_std",
+], optional = true }
+# rquickjs's bare-metal build, reached through `beet::exports::rquickjs`. This
+# edge selects the no_std allocator mode (`rust-alloc`, no `std`) for the xtensa
+# target, unified with the `beet_action` re-export. The bundled C engine is
+# compiled by the `cc` crate against the espup clang toolchain.
+# rquickjs ships no prebuilt FFI bindings for xtensa, so we generate them at
+# build time with `bindgen` (libclang from espup's esp-clang, pointed at the
+# xtensa sysroot via `BINDGEN_EXTRA_CLANG_ARGS_*` in `.cargo/config.toml`).
+rquickjs = { version = "0.12", default-features = false, features = [
+  "rust-alloc",
+  "bindgen",
 ], optional = true }
 # Local beet worktree, no_std build exposing bevy_color etc.
 beet = { path = "/home/pete/me/worktrees/beet/embedded/beet", default-features = false, features = [
@@ -261,6 +283,10 @@ embassy-futures  = "0.1.2"
 # the same version the runtime links.
 embassy-sync = { version = "0.8.0", features = ["defmt"] }
 static_cell  = "2.1.1"
+
+# Compiles the `quickjs` feature's C shims (`src/quickjs_shim.c`) in build.rs.
+[build-dependencies]
+cc = "1"
 
 [dev-dependencies]
 embedded-test = { version = "0.7.1", features = [

@@ -3,6 +3,32 @@ runner = "probe-rs run --chip=esp32s3 --preverify --always-print-stacktrace --no
 
 [env]
 DEFMT_LOG="info"
+# C deps (currently only rquickjs's bundled QuickJS engine under the `quickjs`
+# feature) are compiled by the espup bare-metal toolchain, which ships newlib —
+# so the engine's libc/libm calls resolve. Inert unless a crate compiles C.
+# Use the esp32s3-specific driver (little-endian, esp32s3 core); the generic
+# `xtensa-esp-elf-gcc` defaults to a big-endian config the linker rejects.
+CC_xtensa_esp32s3_none_elf = "xtensa-esp32s3-elf-gcc"
+# On this target `int32_t` is `long` (both 32-bit), so QuickJS's `int*` vs
+# `int32_t*` calls are width-safe; GCC 14+ promotes the mismatch to an error, so
+# demote it (and the related int-conversion) back to a warning.
+# `-mlongcalls`: esp code is linked far apart, so C calls need the long-call
+# sequence or the linker rejects out-of-range `call8` relocations. The `-Wno-*`
+# demote the int32_t-is-long pointer mismatch (width-safe here) from error.
+# `-mlongcalls`: esp code is linked far apart, so C calls need the long-call
+# sequence or the linker rejects out-of-range `call8` relocations.
+# `-D__STDC_NO_ATOMICS__`: drop QuickJS's `Atomics`/`SharedArrayBuffer` support,
+# which otherwise pulls pthreads + 64-bit `__atomic_*` builtins absent here.
+# The `-Wno-*` demote the int32_t-is-long pointer mismatch (width-safe) from error.
+# `-fno-stack-protector`: avoid newlib's `__stack_chk_fail`, which clashes with
+# the one Rust already provides.
+CFLAGS_xtensa_esp32s3_none_elf = "-mlongcalls -D__STDC_NO_ATOMICS__ -fno-stack-protector -Wno-error=incompatible-pointer-types -Wno-error=int-conversion"
+# rquickjs-sys generates its FFI bindings with bindgen (the `bindgen` feature),
+# which drives libclang (LIBCLANG_PATH, set by export-esp.sh). Point that clang
+# at the xtensa target + the espup GCC sysroot so it finds newlib's headers. The
+# version-pinned path mirrors export-esp.sh; bump both together on a toolchain
+# upgrade. Only consumed when a crate runs bindgen for this target.
+BINDGEN_EXTRA_CLANG_ARGS_xtensa_esp32s3_none_elf = "--target=xtensa-esp-elf --sysroot=/home/pete/.rustup/toolchains/esp/xtensa-esp-elf/esp-15.2.0_20250920/xtensa-esp-elf/xtensa-esp-elf"
 
 [build]
 rustflags = [

@@ -61,6 +61,16 @@ pub mod prelude {
 	pub use crate::wifi::*;
 }
 
+/// The QuickJS C engine calls `abort()` on unrecoverable internal errors. Route
+/// it into a Rust panic so it reaches the `panic-rtt-target` handler, rather
+/// than pulling newlib's `abort` (which drags in `raise`/`_kill` syscall stubs
+/// absent on bare metal).
+#[cfg(feature = "quickjs")]
+#[unsafe(no_mangle)]
+extern "C" fn abort() -> ! {
+    panic!("quickjs C runtime called abort()");
+}
+
 /// Emit the esp-idf bootloader application descriptor required to boot.
 ///
 /// Invoke once at module scope (it defines a linker-section static, so it can't
