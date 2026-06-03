@@ -1,4 +1,4 @@
-# This crate sits inside the firmware repo, whose `../../.cargo/config.toml`
+# This crate sits inside the firmware repo, whose `../.cargo/config.toml`
 # forces the `xtensa-esp32s3-none-elf` target, `build-std`, and bare-metal link
 # flags on everything nested under it. The controller is a normal host binary,
 # so undo all of that here:

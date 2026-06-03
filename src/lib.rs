@@ -28,6 +28,10 @@ pub mod led;
 pub mod mem;
 #[cfg(feature = "random")]
 pub mod random;
+// The hardware-agnostic scene server: bootstrap routes that load their real
+// routes over the wire. Needs beet's no_std router, so gated on `router`.
+#[cfg(feature = "router")]
+pub mod scene;
 // Crate-wide typed quantities (pure no_std math, no hardware deps).
 pub mod units;
 #[cfg(feature = "wifi")]
@@ -50,6 +54,8 @@ pub mod prelude {
 	#[cfg(feature = "led")]
 	pub use crate::led::*;
 	pub use crate::mem::{External, Internal, PsramInfo};
+	#[cfg(feature = "router")]
+	pub use crate::scene::prelude::*;
 	pub use crate::units::*;
 	#[cfg(feature = "wifi")]
 	pub use crate::wifi::*;

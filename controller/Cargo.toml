@@ -1,15 +1,15 @@
 [package]
-name = "alvik-controller"
+name = "scene-controller"
 edition = "2024"
 version = "0.1.0"
 
 [[bin]]
-name = "alvik"
+name = "scene"
 path = "src/main.rs"
 
 [dependencies]
 # The same beet as the firmware, but the std `router` (CLI dispatch) + a real
-# HTTP client (`ureq` + `rustls-tls`) so route actions can fetch the robot.
+# HTTP client (`ureq` + `rustls-tls`) so route actions can fetch the device.
 beet = { path = "/home/pete/me/worktrees/beet/embedded/beet", default-features = false, features = [
   "router",
   "ureq",

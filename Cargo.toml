@@ -159,10 +159,14 @@ name             = "alvik-rc"
 path             = "examples/alvik/rc.rs"
 required-features = ["alvik", "router"]
 
+# The scene server is hardware-agnostic, so it lives at the examples root
+# Runs on a bare ESP32 (on-board WS2812 + a rhai `Script`) with
+# `led,router,rhai`, or on an Alvik with `alvik,router,rhai` (which adds the
+# robot routes). `led` + `router` is the common floor both builds share.
 [[example]]
-name             = "alvik-scene"
-path             = "examples/alvik/scene.rs"
-required-features = ["alvik", "router"]
+name             = "scenes"
+path             = "examples/scenes.rs"
+required-features = ["led", "router"]
 
 [[example]]
 name             = "scripting"
