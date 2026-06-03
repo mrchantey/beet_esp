@@ -184,6 +184,13 @@ name             = "scripting_quickjs"
 path             = "examples/scripting_quickjs.rs"
 required-features = ["quickjs"]
 
+# Engine-agnostic: builds against whichever backend is enabled (quickjs or rhai),
+# selected by cfg the same way `ScriptLanguage::default()` picks.
+[[example]]
+name             = "scripting_bench"
+path             = "examples/scripting_bench.rs"
+required-features = ["scripting"]
+
 [dependencies]
 # rhai's no_std build. The engine itself is reached through `beet::exports::rhai`
 # (re-exported by `beet_action`); this edge exists only to select rhai's `no_std`

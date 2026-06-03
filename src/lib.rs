@@ -26,6 +26,9 @@ pub mod health;
 #[cfg(feature = "led")]
 pub mod led;
 pub mod mem;
+// QuickJS console + clock glue, reached through `beet::exports::rquickjs`.
+#[cfg(feature = "quickjs")]
+pub mod quickjs;
 #[cfg(feature = "random")]
 pub mod random;
 // The hardware-agnostic scene server: bootstrap routes that load their real
@@ -54,21 +57,13 @@ pub mod prelude {
 	#[cfg(feature = "led")]
 	pub use crate::led::*;
 	pub use crate::mem::{External, Internal, PsramInfo};
+	#[cfg(feature = "quickjs")]
+	pub use crate::quickjs::install_console;
 	#[cfg(feature = "router")]
 	pub use crate::scene::prelude::*;
 	pub use crate::units::*;
 	#[cfg(feature = "wifi")]
 	pub use crate::wifi::*;
-}
-
-/// The QuickJS C engine calls `abort()` on unrecoverable internal errors. Route
-/// it into a Rust panic so it reaches the `panic-rtt-target` handler, rather
-/// than pulling newlib's `abort` (which drags in `raise`/`_kill` syscall stubs
-/// absent on bare metal).
-#[cfg(feature = "quickjs")]
-#[unsafe(no_mangle)]
-extern "C" fn abort() -> ! {
-    panic!("quickjs C runtime called abort()");
 }
 
 /// Emit the esp-idf bootloader application descriptor required to boot.

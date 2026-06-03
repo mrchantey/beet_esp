@@ -26,6 +26,10 @@ use rquickjs::Runtime;
 #[beet_esp::main]
 fn main() {
     let runtime = Runtime::new().unwrap();
+    // QuickJS's stack-overflow guard defaults to a 1 MB budget; on the small esp
+    // stack that sits past the real stack bottom, so deep scripts would smash the
+    // stack instead of raising a clean RangeError. Cap it to a real budget.
+    runtime.set_max_stack_size(64 * 1024);
     let context = Context::full(&runtime).unwrap();
     context.with(|ctx| {
         let sum = ctx.eval::<i64, _>("40 + 2").unwrap_or(-1);
@@ -34,6 +38,17 @@ fn main() {
             .eval::<String, _>(r#""hello " + "quickjs""#)
             .unwrap_or_default();
         info!("quickjs eval string = {}", text.as_str());
+
+        // `console.log` / `error` / `dir` stream to defmt over RTT.
+        install_console(&ctx).unwrap();
+        ctx.eval::<(), _>(
+            r#"
+            console.log("hello from", "js", 1 + 2);
+            console.error("this is an error line");
+            console.dir({ name: "alvik", speed: 42, tags: ["a", "b"] });
+            "#,
+        )
+        .unwrap();
     });
     App::new().add_plugins((Esp32Plugin, HealthPlugin)).run();
 }

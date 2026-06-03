@@ -9,6 +9,11 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
+/* Time sources, defined in Rust (src/quickjs.rs): esp-hal monotonic timer and
+ * beet's SNTP-disciplined wall clock. */
+extern unsigned long long beet_esp_monotonic_ns(void);
+extern long long beet_esp_wall_us(void);
+
 /* newlib's stdio (printf/snprintf, used heavily by QuickJS) reaches its
  * per-thread state through __getreent. We run a single JS runtime, so hand back
  * the global reentrancy struct. */
@@ -28,18 +33,20 @@ int _write(int fd, const char *buf, int len) { (void)fd; (void)buf; return len; 
 void *_sbrk(int incr) { (void)incr; return (void *)-1; }
 int _gettimeofday(struct timeval *tv, void *tz) {
     (void)tz;
-    if (tv) { tv->tv_sec = 0; tv->tv_usec = 0; }
+    if (tv) {
+        long long us = beet_esp_wall_us();
+        tv->tv_sec = (time_t)(us / 1000000);
+        tv->tv_usec = (long)(us % 1000000);
+    }
     return 0;
 }
 
-/* QuickJS times Date.now() and its internal monotonic clock through
- * clock_gettime, which esp newlib omits. A monotonically increasing counter is
- * enough to keep the engine happy (it aborts on a nonzero return); wall-clock
- * accuracy is not needed to run scripts. */
+/* QuickJS times its internal monotonic clock through clock_gettime and the wall
+ * clock through gettimeofday, neither of which esp newlib provides. Both defer
+ * to the Rust hooks above; C just marshals into the newlib structs. */
 int clock_gettime(clockid_t clk_id, struct timespec *tp) {
     (void)clk_id;
-    static unsigned long long ns = 0;
-    ns += 1000000ULL; /* advance ~1ms per query */
+    unsigned long long ns = beet_esp_monotonic_ns();
     tp->tv_sec = (time_t)(ns / 1000000000ULL);
     tp->tv_nsec = (long)(ns % 1000000000ULL);
     return 0;
