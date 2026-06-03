@@ -49,10 +49,14 @@ action = ["beet/action"]
 # `examples/ecs_router.rs`.
 router = ["action", "wifi", "beet/router_embedded"]
 mdns = ["wifi", "action", "embassy-net/multicast", "beet/mdns"]
-# rhai scripting on no_std, reached through `beet::exports::rhai`. beet's own
-# `scripting` feature requires std, so the no_std engine is wired manually (see
-# `src/alvik/scripting.rs`).
-scripting = ["action", "beet/rhai"]
+# Engine-agnostic scripting placeholder; mirrors beet's `scripting`. Does nothing
+# on its own yet — a backend (`rhai`) builds on it.
+scripting = ["action"]
+# The rhai engine on no_std, reached through `beet::exports::rhai`. Pulls the
+# agnostic `scripting` layer (the backend builds on it, not the reverse).
+# `beet/rhai` turns on the re-export (beet's serde `Script` runtime stays off
+# without std); `dep:rhai` selects rhai's `no_std` mode for this target.
+rhai = ["scripting", "beet/rhai", "dep:rhai"]
 # Wi-Fi + BLE coexistence — both radios at once. Required by the default bin.
 coex = ["wifi", "ble", "esp-radio/coex"]
 
@@ -163,9 +167,16 @@ required-features = ["alvik", "router"]
 [[example]]
 name             = "scripting"
 path             = "examples/scripting.rs"
-required-features = ["scripting"]
+required-features = ["rhai"]
 
 [dependencies]
+# rhai's no_std build. The engine itself is reached through `beet::exports::rhai`
+# (re-exported by `beet_action`); this edge exists only to select rhai's `no_std`
+# mode for the xtensa target, which beet's std-oriented workspace cannot. Pulled
+# in by the `scripting` feature, unified with the rhai `beet_action` re-exports.
+rhai = { version = "1", default-features = false, features = [
+  "no_std",
+], optional = true }
 # Local beet worktree, no_std build exposing bevy_color etc.
 beet = { path = "/home/pete/me/worktrees/beet/embedded/beet", default-features = false, features = [
   "embedded",

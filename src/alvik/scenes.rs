@@ -31,7 +31,7 @@ impl Plugin for AlvikScenePlugin {
             .register_type::<LineFollowStep>()
             .register_type::<RoombaStep>()
             .register_type::<EndInDuration>();
-        #[cfg(feature = "scripting")]
+        #[cfg(feature = "rhai")]
         app.register_type::<super::scripting::AlvikScript>()
             .register_type::<super::scripting::AlvikScriptStep>();
     }
@@ -308,6 +308,6 @@ pub fn log_example_scenes(world: &mut World) {
     dump_scene(world, "dance-routine", dance_scene());
     dump_scene(world, "line-follower", line_follower_scene());
     dump_scene(world, "roomba", roomba_scene());
-    #[cfg(feature = "scripting")]
+    #[cfg(feature = "rhai")]
     dump_scene(world, "script", super::scripting::script_scene());
 }

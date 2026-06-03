@@ -82,7 +82,7 @@ pub mod routes;
 #[cfg(feature = "router")]
 pub mod scenes;
 // rhai control scripts wire into the scene routes, so they also need `router`.
-#[cfg(all(feature = "router", feature = "scripting"))]
+#[cfg(all(feature = "router", feature = "rhai"))]
 pub mod scripting;
 
 pub mod prelude {
@@ -104,6 +104,6 @@ pub mod prelude {
     pub use super::routes::*;
     #[cfg(feature = "router")]
     pub use super::scenes::*;
-    #[cfg(all(feature = "router", feature = "scripting"))]
+    #[cfg(all(feature = "router", feature = "rhai"))]
     pub use super::scripting::*;
 }
