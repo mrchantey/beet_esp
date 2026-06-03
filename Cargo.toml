@@ -285,6 +285,9 @@ trouble-host = { version = "0.6.0", optional = true, features = ["defmt", "gatt"
 getrandom = { version = "0.3", optional = true }
 
 critical-section = "1.2.0"
+# Extension-trait macro (`#[extend::ext]`), matching beet's version. Used by the
+# `quickjs` module's esp-tuned `Runtime` constructor.
+extend           = "1"
 embassy-futures  = "0.1.2"
 # Pinned to esp-rtos's embassy-sync (0.8.0) so the bridge's Signal/Channel share
 # the same version the runtime links.

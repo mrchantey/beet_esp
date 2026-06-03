@@ -507,6 +507,7 @@ dependencies = [
  "esp-hal",
  "esp-radio",
  "esp-rtos",
+ "extend",
  "getrandom 0.3.4",
  "panic-rtt-target",
  "rhai",

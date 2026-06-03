@@ -25,11 +25,9 @@ use rquickjs::Runtime;
 
 #[beet_esp::main]
 fn main() {
-    let runtime = Runtime::new().unwrap();
-    // QuickJS's stack-overflow guard defaults to a 1 MB budget; on the small esp
-    // stack that sits past the real stack bottom, so deep scripts would smash the
-    // stack instead of raising a clean RangeError. Cap it to a real budget.
-    runtime.set_max_stack_size(64 * 1024);
+    // `new_esp` caps QuickJS's stack-overflow guard to fit the esp stack (the
+    // 1 MB default would let deep scripts hard-fault instead of erroring).
+    let runtime = Runtime::new_esp().unwrap();
     let context = Context::full(&runtime).unwrap();
     context.with(|ctx| {
         let sum = ctx.eval::<i64, _>("40 + 2").unwrap_or(-1);
@@ -38,6 +36,13 @@ fn main() {
             .eval::<String, _>(r#""hello " + "quickjs""#)
             .unwrap_or_default();
         info!("quickjs eval string = {}", text.as_str());
+
+        // Arrow function: confirms whether the capped stack lets the parser's
+        // arrow-disambiguation pass run instead of overflowing.
+        match ctx.eval::<i64, _>("(() => 6 * 7)()") {
+            Ok(value) => info!("quickjs arrow fn = {}", value),
+            Err(err) => info!("quickjs arrow fn failed: {}", defmt::Debug2Format(&err)),
+        }
 
         // `console.log` / `error` / `dir` stream to defmt over RTT.
         install_console(&ctx).unwrap();

@@ -62,17 +62,12 @@ fn run_benchmark() -> (health::MemSnapshot, health::MemSnapshot, u64, i64) {
     use beet::exports::rquickjs::Context;
     use beet::exports::rquickjs::Runtime;
 
-    // A `function` IIFE (not arrow): its return value is the script's completion
-    // value, and it sidesteps QuickJS's arrow-function parse, which faults on
-    // this xtensa build.
+    // An IIFE so the script's completion value is the returned number.
     const SCRIPT: &str =
-        "(function () { var s = 0; for (var i = 0; i < 50; i++) { s += i * 2; } return s; })()";
+        "(() => { let s = 0; for (let i = 0; i < 50; i++) { s += i * 2; } return s; })()";
 
-    let runtime = Runtime::new().unwrap();
-    // QuickJS defaults its stack-overflow guard to a 1 MB budget; on this small
-    // esp stack that limit sits past the real stack bottom, so deep parses smash
-    // the stack instead of raising a clean RangeError. Cap it to a real budget.
-    runtime.set_max_stack_size(64 * 1024);
+    // `new_esp` caps the stack-overflow guard to fit the esp stack.
+    let runtime = Runtime::new_esp().unwrap();
     let context = Context::full(&runtime).unwrap();
     let after_engine = health::snapshot();
 

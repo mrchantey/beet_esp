@@ -15,11 +15,31 @@ use rquickjs::Coerced;
 use rquickjs::Ctx;
 use rquickjs::Function;
 use rquickjs::Object;
+use rquickjs::Runtime;
 use rquickjs::Value;
 use rquickjs::function::Rest;
 
 extern crate alloc;
 use alloc::string::String;
+
+/// The C stack budget handed to QuickJS on this target. The engine's default is
+/// 1 MB, which overshoots the esp main-task stack: its overflow guard then sits
+/// past the real stack bottom, so deep scripts smash the stack (hard fault)
+/// instead of raising a `RangeError`. This keeps the guard inside the real stack.
+pub const ESP_STACK_LIMIT: usize = 64 * 1024;
+
+/// Extension adding an esp-tuned [`Runtime`] constructor.
+#[extend::ext(name = RuntimeEspExt)]
+pub impl Runtime {
+    /// Like [`Runtime::new`], but caps the stack-overflow guard to a budget that
+    /// fits the esp main-task stack (see [`ESP_STACK_LIMIT`]). Prefer this over
+    /// [`Runtime::new`] on device so deep scripts fail cleanly.
+    fn new_esp() -> rquickjs::Result<Runtime> {
+        let runtime = Runtime::new()?;
+        runtime.set_max_stack_size(ESP_STACK_LIMIT);
+        Ok(runtime)
+    }
+}
 
 /// Install a `console` global on `ctx` whose `log`, `error` and `dir` methods
 /// stream to `defmt` over RTT. `log`/`error` join their arguments with spaces

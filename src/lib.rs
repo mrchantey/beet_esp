@@ -58,7 +58,7 @@ pub mod prelude {
 	pub use crate::led::*;
 	pub use crate::mem::{External, Internal, PsramInfo};
 	#[cfg(feature = "quickjs")]
-	pub use crate::quickjs::install_console;
+	pub use crate::quickjs::{RuntimeEspExt, install_console};
 	#[cfg(feature = "router")]
 	pub use crate::scene::prelude::*;
 	pub use crate::units::*;
