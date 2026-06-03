@@ -73,6 +73,18 @@ pub mod systems;
 pub mod types;
 pub mod ucpack;
 
+// The scene server and its route/action markers need beet's no_std router,
+// served over Wi-Fi — only compiled under the `router` feature.
+#[cfg(feature = "router")]
+pub mod actions;
+#[cfg(feature = "router")]
+pub mod routes;
+#[cfg(feature = "router")]
+pub mod scenes;
+// rhai control scripts wire into the scene routes, so they also need `router`.
+#[cfg(all(feature = "router", feature = "scripting"))]
+pub mod scripting;
+
 pub mod prelude {
     pub use super::components::*;
     pub use super::driver::ALVIK_EVENTS;
@@ -86,4 +98,12 @@ pub mod prelude {
     pub use super::types::Side;
     pub use super::types::TiltAxis;
     pub use super::types::TouchButton;
+    #[cfg(feature = "router")]
+    pub use super::actions::*;
+    #[cfg(feature = "router")]
+    pub use super::routes::*;
+    #[cfg(feature = "router")]
+    pub use super::scenes::*;
+    #[cfg(all(feature = "router", feature = "scripting"))]
+    pub use super::scripting::*;
 }

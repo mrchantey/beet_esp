@@ -41,10 +41,7 @@ const DRIVE_SPEED_MM_S: f32 = 60.0;
 /// Turn rate (spin in place) for the left/right routes.
 const TURN_RATE_DEG_S: f32 = 90.0;
 
-// The World/registry/router/request bulk lives in PSRAM (see `beet_esp::mem`),
-// so internal SRAM only holds the radio + DMA + stack: the 64 KiB reserve (+ the
-// reclaimed region) is plenty, matching `ecs_router`.
-#[beet_esp::main(internal_reserve_kb = 64)]
+#[beet_esp::main]
 fn main() {
     App::new()
         .add_plugins((
@@ -54,9 +51,6 @@ fn main() {
             AlvikPlugin,
             RouterPlugin,
         ))
-        // beet-style: the `HttpServer` carries the router and the routes as
-        // sibling children, each binding a path to an action. Spawning it starts
-        // the accept loop once Wi-Fi is up (at the static IP set above).
         .spawn((
             HttpServer::new(8080),
             default_router(),
@@ -73,9 +67,8 @@ fn main() {
 #[action(handler_only)]
 #[derive(Default, Clone, Component)]
 async fn Home(_cx: ActionContext<RequestParts>) -> Response {
-    Response::ok_body(
+    Response::ok_text(
         "alvik rc\n\nroutes:\n  /drive/<forward|back|left|right|stop>\n  /led/<left|right>/<on|off>\n",
-        MediaType::Text,
     )
 }
 
@@ -99,7 +92,7 @@ fn Drive(
     drive.linear = LinearVelocity::from_mm_per_sec(linear);
     drive.angular = AngularVelocity::from_deg_per_sec(angular);
     info!("rc: drive {} ({} mm/s, {} deg/s)", dir, linear, angular);
-    Response::ok_body(alloc::format!("drive {dir}\n"), MediaType::Text)
+    Response::ok_text(alloc::format!("drive {dir}\n"))
 }
 
 /// `GET /led/:side/:state` — set one UI LED to white (on) or black (off).
@@ -120,5 +113,5 @@ fn Led(
         led_color.0 = color;
     }
     info!("rc: led {} {}", side, state);
-    Response::ok_body(alloc::format!("led {side} {state}\n"), MediaType::Text)
+    Response::ok_text(alloc::format!("led {side} {state}\n"))
 }

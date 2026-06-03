@@ -17,12 +17,10 @@ use defmt::info;
 
 extern crate alloc;
 
-#[beet_esp::main(internal_reserve_kb = 64)]
+#[beet_esp::main]
 fn main() {
     App::new()
         .add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::from_env()))
-        // React to services appearing/disappearing as `MDnsService` entities are
-        // spawned/despawned by the agnostic browser engine.
         .add_observer(on_discovered)
         .add_observer(on_removed)
         .spawn(MdnsBrowser::http())

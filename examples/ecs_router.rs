@@ -1,26 +1,9 @@
 //! beet_router on the ESP32: route incoming HTTP requests to per-path actions.
 //!
-//! Where [`ecs_wifi`](../ecs_wifi.rs) serves every request through a single
-//! handler system, this mirrors beet's `examples/router/router.rs` — a
-//! [`default_router`] dispatches each [`Request`] to the action whose path
-//! matches, the same `Request -> Response` action pattern, now running `no_std`
-//! on bare metal.
-//!
-//! ## How it routes
-//!
-//! [`RouterPlugin`] (beet's no_std router) registers the observers that build a
-//! [`RouteTree`] from the spawned route hierarchy. Spawning an [`HttpServer`]
-//! carrying [`default_router(routes)`] starts the accept loop (via beet's
-//! `on_add` hook); each incoming request is dispatched through beet's async
-//! action layer (the same `BeetAsyncSyncPoint` bridge the
-//! [`behavior_tree`](../behavior_tree.rs) example drives) to the matched route's
-//! action. On `no_std`, `default_router` is the lean dispatch bundle (just the
-//! [`Router`] action plus the [`RequestLogger`]); the std-only middleware and
-//! the app-info/analytics routes are compiled out.
-//!
-//! ## Routes
-//!
-//! Once it logs its IP, hit it from the same LAN:
+//! [`RouterPlugin`] builds a [`RouteTree`] from the spawned route hierarchy;
+//! spawning an [`HttpServer`] with [`default_router()`] and the routes as
+//! `children![..]` starts the accept loop and dispatches each [`Request`] to the
+//! matching action. Once it logs its IP, hit it from the same LAN:
 //!
 //! ```sh
 //! curl http://<device-ip>:8080/            # Home
@@ -41,39 +24,30 @@ use defmt::info;
 
 extern crate alloc;
 
-// ECS + reflection + async-bridge + task-pool + router + the Wi-Fi stack has a
-// heavy baseline that used to OOM at every internal-heap size (the World + type
-// registry + per-request buffers competed with the radio for internal SRAM).
-// With the bulk now in PSRAM (see `beet_esp::mem`), the only thing internal SRAM
-// has to hold is the radio + DMA + stack, so a small reserve is plenty: the 64
-// KiB default below plus the ~72 KiB reclaimed region keeps the radio healthy
-// while the World/registry/request churn all lands in the 8 MiB of PSRAM.
-#[beet_esp::main(internal_reserve_kb = 64)]
+#[beet_esp::main]
 fn main() {
     App::new()
         .add_plugins((
             Esp32Plugin,
             HealthPlugin,
             WifiPlugin::from_env(),
-            // beet's no_std router: builds the RouteTree from the routes below.
             RouterPlugin,
         ))
         .init_resource::<Visits>()
-        // Serve the router on :8080, beet-style: the `HttpServer` component
-        // alongside `default_router()` (the single router builder) and the user
-        // routes as a sibling `children![..]`, each binding a path to an action.
-        // Spawning it starts the accept loop.
-        .spawn((HttpServer::new(8080), default_router(), children![
-            exchange_route("", Home),
-            exchange_route("about", About),
-            exchange_route("hello/:name", Greet),
-            exchange_route("count", Visit),
-        ]))
+        .spawn((
+            HttpServer::new(8080),
+            default_router(),
+            children![
+                exchange_route("", Home),
+                exchange_route("about", About),
+                exchange_route("hello/:name", Greet),
+                exchange_route("count", Visit),
+            ],
+        ))
         .run();
 }
 
-/// Visitor counter mutated by the [`Visit`] route — the ECS state a beet action
-/// queries, exactly as a normal Bevy resource.
+/// Visitor counter mutated by the [`Visit`] route.
 #[derive(Resource, Default)]
 struct Visits(u32);
 
@@ -82,9 +56,8 @@ struct Visits(u32);
 #[derive(Default, Clone, Component)]
 async fn Home(_cx: ActionContext<RequestParts>) -> Response {
     info!("route: /");
-    Response::ok_body(
+    Response::ok_text(
         "beet_esp router\n\nroutes:\n  /            this page\n  /about       about\n  /hello/:name greet by name\n  /count       visit counter\n",
-        MediaType::Text,
     )
 }
 
@@ -93,31 +66,23 @@ async fn Home(_cx: ActionContext<RequestParts>) -> Response {
 #[derive(Default, Clone, Component)]
 async fn About(_cx: ActionContext<RequestParts>) -> Response {
     info!("route: /about");
-    Response::ok_body(
-        "beet_router running no_std on an ESP32-S3.\n",
-        MediaType::Text,
-    )
+    Response::ok_text("beet_router running no_std on an ESP32-S3.\n")
 }
 
-/// `GET /hello/:name` — reads the dynamic `:name` path segment the router
-/// merged into the request params.
+/// `GET /hello/:name` — reads the dynamic `:name` path segment.
 #[action(handler_only)]
 #[derive(Default, Clone, Component)]
 async fn Greet(cx: ActionContext<RequestParts>) -> Response {
     let name = cx.input.get_param("name").unwrap_or("world");
     info!("route: /hello/{}", name);
-    Response::ok_body(alloc::format!("hello, {name}!\n"), MediaType::Text)
+    Response::ok_text(alloc::format!("hello, {name}!\n"))
 }
 
-/// `GET /count` — mutates ECS state, proving routes are full Bevy systems with
-/// access to resources/queries.
+/// `GET /count` — mutates ECS state, proving routes are full Bevy systems.
 #[action(handler_only)]
 #[derive(Default, Clone, Component)]
 fn Visit(_cx: In<ActionContext<RequestParts>>, mut visits: ResMut<Visits>) -> Response {
     visits.0 += 1;
     info!("route: /count -> {}", visits.0);
-    Response::ok_body(
-        alloc::format!("you are visitor #{}\n", visits.0),
-        MediaType::Text,
-    )
+    Response::ok_text(alloc::format!("you are visitor #{}\n", visits.0))
 }

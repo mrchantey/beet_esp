@@ -49,10 +49,10 @@ action = ["beet/action"]
 # `examples/ecs_router.rs`.
 router = ["action", "wifi", "beet/router_embedded"]
 mdns = ["wifi", "action", "embassy-net/multicast", "beet/mdns"]
-# rhai scripting on no_std. Pulls rhai's no_std build; integration with beet's
-# `Script` action is wired manually in `examples/alvik/script.rs` since beet's
-# own `scripting` feature requires std.
-scripting = ["action", "dep:rhai"]
+# rhai scripting on no_std, reached through `beet::exports::rhai`. beet's own
+# `scripting` feature requires std, so the no_std engine is wired manually (see
+# `src/alvik/scripting.rs`).
+scripting = ["action", "beet/rhai"]
 # Wi-Fi + BLE coexistence — both radios at once. Required by the default bin.
 coex = ["wifi", "ble", "esp-radio/coex"]
 
@@ -161,16 +161,11 @@ path             = "examples/alvik/scene.rs"
 required-features = ["alvik", "router"]
 
 [[example]]
-name             = "rhai_spike"
-path             = "examples/rhai_spike.rs"
+name             = "scripting"
+path             = "examples/scripting.rs"
 required-features = ["scripting"]
 
 [dependencies]
-# rhai embedded scripting, no_std build (libm + hashbrown + core-error). Pulled
-# in by the `scripting` feature. Untested on xtensa — see Step 3.
-rhai = { version = "1.24", default-features = false, features = [
-  "no_std",
-], optional = true }
 # Local beet worktree, no_std build exposing bevy_color etc.
 beet = { path = "/home/pete/me/worktrees/beet/embedded/beet", default-features = false, features = [
   "embedded",

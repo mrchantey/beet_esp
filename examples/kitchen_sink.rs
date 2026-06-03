@@ -1,17 +1,9 @@
 //! Everything at once: LED + Wi-Fi (client & server) + `world_serde`, under the
-//! health monitor. Exists to answer "how close to the hardware ceiling are we if
-//! we combine all the features?" — flash it and read the periodic health report.
-//!
-//! It deliberately stacks the heaviest things we do: the Wi-Fi/embassy-net stack,
-//! the on-board LED RMT driver, and reflection-backed scene (de)serialization,
-//! all on one Bevy `World`.
+//! health monitor. Stacks the heaviest things we do on one Bevy `World` to gauge
+//! headroom; flash it and read the periodic health report.
 //!
 //! Run with:
 //!   `cargo run --release --no-default-features --features led,wifi,action --example kitchen_sink`
-//!
-//! The default 96 KiB heap is *not* enough for this combination (Wi-Fi alone is
-//! ~165 KiB of the 172 KiB total, and the action layer + task pool add more), so
-//! the heap is bumped below — see the health report for the resulting headroom.
 
 #![no_std]
 #![no_main]
@@ -41,23 +33,12 @@ const SCENE_JSON: &str = r#"{
   }
 }"#;
 
-// The action layer + task pool + Wi-Fi push the baseline up, but the bulk now
-// lives in PSRAM (see `beet_esp::mem`), so internal SRAM only holds the radio +
-// DMA + stack. The default 64 KiB internal reserve (+ the ~72 KiB reclaimed
-// region) is ample; the stack only ever uses ~19 KiB while serving.
-#[beet_esp::main(internal_reserve_kb = 64)]
+#[beet_esp::main]
 fn main() {
     let mut app = App::new();
-    app.add_plugins((
-        Esp32Plugin,
-        HealthPlugin,
-        LedPlugin,
-        WifiPlugin::from_env(),
-    ));
+    app.add_plugins((Esp32Plugin, HealthPlugin, LedPlugin, WifiPlugin::from_env()));
     app.init_resource::<AppTypeRegistry>();
     app.register_type::<HelloWorld>();
-    // beet's standard server bundle: the `HttpServer` component plus its
-    // `Action<Request, Response>` handler. Spawning it starts the accept loop.
     app.spawn((HttpServer::new(8080), Handler));
     app.add_systems(
         Startup,
@@ -85,13 +66,12 @@ fn ping(world: &mut World) {
     });
 }
 
-/// The server's request handler: a beet `Action<Request, Response>` on the
-/// server entity, dispatched by `entity.exchange`.
+/// The server's request handler.
 #[action(handler_only)]
 #[derive(Default, Clone, Component)]
 fn Handler(cx: In<ActionContext<Request>>) -> Response {
     info!("server request on `{}`", cx.input.path_string().as_str());
-    Response::ok_body("hello from the beet_esp kitchen sink\n", MediaType::Text)
+    Response::ok_text("hello from the beet_esp kitchen sink\n")
 }
 
 fn dump_canonical(world: &mut World) {

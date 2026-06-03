@@ -28,30 +28,21 @@ use defmt::info;
 extern crate alloc;
 
 
-// The World/registry/request bulk lives in PSRAM now (see `beet_esp::mem`), so
-// internal SRAM only has to hold the radio + DMA + stack. The default 64 KiB
-// internal reserve (+ the ~72 KiB reclaimed region) is plenty; the stack keeps
-// the rest of the DRAM pool (peak use ~19 KiB while serving).
-#[beet_esp::main(internal_reserve_kb = 64)]
+#[beet_esp::main]
 fn main() {
     App::new()
         .add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::from_env()))
         .init_resource::<Visits>()
-        // beet's standard server bundle: the `HttpServer` component plus its
-        // `Action<Request, Response>` handler on the same entity. Spawning it
-        // fires the `on_add` hook, which starts the accept loop once Wi-Fi is up.
         .spawn((HttpServer::new(8080), Handler))
         .run();
 }
 
-/// Visitor counter mutated by the [`Handler`] — the ECS state a beet action
-/// queries, exactly as a normal Bevy resource.
+/// Visitor counter mutated by the [`Handler`].
 #[derive(Resource, Default)]
 struct Visits(u32);
 
 /// The sole request handler: a beet `Action<Request, Response>` on the server
-/// entity, dispatched by `entity.exchange`. A full Bevy system, so it can read
-/// and mutate ECS state.
+/// entity.
 #[action(handler_only)]
 #[derive(Default, Clone, Component)]
 fn Handler(cx: In<ActionContext<Request>>, mut visits: ResMut<Visits>) -> Response {
@@ -61,8 +52,8 @@ fn Handler(cx: In<ActionContext<Request>>, mut visits: ResMut<Visits>) -> Respon
         visits.0,
         cx.input.path_string().as_str()
     );
-    Response::ok_body(
-        alloc::format!("hello from the beet_esp ECS server\nyou are visitor #{}\n", visits.0),
-        MediaType::Text,
-    )
+    Response::ok_text(alloc::format!(
+        "hello from the beet_esp ECS server\nyou are visitor #{}\n",
+        visits.0
+    ))
 }
