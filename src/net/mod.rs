@@ -1,6 +1,6 @@
 //! Wi-Fi as an ECS-friendly mechanism, using beet's networking types.
 //!
-//! Like [`led`](crate::led) turns the RMT peripheral into Bevy components driven
+//! Like [`led`](crate::utils::led) turns the RMT peripheral into Bevy components driven
 //! by an async task, this turns the ESP32 Wi-Fi station + `embassy-net` stack
 //! into beet's transport-agnostic [`Request`]/[`Response`] workflow:
 //!
@@ -16,7 +16,7 @@
 //! [`WifiPlugin`] brings the station up, runs DHCP, and shares the [`Stack`] so
 //! both the client driver and any [`HttpServer`] accept loop can open sockets.
 
-use crate::async_bridge::spawn_driver;
+use crate::esp32_utils::async_bridge::spawn_driver;
 use beet::prelude::*;
 use defmt::info;
 use defmt::warn;

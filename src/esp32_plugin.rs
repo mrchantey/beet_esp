@@ -3,7 +3,7 @@
 //! system, exposes the raw peripherals as non-send resources, and installs a
 //! runner so a bare-metal app is driven by plain [`App::run`].
 
-use crate::async_bridge::spawn_driver;
+use crate::esp32_utils::async_bridge::spawn_driver;
 use beet::prelude::*;
 use defmt::info;
 use embassy_time::Duration;
@@ -16,7 +16,7 @@ use static_cell::StaticCell;
 /// Hand-off slot for the chip peripherals.
 ///
 /// `esp_hal::init()` may only run once, and it has to run in `main` (inside
-/// [`mem::init_esp`](crate::mem::init_esp), via
+/// [`mem::init_esp`](crate::esp32_utils::mem::init_esp), via
 /// [`#[beet_esp::main]`](crate::main)) so PSRAM is mapped and registered
 /// *before* `App::new()` builds the `World` and its type registry. The resulting
 /// [`Peripherals`] are parked here for [`bring_up`] (a `PreStartup` system) to
@@ -25,7 +25,7 @@ static PERIPHERALS: critical_section::Mutex<core::cell::Cell<Option<Peripherals>
     critical_section::Mutex::new(core::cell::Cell::new(None));
 
 /// Park the chip peripherals for [`bring_up`] to collect. Called once from
-/// [`mem::init_esp`](crate::mem::init_esp) after `esp_hal::init()`.
+/// [`mem::init_esp`](crate::esp32_utils::mem::init_esp) after `esp_hal::init()`.
 pub fn stash_peripherals(p: Peripherals) {
     critical_section::with(|cs| PERIPHERALS.borrow(cs).set(Some(p)));
 }
@@ -54,8 +54,8 @@ pub fn start_embassy(
 ///
 /// It is LED-agnostic — it only ticks the schedule and exposes the raw
 /// peripherals as non-send resources. Each domain plugin (e.g.
-/// [`LedPlugin`](crate::led::LedPlugin)) assembles its own drivers from those
-/// peripherals and spawns its own async driver via the [`async_bridge`](crate::async_bridge)
+/// [`LedPlugin`](crate::utils::led::LedPlugin)) assembles its own drivers from those
+/// peripherals and spawns its own async driver via the [`async_bridge`](crate::esp32_utils::async_bridge)
 /// using the [`Spawner`](embassy_executor::Spawner) resource. See
 /// [`#[beet_esp::main]`](crate::main).
 pub struct Esp32Plugin;
@@ -79,7 +79,7 @@ impl Plugin for Esp32Plugin {
         // `insert_resource` overrides AsyncPlugin's panicking default regardless
         // of plugin order. See `async_utils` for why this pool and not embassy.
         #[cfg(feature = "action")]
-        crate::async_utils::install_async_spawner(app);
+        crate::esp32_utils::async_utils::install_async_spawner(app);
     }
 }
 
@@ -136,7 +136,7 @@ fn bring_up(world: &mut World) {
 /// elapsed-time getter backed by a monotonic clock.
 ///
 /// Backed by [`esp_hal::time`] (the `SYSTIMER`), which is live the moment
-/// `esp_hal::init` returns (in [`mem::init_esp`](crate::mem::init_esp), before
+/// `esp_hal::init` returns (in [`mem::init_esp`](crate::esp32_utils::mem::init_esp), before
 /// `App::new()`) — *not* embassy's clock, which only starts at [`start_embassy`].
 /// Called at the top of [`Esp32Plugin::build`], before it adds `TimePlugin`.
 fn install_bevy_clock() {

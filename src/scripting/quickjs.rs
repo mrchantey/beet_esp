@@ -3,7 +3,7 @@
 //!
 //! Two things the engine needs that a no_std esp-hal build does not provide out
 //! of the box: a [`console`](install_console) for scripts to log through, and a
-//! clock. The clock is wired at the C level: `src/quickjs_shim.c` calls the
+//! clock. The clock is wired at the C level: `src/scripting/quickjs_shim.c` calls the
 //! [`beet_esp_monotonic_ns`] / [`beet_esp_wall_us`] hooks defined here.
 
 use beet::exports::rquickjs;

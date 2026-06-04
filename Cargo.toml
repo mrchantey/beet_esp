@@ -66,57 +66,79 @@ quickjs = ["scripting", "beet/quickjs", "dep:rquickjs"]
 # Wi-Fi + BLE coexistence — both radios at once. Required by the default bin.
 coex = ["wifi", "ble", "esp-radio/coex"]
 
-# Examples only build when their required features are on, so e.g. `blinky`
-# stays lean: `cargo run --release --no-default-features --features led --example blinky`.
+# Examples are grouped into subdirectories (led/, net/, esp32/, app/,
+# scripting/), so each needs an explicit path. They only build when their
+# required features are on, so e.g. `blinky` stays lean:
+# `cargo run --release --no-default-features --features led --example blinky`.
+
+# --- examples/led ---
 [[example]]
 name             = "blinky"
+path             = "examples/led/blinky.rs"
 required-features = ["led"]
 
 [[example]]
 name             = "led_scan"
+path             = "examples/led/led_scan.rs"
 required-features = ["led"]
 
+# --- examples/net ---
 [[example]]
 name             = "http_client"
+path             = "examples/net/http_client.rs"
 required-features = ["wifi", "action"]
 
 [[example]]
 name             = "http_server"
+path             = "examples/net/http_server.rs"
 required-features = ["wifi", "action"]
 
 [[example]]
 name             = "bluetooth-client"
+path             = "examples/net/bluetooth-client.rs"
 required-features = ["ble"]
 
 [[example]]
-name             = "kitchen_sink"
-required-features = ["led", "wifi", "action"]
-
-[[example]]
-name             = "behavior_tree"
-required-features = ["action"]
-
-[[example]]
-name             = "ecs_router"
-required-features = ["router"]
-
-[[example]]
 name             = "mdns_server"
+path             = "examples/net/mdns_server.rs"
 required-features = ["mdns"]
 
 [[example]]
 name             = "mdns_browser"
+path             = "examples/net/mdns_browser.rs"
 required-features = ["mdns"]
 
+# --- examples/app ---
+[[example]]
+name             = "kitchen_sink"
+path             = "examples/app/kitchen_sink.rs"
+required-features = ["led", "wifi", "action"]
+
+[[example]]
+name             = "behavior_tree"
+path             = "examples/app/behavior_tree.rs"
+required-features = ["action"]
+
+[[example]]
+name             = "ecs_router"
+path             = "examples/app/ecs_router.rs"
+required-features = ["router"]
+
+# world_serde needs neither radio nor LED — core only, no required features.
+[[example]]
+name             = "world_serde"
+path             = "examples/app/world_serde.rs"
+
+# --- examples/esp32 ---
 [[example]]
 name             = "random"
+path             = "examples/esp32/random.rs"
 required-features = ["random"]
 
 [[example]]
 name             = "clock"
+path             = "examples/esp32/clock.rs"
 required-features = ["clock"]
-
-# world_serde needs neither radio nor LED — core only, no required features.
 
 # Alvik examples live in examples/alvik/ so need explicit paths. The
 # behaviour-tree / observer demos additionally enable `action`.
@@ -165,35 +187,32 @@ name             = "alvik-rc"
 path             = "examples/alvik/rc.rs"
 required-features = ["alvik", "router"]
 
-# The scene server is hardware-agnostic, so it lives at the examples root
-# Runs on a bare ESP32 (on-board WS2812 + a rhai `Script`) with
+# The scene server is hardware-agnostic. Runs on a bare ESP32 (on-board WS2812
+# + a rhai `Script`) with
 # `led,router,rhai`, or on an Alvik with `alvik,router,rhai` (which adds the
 # robot routes). `led` + `router` is the common floor both builds share.
 [[example]]
 name             = "scenes"
-path             = "examples/scenes.rs"
+path             = "examples/app/scenes.rs"
 required-features = ["led", "router"]
 
+# Engine-agnostic smoke test: builds against whichever backend is enabled
+# (quickjs or rhai), selected by cfg the same way `ScriptLanguage::default()` picks.
 [[example]]
 name             = "scripting"
-path             = "examples/scripting.rs"
-required-features = ["rhai"]
-
-[[example]]
-name             = "scripting_quickjs"
-path             = "examples/scripting_quickjs.rs"
-required-features = ["quickjs"]
+path             = "examples/scripting/scripting.rs"
+required-features = ["scripting"]
 
 [[example]]
 name             = "scripting_watchdog"
-path             = "examples/scripting_watchdog.rs"
+path             = "examples/scripting/scripting_watchdog.rs"
 required-features = ["quickjs"]
 
 # Engine-agnostic: builds against whichever backend is enabled (quickjs or rhai),
 # selected by cfg the same way `ScriptLanguage::default()` picks.
 [[example]]
 name             = "scripting_bench"
-path             = "examples/scripting_bench.rs"
+path             = "examples/scripting/scripting_bench.rs"
 required-features = ["scripting"]
 
 [dependencies]

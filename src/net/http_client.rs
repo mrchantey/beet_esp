@@ -10,8 +10,8 @@
 //! upstream in beet's shared [`http_ext`] module (`encode_request` /
 //! `parse_response`); this file is just the bridge plus the socket IO.
 
-use crate::async_bridge::AsyncBridge;
-use crate::async_bridge::run_worker;
+use crate::esp32_utils::async_bridge::AsyncBridge;
+use crate::esp32_utils::async_bridge::run_worker;
 use beet::prelude::*;
 use defmt::info;
 use defmt::warn;

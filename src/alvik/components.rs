@@ -4,10 +4,10 @@
 //! incoming status to the sensor components.
 
 use crate::alvik::types::Side;
-use crate::units::Angle;
-use crate::units::AngularVelocity;
-use crate::units::Distance;
-use crate::units::LinearVelocity;
+use crate::utils::units::Angle;
+use crate::utils::units::AngularVelocity;
+use crate::utils::units::Distance;
+use crate::utils::units::LinearVelocity;
 use beet::prelude::*;
 
 /// Marker for the Alvik robot root entity. Its wheels, servos and LEDs are
@@ -98,7 +98,7 @@ impl Servo {
 // --- LEDs -------------------------------------------------------------------
 
 /// Backend marker: this LED entity is one of the Alvik's two RGB UI LEDs,
-/// written over UART. Pair it with a [`LedColor`](crate::led::LedColor); the
+/// written over UART. Pair it with a [`LedColor`](crate::utils::led::LedColor); the
 /// colour is thresholded per channel into the aggregated LED byte by
 /// [`flush_alvik_leds`](super::systems::flush_alvik_leds).
 #[derive(Component, Clone, Copy)]

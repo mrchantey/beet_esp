@@ -195,7 +195,7 @@ unsafe fn init_mem(
 /// matters: logging first, then [`init_mem`] (PSRAM-first, also the
 /// [`RECLAIMED`] internal region), then stash the peripherals for
 /// [`Esp32Plugin`](crate::esp32_plugin)'s `PreStartup` system, record the PSRAM
-/// info for [`HealthPlugin`](crate::health), and finally paint the stack +
+/// info for [`HealthPlugin`](crate::esp32_utils::health), and finally paint the stack +
 /// capture the boot snapshot before anything allocates.
 ///
 /// Call once, from the entry macro, at the top of `main` before `App::new()`.
@@ -219,8 +219,8 @@ pub unsafe fn init_esp<const N: usize>(reserve: *mut Reserve<N>) {
     );
     let (peripherals, psram) = unsafe { init_mem(reserve.region(), reclaimed) };
     crate::esp32_plugin::stash_peripherals(peripherals);
-    crate::health::set_psram_info(psram);
+    crate::esp32_utils::health::set_psram_info(psram);
     // Paint the stack and record the boot memory snapshot, before anything
     // allocates. Picked up by `HealthPlugin` in `PreStartup`.
-    crate::health::on_boot();
+    crate::esp32_utils::health::on_boot();
 }

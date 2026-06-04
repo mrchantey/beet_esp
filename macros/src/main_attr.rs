@@ -128,15 +128,15 @@ pub fn impl_main_attr(
         // xtensa-lx-rt `#[entry]` that `#[esp_hal::main]` wraps rewrites any
         // `static mut` inside the entry fn into a `&'static mut`, which would
         // change its type out from under `init_esp`.
-        static mut __BEET_ESP_RESERVE: ::beet_esp::mem::Reserve<{ #internal_reserve }> =
-            ::beet_esp::mem::Reserve::uninit();
+        static mut __BEET_ESP_RESERVE: ::beet_esp::esp32_utils::mem::Reserve<{ #internal_reserve }> =
+            ::beet_esp::esp32_utils::mem::Reserve::uninit();
 
         #(#attrs)*
         #[::beet_esp::esp_hal::main]
         fn main() -> ! {
             // Hand the reserve to `mem::init_esp`, which does the actual bring-up
             // — RTT/`defmt` logging, PSRAM + heap registration, the boot snapshot.
-            unsafe { ::beet_esp::mem::init_esp(&raw mut __BEET_ESP_RESERVE) };
+            unsafe { ::beet_esp::esp32_utils::mem::init_esp(&raw mut __BEET_ESP_RESERVE) };
 
             #block
 

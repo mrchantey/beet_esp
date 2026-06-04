@@ -41,7 +41,7 @@
 //!
 //! The socket IO lives on embassy (it awaits silicon); the parse + reconcile is
 //! the agnostic engine running in the world. The two are decoupled by the
-//! `static` [`Queue`], exactly like the phase-1 [`AsyncBridge`](crate::async_bridge)
+//! `static` [`Queue`], exactly like the phase-1 [`AsyncBridge`](crate::esp32_utils::async_bridge)
 //! drivers — no `&mut World` ever crosses onto the embassy task.
 //!
 //! ## A note on the trait vs. embassy-net's buffer model
@@ -62,9 +62,9 @@
 //! and are what [`browser_task`] actually drives, so the seam is real and used —
 //! not bypassed by a parallel hand-rolled loop.
 
-use crate::async_bridge::Queue;
-use crate::async_bridge::drain_to_observers;
-use crate::async_bridge::spawn_driver;
+use crate::esp32_utils::async_bridge::Queue;
+use crate::esp32_utils::async_bridge::drain_to_observers;
+use crate::esp32_utils::async_bridge::spawn_driver;
 use beet::prelude::*;
 use core::net::Ipv4Addr;
 use core::net::SocketAddr;
@@ -131,7 +131,7 @@ struct BrowserStarted;
 /// app build (before `start_wifi` publishes the `Stack`) is picked up on the
 /// first frame the `Stack` appears, and one spawned later starts on its next
 /// frame. Exclusive so it can read the non-send [`Stack`]/[`Spawner`] (the same
-/// access as [`start_wifi`](super::start_wifi) and [`spawn_clock`](crate::clock)).
+/// access as [`start_wifi`](super::start_wifi) and [`spawn_clock`](crate::esp32_utils::clock)).
 fn start_pending_browsers(world: &mut World) {
     // Collect the (entity, service_type) of every browser not yet started. Cheap
     // early-out in the steady state once all are marked.

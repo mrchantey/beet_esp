@@ -22,8 +22,8 @@ fn link_quickjs_runtime() {
     // Compile the newlib/clock shims with the same toolchain (so struct layouts
     // match) and the target CFLAGS (`-mlongcalls` etc). cc picks up CC/CFLAGS
     // from `.cargo/config.toml`'s `[env]`.
-    println!("cargo:rerun-if-changed=src/quickjs_shim.c");
-    cc::Build::new().file("src/quickjs_shim.c").compile("quickjs_shim");
+    println!("cargo:rerun-if-changed=src/scripting/quickjs_shim.c");
+    cc::Build::new().file("src/scripting/quickjs_shim.c").compile("quickjs_shim");
 
     // ask the esp32s3 gcc driver where its libgcc / newlib archives live.
     let cc = std::env::var("CC_xtensa_esp32s3_none_elf")

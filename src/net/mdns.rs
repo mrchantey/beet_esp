@@ -40,7 +40,7 @@
 //! `A` records only (`hostname.local -> ipv4`). No `_http._tcp.local` service
 //! record (see the module note below for the rationale). IPv4 multicast only.
 
-use crate::async_bridge::AsyncBridge;
+use crate::esp32_utils::async_bridge::AsyncBridge;
 use beet::prelude::*;
 use defmt::info;
 use defmt::warn;

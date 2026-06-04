@@ -152,8 +152,8 @@ pub use led_step::*;
 #[cfg(feature = "led")]
 mod led_step {
     use super::*;
-    use crate::led::LedColor;
-    use crate::led::Ws2812Led;
+    use crate::utils::led::LedColor;
+    use crate::utils::led::Ws2812Led;
     use defmt::info;
     use defmt::warn;
 

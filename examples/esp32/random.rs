@@ -5,7 +5,7 @@
 //! `getrandom` backend. getrandom 0.3 ships none for `*-none-elf`, so this crate
 //! selects getrandom's `custom` backend (`getrandom_backend="custom"` in
 //! `.cargo/config.toml`) and supplies the entropy symbol in
-//! [`beet_esp::random`] — backed by the esp-hal hardware RNG.
+//! [`beet_esp::utils::random`] — backed by the esp-hal hardware RNG.
 //!
 //! This example exercises both halves:
 //! - [`seeded_is_reproducible`]: the same seed yields the same sequence (the
@@ -40,7 +40,7 @@ fn main() {
 
 /// Exercises both halves of [`RandomSource`]: the deterministic seeded core and
 /// the entropy-seeded `default()` (which routes through the getrandom custom
-/// backend in [`beet_esp::random`] to the esp-hal hardware RNG).
+/// backend in [`beet_esp::utils::random`] to the esp-hal hardware RNG).
 fn random_demo() {
     // -- seeded: same seed, same sequence (no entropy needed) --
     let mut a = RandomSource::from_seed(7);

@@ -16,7 +16,7 @@
 //! Requires [`WifiPlugin`](crate::wifi::WifiPlugin) (it shares the network
 //! [`Stack`]); add `ClockPlugin` after it.
 
-use crate::async_bridge::spawn_driver;
+use crate::esp32_utils::async_bridge::spawn_driver;
 use beet::prelude::*;
 use core::cell::Cell;
 use core::sync::atomic::AtomicBool;

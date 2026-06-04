@@ -22,9 +22,9 @@
 //! [`Response`] comes back on the reply slot. Awaiting `exchange` directly on an
 //! embassy task would live-lock (see `async_utils`), hence the bridge.
 
-use crate::async_bridge::AsyncBridge;
-use crate::async_bridge::drain_to_async;
-use crate::async_bridge::spawn_driver;
+use crate::esp32_utils::async_bridge::AsyncBridge;
+use crate::esp32_utils::async_bridge::drain_to_async;
+use crate::esp32_utils::async_bridge::spawn_driver;
 use beet::prelude::*;
 use defmt::info;
 use defmt::warn;

@@ -8,7 +8,7 @@ mod main_attr;
 ///
 /// Emits the esp-idf app descriptor, an `#[esp_hal::main] fn main() -> !`, the
 /// RTT/`defmt` and memory setup (PSRAM as the default bulk pool, internal SRAM
-/// reserved for the radio/hot use — see [`beet_esp::mem`]), the user's body, and
+/// reserved for the radio/hot use — see [`beet_esp::esp32_utils::mem`]), the user's body, and
 /// the trailing divergence the esp runner needs.
 ///
 /// # Config

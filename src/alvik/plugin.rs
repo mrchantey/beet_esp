@@ -5,15 +5,15 @@ use crate::alvik::driver;
 use crate::alvik::events;
 use crate::alvik::systems;
 use crate::alvik::types::Side;
-use crate::led::LedColor;
-use crate::units::Angle;
-use crate::units::AngularVelocity;
-use crate::units::LinearVelocity;
+use crate::utils::led::LedColor;
+use crate::utils::units::Angle;
+use crate::utils::units::AngularVelocity;
+use crate::utils::units::LinearVelocity;
 use beet::prelude::*;
 
 /// Installs the Alvik driver and transport, and spawns the robot entity tree.
 /// Add after [`Esp32Plugin`](crate::esp32_plugin) (which exposes UART1 + the
-/// Alvik GPIOs) and [`LedPlugin`](crate::led::LedPlugin) (the `AlvikLed` backend
+/// Alvik GPIOs) and [`LedPlugin`](crate::utils::led::LedPlugin) (the `AlvikLed` backend
 /// reuses [`LedColor`]).
 ///
 /// The plugin spawns the robot itself, so apps just add the plugin. To run logic

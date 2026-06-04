@@ -10,9 +10,9 @@ use crate::alvik::driver::ALVIK_STATE;
 use crate::alvik::protocol::Command;
 use crate::alvik::protocol::Status;
 use crate::alvik::types::Side;
-use crate::led::LedColor;
-use crate::units::AngularVelocity;
-use crate::units::LinearVelocity;
+use crate::utils::led::LedColor;
+use crate::utils::units::AngularVelocity;
+use crate::utils::units::LinearVelocity;
 use beet::prelude::*;
 
 /// Queue a per-wheel speed/position command whenever a [`WheelTarget`] changes.

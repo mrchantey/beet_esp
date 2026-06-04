@@ -1,18 +1,18 @@
 //! The Alvik's scene-carried rhai control step. The route's behaviour is a
 //! program POSTed over the wire: each tick [`AlvikScriptStep`] gathers a sensor
 //! snapshot, runs the entity's [`Script`] via the shared
-//! [`run_script`](crate::scene::script::run_script), and applies the drive/LED
+//! [`run_script`](crate::scripting::rhai::run_script), and applies the drive/LED
 //! output it returns. The script and its persistent `state` map are the generic
 //! [`Script`] component; only the input gathered and the output applied are
-//! Alvik-specific (vs the WS2812 [`LedScriptStep`](crate::scene::LedScriptStep)).
+//! Alvik-specific (vs the WS2812 [`LedScriptStep`](crate::scripting::rhai::LedScriptStep)).
 
 use crate::prelude::*;
 // Explicit import: disambiguates our scene [`Script`] from beet's own `Script`
 // action, both of which the glob imports below pull into scope under `rhai`.
-use crate::scene::script::Script;
-use crate::scene::script::ScriptMap;
-use crate::scene::script::run_script;
-use crate::scene::script::unpack_color;
+use crate::scripting::rhai::Script;
+use crate::scripting::rhai::ScriptMap;
+use crate::scripting::rhai::run_script;
+use crate::scripting::rhai::unpack_color;
 use beet::prelude::*;
 use defmt::info;
 use defmt::warn;

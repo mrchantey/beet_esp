@@ -40,7 +40,7 @@
 //! bridge needs, and exactly what embassy's interrupt-driven run-loop is not
 //! built to offer. So embassy and this pool aren't competing: embassy drives the
 //! things that await silicon (the LED/Wi-Fi drivers, and `app.update()` itself
-//! — see [`async_bridge`](crate::async_bridge)); this pool drives the things that await the
+//! — see [`async_bridge`](crate::esp32_utils::async_bridge)); this pool drives the things that await the
 //! `World`.
 //!
 //! The one wrinkle is [`AssertSendSync`]: bevy keys its `spawn_local` `Send +

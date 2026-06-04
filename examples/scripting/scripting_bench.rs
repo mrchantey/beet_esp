@@ -13,7 +13,7 @@
 #![no_main]
 
 use beet::prelude::*;
-use beet_esp::health;
+use beet_esp::esp32_utils::health;
 use beet_esp::prelude::*;
 use defmt::info;
 use esp_hal::time::Instant;

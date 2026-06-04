@@ -205,7 +205,7 @@ pub fn despawn_scene_roots(roots: Query<Entity, With<SceneRoot>>, mut commands: 
 /// Generic [`ResetScene`] handler: turn every LED off. Domain plugins add their
 /// own observers to stop their actuators (the Alvik its motors).
 #[cfg(feature = "led")]
-pub fn reset_leds(_ev: On<ResetScene>, mut leds: Query<&mut crate::led::LedColor>) {
+pub fn reset_leds(_ev: On<ResetScene>, mut leds: Query<&mut crate::utils::led::LedColor>) {
     for mut color in &mut leds {
         color.0 = Color::BLACK;
     }

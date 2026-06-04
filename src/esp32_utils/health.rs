@@ -5,7 +5,7 @@
 //! out: the **heap** ([`esp_alloc`]) and the **main-task stack**.
 //!
 //! Three snapshots tell the story:
-//! - **boot** — taken in [`on_boot`] (from [`mem::init_esp`](crate::mem::init_esp), before
+//! - **boot** — taken in [`on_boot`] (from [`mem::init_esp`](crate::esp32_utils::mem::init_esp), before
 //!   `App::new()`), stored in a static. Heap is ~empty here, and this is also
 //!   where the stack is *painted* (see below).
 //! - **pre-startup** — taken by [`HealthPlugin`] in `PreStartup`, after the chip
@@ -192,25 +192,25 @@ pub fn snapshot() -> MemSnapshot {
 static BOOT: critical_section::Mutex<core::cell::Cell<Option<MemSnapshot>>> =
     critical_section::Mutex::new(core::cell::Cell::new(None));
 
-/// PSRAM bring-up result, recorded by [`mem::init_esp`](crate::mem::init_esp) via
+/// PSRAM bring-up result, recorded by [`mem::init_esp`](crate::esp32_utils::mem::init_esp) via
 /// [`set_psram_info`] so the report can show whether the bulk pool came up and
 /// how large it is.
-static PSRAM: critical_section::Mutex<core::cell::Cell<Option<crate::mem::PsramInfo>>> =
+static PSRAM: critical_section::Mutex<core::cell::Cell<Option<crate::esp32_utils::mem::PsramInfo>>> =
     critical_section::Mutex::new(core::cell::Cell::new(None));
 
 /// Record the PSRAM bring-up result. Called from
-/// [`mem::init_esp`](crate::mem::init_esp) after it maps PSRAM.
-pub fn set_psram_info(info: crate::mem::PsramInfo) {
+/// [`mem::init_esp`](crate::esp32_utils::mem::init_esp) after it maps PSRAM.
+pub fn set_psram_info(info: crate::esp32_utils::mem::PsramInfo) {
     critical_section::with(|cs| PSRAM.borrow(cs).set(Some(info)));
 }
 
 /// Read the recorded PSRAM info, if any.
-fn psram_info() -> Option<crate::mem::PsramInfo> {
+fn psram_info() -> Option<crate::esp32_utils::mem::PsramInfo> {
     critical_section::with(|cs| PSRAM.borrow(cs).get())
 }
 
 /// Paint the stack and record the boot snapshot. Called from
-/// [`mem::init_esp`](crate::mem::init_esp) at the top of `main`, before `App::new()`.
+/// [`mem::init_esp`](crate::esp32_utils::mem::init_esp) at the top of `main`, before `App::new()`.
 pub fn on_boot() {
     paint_stack();
     let snap = snapshot();
