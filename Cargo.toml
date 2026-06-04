@@ -184,6 +184,11 @@ name             = "scripting_quickjs"
 path             = "examples/scripting_quickjs.rs"
 required-features = ["quickjs"]
 
+[[example]]
+name             = "scripting_watchdog"
+path             = "examples/scripting_watchdog.rs"
+required-features = ["quickjs"]
+
 # Engine-agnostic: builds against whichever backend is enabled (quickjs or rhai),
 # selected by cfg the same way `ScriptLanguage::default()` picks.
 [[example]]

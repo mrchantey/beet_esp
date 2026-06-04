@@ -34,10 +34,40 @@ pub impl Runtime {
     /// Like [`Runtime::new`], but caps the stack-overflow guard to a budget that
     /// fits the esp main-task stack (see [`ESP_STACK_LIMIT`]). Prefer this over
     /// [`Runtime::new`] on device so deep scripts fail cleanly.
+    ///
+    /// Additionally sets a default deadline of two seconds.
     fn new_esp() -> rquickjs::Result<Runtime> {
         let runtime = Runtime::new()?;
         runtime.set_max_stack_size(ESP_STACK_LIMIT);
+        runtime.set_deadline(Duration::from_secs(2));
         Ok(runtime)
+    }
+
+    /// Install an interrupt handler that aborts a synchronous script once it has
+    /// run for longer than `budget`. QuickJS calls the handler periodically while
+    /// executing; returning `true` raises an `InterruptError`, so a runaway loop
+    /// (`while (true) {}`) returns an `Err` instead of wedging the executor.
+    ///
+    /// The budget starts now, so call this just before the [`eval`] it guards
+    /// (or reinstall per eval). This is the hook to feed a watchdog from too, if
+    /// one is ever armed — note esp-hal's `init` disables all hardware
+    /// watchdogs, so today nothing resets the chip for a long sync script; this
+    /// guard is what bounds them. Pass `None` via [`clear_deadline`] to remove it.
+    fn set_deadline(&self, budget: core::time::Duration) {
+        let start_us = Instant::now().duration_since_epoch().as_micros();
+        let budget_us = budget.as_micros() as u64;
+        self.set_interrupt_handler(Some(alloc::boxed::Box::new(move || {
+            Instant::now()
+                .duration_since_epoch()
+                .as_micros()
+                .saturating_sub(start_us)
+                >= budget_us
+        })));
+    }
+
+    /// Remove any deadline installed by [`set_deadline`].
+    fn clear_deadline(&self) {
+        self.set_interrupt_handler(None);
     }
 }
 
@@ -93,9 +123,7 @@ fn render(args: Rest<Value<'_>>) -> String {
                 .ok()
                 .flatten()
                 .and_then(|json| json.to_string().ok())
-                .or_else(|| {
-                    value.get::<Coerced<String>>().ok().map(|str| str.0)
-                })
+                .or_else(|| value.get::<Coerced<String>>().ok().map(|str| str.0))
                 .unwrap_or_default()
         })
         .collect::<alloc::vec::Vec<_>>()
@@ -107,7 +135,10 @@ fn render(args: Rest<Value<'_>>) -> String {
 /// it is valid as soon as `mem::init_esp` has run — no embassy driver required.
 #[unsafe(no_mangle)]
 extern "C" fn beet_esp_monotonic_ns() -> u64 {
-    Instant::now().duration_since_epoch().as_micros().saturating_mul(1000)
+    Instant::now()
+        .duration_since_epoch()
+        .as_micros()
+        .saturating_mul(1000)
 }
 
 /// Wall-clock time in microseconds since the Unix epoch, backing `Date`
