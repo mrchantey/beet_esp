@@ -12,6 +12,7 @@
 				"cargo": {
 					"features": ["alvik"],
 					"allTargets": false,
+					"noDefaultFeatures": true,
 					"target": "xtensa-esp32s3-none-elf",
 					"extraEnv": {
 						"RUSTUP_TOOLCHAIN": "esp",

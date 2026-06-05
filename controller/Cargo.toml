@@ -10,7 +10,7 @@ path = "src/main.rs"
 [dependencies]
 # The same beet as the firmware, but the std `router` (CLI dispatch) + a real
 # HTTP client (`ureq` + `rustls-tls`) so route actions can fetch the device.
-beet = { path = "/home/pete/me/worktrees/beet/embedded/beet", default-features = false, features = [
+beet = { path = "/home/pete/me/worktrees/beet/apps/beet", default-features = false, features = [
   "router",
   "ureq",
   "rustls-tls",

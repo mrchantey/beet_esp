@@ -235,7 +235,7 @@ rquickjs = { version = "0.12", default-features = false, features = [
   "bindgen",
 ], optional = true }
 # Local beet worktree, no_std build exposing bevy_color etc.
-beet = { path = "/home/pete/me/worktrees/beet/embedded/beet", default-features = false, features = [
+beet = { path = "/home/pete/me/worktrees/beet/apps/beet", default-features = false, features = [
   "embedded",
   "bevy_color",
   "world_serde",
