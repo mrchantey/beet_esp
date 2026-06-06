@@ -82,12 +82,29 @@ impl WifiPlugin {
         Self::new(env!("WIFI_SSID"), env!("WIFI_PASSWORD"))
     }
 
-    /// Assign a static IPv4 instead of DHCP, so the device is reachable at a
-    /// known address. A `/24` is assumed with the gateway at `.1`.
-    pub fn with_static_ip(mut self, ip: [u8; 4]) -> Self {
-        self.static_ip = Some(ip);
+    /// Assign a static IPv4 from the `WIFI_STATIC_IP` env var (dotted, eg
+    /// `192.168.0.50`), which `build.rs` exposes from the local `.env`. Absent,
+    /// the station falls back to DHCP. A `/24` is assumed with the gateway at
+    /// `.1`.
+    pub fn with_env_static_ip(mut self) -> Self {
+        self.static_ip = option_env!("WIFI_STATIC_IP").map(parse_ipv4);
         self
     }
+}
+
+/// Parse a dotted IPv4 string (eg `192.168.0.50`) into octets. Panics on a
+/// malformed address — the value is a compile-time `.env` literal, so a bad one
+/// is a build-config error.
+fn parse_ipv4(addr: &str) -> [u8; 4] {
+    let mut octets = [0u8; 4];
+    let mut parts = addr.split('.');
+    for octet in octets.iter_mut() {
+        *octet = parts
+            .next()
+            .and_then(|part| part.trim().parse().ok())
+            .expect("WIFI_STATIC_IP must be a dotted IPv4 like 192.168.0.50");
+    }
+    octets
 }
 
 impl Plugin for WifiPlugin {

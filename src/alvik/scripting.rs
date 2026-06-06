@@ -17,9 +17,6 @@ use beet::prelude::*;
 use defmt::info;
 use defmt::warn;
 
-extern crate alloc;
-use alloc::string::String;
-
 /// Behaviour-tree leaf: gather the sensor snapshot, run this entity's
 /// [`Script`], apply the drive + LED output. Loop it with [`Repeat`] for a live
 /// controller. The script reads `input.*` (depth, line, yaw, touch, elapsed)
@@ -90,37 +87,3 @@ pub fn AlvikScriptStep(
     Outcome::PASS
 }
 
-/// A demo script: back off when something is within 20 cm, otherwise cruise,
-/// pulsing the LEDs from a counter held in `state`.
-const DEMO_SCRIPT: &str = r#"
-let t = if "t" in state { state.t } else { 0 };
-let near = input.depth_mm > 0 && input.depth_mm < 200;
-let bright = if t % 6 < 3 { 255 } else { 20 };
-#{
-    linear: if near { -40.0 } else { 50.0 },
-    angular: if near { 90.0 } else { 0.0 },
-    led_left: bright * 256,
-    led_right: bright,
-    state: #{ t: t + 1 },
-}
-"#;
-
-/// `script` — repeat the demo [`Script`] every 100 ms.
-pub fn script_scene() -> impl Bundle {
-    (ActionRoute, PathPartial::new("script"), children![(
-        Repeat::new(),
-        children![(
-            Sequence::new(),
-            children![
-                (
-                    AlvikScriptStep,
-                    Script {
-                        source: String::from(DEMO_SCRIPT),
-                        state: ScriptMap::default(),
-                    },
-                ),
-                EndInDuration::pass(Duration::from_millis(100)),
-            ],
-        )],
-    )])
-}

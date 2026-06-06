@@ -140,6 +140,14 @@ required-features = ["router"]
 name             = "world_serde"
 path             = "examples/app/world_serde.rs"
 
+# Dumps the canonical example scenes as JSON over defmt (the alvik ones gated on
+# `alvik`), to be saved under `scenes/`. The scene types live in this no_std
+# crate, so the scenes are built on-chip.
+[[example]]
+name             = "export_scenes"
+path             = "examples/app/export_scenes.rs"
+required-features = ["led", "router", "rhai"]
+
 # --- examples/esp32 ---
 [[example]]
 name             = "random"

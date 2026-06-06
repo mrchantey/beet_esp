@@ -202,42 +202,6 @@ mod led_step {
         Outcome::PASS
     }
 
-    /// A demo LED script: cycle red/green/blue from the elapsed time, counting
-    /// the ticks it has run in `state` to show the persistent map at work.
-    const DEMO_SCRIPT: &str = r#"
-let count = if "count" in state { state.count } else { 0 };
-let phase = (input.elapsed_ms / 500) % 3;
-let led = if phase == 0 { 0xff0000 } else if phase == 1 { 0x00ff00 } else { 0x0000ff };
-#{
-    led: led,
-    state: #{ count: count + 1 },
-}
-"#;
-
-    /// `led-script` — repeat the demo LED [`Script`] every 100 ms.
-    pub fn led_script_scene() -> impl Bundle {
-        (
-            ActionRoute,
-            PathPartial::new("led-script"),
-            children![(
-                Repeat::new(),
-                children![(
-                    Sequence::new(),
-                    children![
-                        (
-                            LedScriptStep,
-                            Script {
-                                source: String::from(DEMO_SCRIPT),
-                                state: ScriptMap::default(),
-                            },
-                        ),
-                        EndInDuration::pass(Duration::from_millis(100)),
-                    ],
-                )],
-            )],
-        )
-    }
-
     /// Pack a [`Color`] into a `0xRRGGBB` integer.
     pub fn pack_color(color: Color) -> u32 {
         let srgb = color.to_srgba_u8();

@@ -5,7 +5,7 @@
 //! `clear`, `reset`, `dump` — and loads its real routes over the wire. A scene
 //! (a reflection-serialized slice of the ECS) is POSTed to `/load`; from that
 //! moment the scene's routes *are* the API. The behaviours it wires
-//! ([`ActionRoute`], the behaviour-tree leaves, rhai [`Script`]s) live upstream
+//! ([`SpawnAction`], the behaviour-tree leaves, rhai [`Script`]s) live upstream
 //! in [`beet::router`] and in [`beet_esp::scene`]; the scene supplies only which
 //! behaviour sits at which path.
 //!
@@ -25,11 +25,11 @@
 //! curl http://192.168.86.222:8080/reset            # stop hardware
 //! ```
 //!
-//! Or drive it from the host with the upstream `beet` remote loader:
-//! `beet load scenes/led-script.json`.
+//! Or drive it from the host with the upstream `beet` CLI:
+//! `beet load scenes/led-script.json` (with `BEET_REMOTE_URL` set to the device).
 //!
-//! On boot the firmware logs canonical example scenes over defmt; save one to
-//! `scene.json` to try `/load`.
+//! The canonical example scenes live in the `export_scenes` example, which dumps
+//! each as JSON over defmt; save one under `scenes/` to try `/load`.
 //!
 //! Run with (bare ESP32, the default): `cargo run --release`
 //!
@@ -42,17 +42,15 @@
 use beet::prelude::*;
 use beet_esp::prelude::*;
 
-/// Static IPv4 the device binds to, so a controller reaches it at a fixed
-/// address with no lookup.
-const SCENE_IP: [u8; 4] = [192, 168, 86, 222];
-
 #[beet_esp::main]
 fn main() {
     let mut app = App::new();
     app.add_plugins((
         Esp32Plugin,
         HealthPlugin,
-        WifiPlugin::from_env().with_static_ip(SCENE_IP),
+        // The static IPv4 comes from the `WIFI_STATIC_IP` env var, so a
+        // controller reaches the device at a fixed address with no lookup.
+        WifiPlugin::from_env().with_env_static_ip(),
         RouterPlugin,
         EspScenePlugin,
     ));
@@ -70,27 +68,16 @@ fn main() {
 
     // The bootstrap server: only the meta-routes. The real routes arrive via
     // `/load`. `BeetSceneRoot`s get reparented here and picked up by the router.
-    app.add_systems(Startup, log_scenes)
-        .spawn((
-            HttpServer::new(8080),
-            default_router(),
-            children![
-                exchange_route("", Home),
-                exchange_route("load", LoadScene),
-                exchange_route("clear", ClearScene),
-                exchange_route("reset", Reset),
-                exchange_route("dump", DumpScene),
-            ],
-        ))
-        .run();
-}
-
-/// Log the canonical example scenes over defmt on boot, so each can be saved and
-/// POSTed to `/load`.
-#[allow(unused_variables)]
-fn log_scenes(world: &mut World) {
-    #[cfg(all(feature = "rhai", feature = "led"))]
-    log_scene(world, "led-script", led_script_scene());
-    #[cfg(feature = "alvik")]
-    log_alvik_scenes(world);
+    // The router's default not-found middleware serves a route listing at `/`.
+    app.spawn((
+        HttpServer::new(8080),
+        default_router(),
+        children![
+            exchange_route("load", LoadScene),
+            exchange_route("clear", ClearScene),
+            exchange_route("reset", Reset),
+            exchange_route("dump", DumpScene),
+        ],
+    ))
+    .run();
 }
