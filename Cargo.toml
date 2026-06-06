@@ -16,7 +16,7 @@ test = false
 # `alvik` on top. Skipped for feature combos that omit them.
 [[bin]]
 name              = "beet_esp"
-path              = "src/bin/main.rs"
+path              = "src/main.rs"
 required-features = ["led", "router"]
 
 [features]

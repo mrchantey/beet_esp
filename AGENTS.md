@@ -29,7 +29,7 @@ Set at generation time — don't change without a reason.
 - **Tests:** `embedded-test` (runs on hardware).
 
 The exact generator options are recorded in a `generator parameters:` comment at
-the top of `src/bin/main.rs`.
+the top of `src/main.rs`.
 
 ## Environment setup (required before building)
 
