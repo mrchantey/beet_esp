@@ -1,8 +1,8 @@
 //! Reflectable Alvik route markers: the one-shot behaviours a scene can wire to
 //! an HTTP path. Each is an `#[action(route)]` component, so a loaded scene
 //! binds it to a path and the firmware dispatches matching requests to it. The
-//! hardware-agnostic [`ActionRoute`](crate::scene::ActionRoute) lives with the
-//! generic scene server.
+//! hardware-agnostic [`ActionRoute`] lives upstream with the generic scene
+//! server in [`beet::router`].
 
 use crate::prelude::*;
 use beet::prelude::*;

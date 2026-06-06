@@ -11,8 +11,18 @@ name    = "hello_test"
 [lib]
 test = false
 
+# The default binary: the scene-server firmware (`cargo run`). Needs the LED +
+# router stack; the `default` feature set turns these on, and an Alvik build adds
+# `alvik` on top. Skipped for feature combos that omit them.
+[[bin]]
+name              = "beet_esp"
+path              = "src/bin/main.rs"
+required-features = ["led", "router"]
+
 [features]
-default = ["coex"]
+# The default `cargo run` target: the scene-server firmware on a bare ESP32
+# breakout (on-board WS2812 driven by a rhai `Script`). `router` pulls in `wifi`.
+default = ["led", "router", "rhai"]
 # On-board WS2812 LED over RMT (the `led` module). No extra crates.
 led = []
 # Arduino Alvik robot driven over UART1 (the `alvik` module). No extra crates —
@@ -63,7 +73,8 @@ rhai = ["scripting", "beet/rhai", "dep:rhai"]
 # `rust-alloc` (and no `std`) selects the bare-metal allocator mode, routing the
 # C engine's allocations through esp-alloc's global allocator.
 quickjs = ["scripting", "beet/quickjs", "dep:rquickjs"]
-# Wi-Fi + BLE coexistence — both radios at once. Required by the default bin.
+# Wi-Fi + BLE coexistence — both radios at once. Enable for builds that need BLE
+# alongside Wi-Fi; the default scene-server bin uses Wi-Fi only.
 coex = ["wifi", "ble", "esp-radio/coex"]
 
 # Examples are grouped into subdirectories (led/, net/, esp32/, app/,
@@ -186,15 +197,6 @@ required-features = ["alvik"]
 name             = "alvik-rc"
 path             = "examples/alvik/rc.rs"
 required-features = ["alvik", "router"]
-
-# The scene server is hardware-agnostic. Runs on a bare ESP32 (on-board WS2812
-# + a rhai `Script`) with
-# `led,router,rhai`, or on an Alvik with `alvik,router,rhai` (which adds the
-# robot routes). `led` + `router` is the common floor both builds share.
-[[example]]
-name             = "scenes"
-path             = "examples/app/scenes.rs"
-required-features = ["led", "router"]
 
 # Engine-agnostic smoke test: builds against whichever backend is enabled
 # (quickjs or rhai), selected by cfg the same way `ScriptLanguage::default()` picks.

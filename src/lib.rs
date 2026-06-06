@@ -23,8 +23,9 @@ pub mod esp32_utils;
 pub mod scripting;
 // Cross-cutting utilities: typed quantities, the WS2812 LED, the RNG backend.
 pub mod utils;
-// The hardware-agnostic scene server: bootstrap routes that load their real
-// routes over the wire. Needs beet's no_std router, so gated on `router`.
+// ESP-specific scene wiring on top of the upstream scene server (which loads the
+// device's real routes over the wire). Needs beet's no_std router, so gated on
+// `router`.
 #[cfg(feature = "router")]
 pub mod scene;
 #[cfg(feature = "wifi")]

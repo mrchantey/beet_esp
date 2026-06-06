@@ -1,12 +1,11 @@
 //! Alvik scene support: the [`AlvikScenePlugin`] registration, the Alvik
 //! [`ResetScene`] handler, and the canonical example scenes (rc, dance,
 //! line-follower, roomba, script). The hardware-agnostic scene server and its
-//! meta-routes ([`LoadScene`], [`ClearScene`], …) live in [`crate::scene`]; here
-//! are only the Alvik-specific routes/actions and the scenes that wire them.
+//! meta-routes ([`LoadScene`], [`ClearScene`], …) live upstream in
+//! [`beet::router`]; here are only the Alvik-specific routes/actions and the
+//! scenes that wire them.
 
 use crate::prelude::*;
-use crate::scene::server::ResetScene;
-use crate::scene::server::log_scene;
 use beet::prelude::*;
 use defmt::Debug2Format;
 use defmt::info;
@@ -18,8 +17,8 @@ use alloc::string::String;
 /// Registers every Alvik route/action/scene marker a loaded scene can carry, and
 /// adds the Alvik [`ResetScene`] handler (stop motors + wheels). The generic
 /// types (`ActionRoute`, `EndInDuration`, `Script`) are registered by
-/// [`SceneServerPlugin`](crate::scene::SceneServerPlugin), which adds this
-/// plugin under the `alvik` feature.
+/// [`EspScenePlugin`](crate::scene::EspScenePlugin), which adds this plugin
+/// under the `alvik` feature.
 pub struct AlvikScenePlugin;
 
 impl Plugin for AlvikScenePlugin {
@@ -38,7 +37,7 @@ impl Plugin for AlvikScenePlugin {
 
 /// Alvik [`ResetScene`] handler: stop the motors and wheels — the safe resting
 /// state. The UI LEDs are turned off by the generic
-/// [`reset_leds`](crate::scene::server::reset_leds).
+/// [`reset_leds`](crate::scene::reset_leds).
 fn reset_robot(
     _ev: On<ResetScene>,
     mut drive: Single<&mut DifferentialDrive, With<AlvikRobot>>,

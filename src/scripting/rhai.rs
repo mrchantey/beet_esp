@@ -217,7 +217,7 @@ let led = if phase == 0 { 0xff0000 } else if phase == 1 { 0x00ff00 } else { 0x00
     /// `led-script` — repeat the demo LED [`Script`] every 100 ms.
     pub fn led_script_scene() -> impl Bundle {
         (
-            crate::scene::routes::ActionRoute,
+            ActionRoute,
             PathPartial::new("led-script"),
             children![(
                 Repeat::new(),

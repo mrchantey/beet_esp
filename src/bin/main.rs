@@ -1,13 +1,13 @@
 //! Scene-driven firmware: the device's API is *sent to it* as a beet scene, not
-//! baked in.
+//! baked in. This is the default binary for the crate — `cargo run` flashes it.
 //!
 //! The firmware ships a tiny bootstrap server with only meta-routes — `load`,
 //! `clear`, `reset`, `dump` — and loads its real routes over the wire. A scene
 //! (a reflection-serialized slice of the ECS) is POSTed to `/load`; from that
 //! moment the scene's routes *are* the API. The behaviours it wires
-//! ([`ActionRoute`], the behaviour-tree leaves, rhai [`Script`]s) all live in
-//! [`beet_esp::scene`]; the scene supplies only which behaviour sits at which
-//! path.
+//! ([`ActionRoute`], the behaviour-tree leaves, rhai [`Script`]s) live upstream
+//! in [`beet::router`] and in [`beet_esp::scene`]; the scene supplies only which
+//! behaviour sits at which path.
 //!
 //! This runs on a bare ESP32 breakout: the on-board WS2812 is driven by a rhai
 //! `Script` (the `led-script` scene reads the elapsed tick + current colour and
@@ -25,14 +25,16 @@
 //! curl http://192.168.86.222:8080/reset            # stop hardware
 //! ```
 //!
+//! Or drive it from the host with the upstream `beet` remote loader:
+//! `beet load scenes/led-script.json`.
+//!
 //! On boot the firmware logs canonical example scenes over defmt; save one to
 //! `scene.json` to try `/load`.
 //!
-//! Run with (bare ESP32):
-//! `cargo run --release --no-default-features --features led,router,rhai --example scenes`
+//! Run with (bare ESP32, the default): `cargo run --release`
 //!
 //! Run with (Alvik):
-//! `cargo run --release --no-default-features --features alvik,router,rhai --example scenes`
+//! `cargo run --release --no-default-features --features alvik,router,rhai`
 
 #![no_std]
 #![no_main]
@@ -52,7 +54,7 @@ fn main() {
         HealthPlugin,
         WifiPlugin::from_env().with_static_ip(SCENE_IP),
         RouterPlugin,
-        SceneServerPlugin,
+        EspScenePlugin,
     ));
 
     // The Alvik build drives the robot; the bare build drives the on-board
@@ -67,7 +69,7 @@ fn main() {
     }
 
     // The bootstrap server: only the meta-routes. The real routes arrive via
-    // `/load`. `SceneRoot`s get reparented here and picked up by the router.
+    // `/load`. `BeetSceneRoot`s get reparented here and picked up by the router.
     app.add_systems(Startup, log_scenes)
         .spawn((
             HttpServer::new(8080),

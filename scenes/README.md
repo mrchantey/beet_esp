@@ -1,16 +1,19 @@
 # Scenes
 
 Each file here is a beet *scene*: a reflection-serialized slice of the ECS that
-the `scenes` firmware loads over HTTP to become its live API. A scene is not
+the firmware (`cargo run`) loads over HTTP to become its live API. A scene is not
 config data, it *is* the device's routes and behaviours. Send a different scene
 and the same firmware exposes a different device.
 
-Send one with the controller (`../controller`):
+Send one with the upstream `beet` CLI (see the `justfile`). The remote scene
+commands live in beet_router and are exported to `beet.json` by the beet-cli
+`remote_loader` example; `just beet-json` regenerates it and `just install-cli`
+installs `beet`:
 
 ```sh
-cargo run -- load led-script    # POST scenes/led-script.json to /load
-cargo run -- run led-script     # fire the action route it installed
-cargo run -- clear              # despawn it + reset
+just load scenes/led-script.json   # POST scenes/led-script.json to /load
+just run-route led-script          # fire the action route it installed
+just clear                         # despawn it + reset
 ```
 
 or with curl:
