@@ -35,5 +35,5 @@
 		".clippy.toml",
 		// "agent/reference*"
 	],
-	"file_scan_inclusions": ["agent/plans*"],
+	"file_scan_inclusions": [".agents/plans*", ".agents/feedback*"],
 }

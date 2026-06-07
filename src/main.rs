@@ -16,13 +16,13 @@
 //! drive/led/dance/line-follower/roomba/script scenes.
 //!
 //! ```sh
-//! curl http://192.168.86.222:8080/                 # this help + current routes
-//! curl http://192.168.86.222:8080/dump             # current scene as JSON
+//! curl http://192.168.86.222:8337/                 # this help + current routes
+//! curl http://192.168.86.222:8337/dump             # current scene as JSON
 //! curl --data-binary @scene.json \
 //!      -H 'content-type: application/json' \
-//!      http://192.168.86.222:8080/load             # load a scene
-//! curl http://192.168.86.222:8080/clear            # despawn scene + reset
-//! curl http://192.168.86.222:8080/reset            # stop hardware
+//!      http://192.168.86.222:8337/load             # load a scene
+//! curl http://192.168.86.222:8337/clear            # despawn scene + reset
+//! curl http://192.168.86.222:8337/reset            # stop hardware
 //! ```
 //!
 //! Or drive it from the host with the upstream `beet` CLI:
@@ -70,7 +70,7 @@ fn main() {
     // `/load`. `BeetSceneRoot`s get reparented here and picked up by the router.
     // The router's default not-found middleware serves a route listing at `/`.
     app.spawn((
-        HttpServer::new(8080),
+        HttpServer::new(DEFAULT_SERVER_PORT),
         default_router(),
         children![
             exchange_route("load", LoadScene),
