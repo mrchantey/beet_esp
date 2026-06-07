@@ -17,20 +17,48 @@ test = false
 [[bin]]
 name              = "beet_esp"
 path              = "src/main.rs"
-required-features = ["led", "router"]
+required-features = ["device", "led", "router", "wifi"]
 
 [features]
 # The default `cargo run` target: the scene-server firmware on a bare ESP32
-# breakout (on-board WS2812 driven by a rhai `Script`). `router` pulls in `wifi`.
-default = ["led", "router", "rhai"]
-# On-board WS2812 LED over RMT (the `led` module). No extra crates.
+# breakout (on-board WS2812 driven by a rhai `Script`). `router` pulls in `wifi`;
+# `device` pulls in the esp-hal hardware stack so the firmware actually flashes.
+default = ["device", "led", "router", "wifi", "rhai"]
+# The ESP32 hardware stack: esp-hal + esp-rtos + the embassy runtime, plus the
+# bootloader/panic/RTT plumbing the `#[beet_esp::main]` entry needs. On without
+# this the crate compiles for the host (the scene-definition types only), which
+# the `scenes/` generator relies on. Always on for any firmware build; the
+# `wifi`/`ble`/`alvik` hardware features imply it.
+device = [
+  "dep:esp-hal",
+  "dep:esp-rtos",
+  "dep:esp-alloc",
+  "dep:esp-bootloader-esp-idf",
+  "dep:panic-rtt-target",
+  "dep:rtt-target",
+  "dep:embassy-executor",
+  "dep:embassy-time",
+  "dep:embassy-sync",
+  "dep:embassy-futures",
+  "dep:static_cell",
+  "dep:critical-section",
+  # The scene-server firmware always serves over Wi-Fi, so the hardware build
+  # pulls the radio stack in. The `wifi` feature itself stays separate so the
+  # `net` module gates on it, but any `device` build implies it.
+  "wifi",
+]
+# On-board WS2812 LED over RMT (the `led` module). The pure `LedColor`/`HueFade`
+# components compile on the host; the RMT driver compiles only under `device`.
 led = []
-# Arduino Alvik robot driven over UART1 (the `alvik` module). No extra crates —
-# just the always-compiled `async_bridge`. Turns on `led` for the universal
+# Arduino Alvik robot driven over UART1 (the `alvik` module). The scene-carried
+# markers/components/actions compile on the host; the UART driver + transport
+# systems compile only under `device`. Turns on `led` for the universal
 # `LedColor` component the Alvik RGB UI LEDs reuse.
 alvik = ["led"]
-# Wi-Fi station + embassy-net TCP/HTTP stack (the `wifi` module).
+# Wi-Fi station + embassy-net TCP/HTTP stack (the `wifi` module). Hardware, so
+# implies `device`.
 wifi = [
+  "device",
   "dep:esp-radio",
   "esp-radio/wifi",
   "dep:embassy-net",
@@ -38,8 +66,8 @@ wifi = [
   "dep:embedded-io",
   "dep:embedded-io-async",
 ]
-# BLE host (trouBLE).
-ble = ["dep:esp-radio", "esp-radio/ble", "dep:trouble-host", "dep:bt-hci"]
+# BLE host (trouBLE). Hardware, so implies `device`.
+ble = ["device", "dep:esp-radio", "esp-radio/ble", "dep:trouble-host", "dep:bt-hci"]
 # SNTP wall clock (the `clock` module): a UDP NTP client that installs beet's
 # `time_ext::now` source once synced. Builds on `wifi` (shares the network stack).
 clock = ["wifi"]
@@ -47,17 +75,19 @@ clock = ["wifi"]
 # provides a getrandom `custom` backend (`src/random.rs`) wired to the esp-hal
 # hardware RNG; pair with the `getrandom_backend="custom"` cfg in
 # `.cargo/config.toml`.
-random = ["dep:getrandom", "beet/rand"]
+random = ["device", "dep:getrandom", "beet/rand"]
 # beet_action + the beet_async bridge (entities-as-async-functions). Pulls in
 # `beet_core/bevy_async`: the AsyncWorld/AsyncEntity layer and the
 # `BeetAsyncSyncPoint` driver the behavior_tree example drives. No extra esp
 # crates — just turns on more of beet. Kept opt-in so non-action builds stay lean.
 action = ["beet/action"]
-# beet_router on this no_std target: route incoming `Request`s to per-path
-# actions, served over the `wifi` HTTP server. Pulls beet's no_std router
-# (`router_embedded`) plus the `action` async layer it dispatches on. See
-# `examples/ecs_router.rs`.
-router = ["action", "wifi", "beet/router_embedded"]
+# beet_router on this no_std target: the route types/actions and their reflect
+# registrations. Pulls beet's no_std router (`router_embedded`) plus the `action`
+# async layer it dispatches on. Deliberately does NOT pull `wifi` — the route
+# *types* are host-compilable (so the `scenes/` generator can register and
+# serialize them), while *serving* them needs the `wifi` HTTP server, which the
+# firmware enables on top. See `examples/ecs_router.rs`.
+router = ["action", "beet/router_embedded"]
 mdns = ["wifi", "action", "embassy-net/multicast", "beet/mdns"]
 # Engine-agnostic scripting placeholder; mirrors beet's `scripting`. Does nothing
 # on its own yet — a backend (`rhai` or `quickjs`) builds on it.
@@ -86,12 +116,12 @@ coex = ["wifi", "ble", "esp-radio/coex"]
 [[example]]
 name             = "blinky"
 path             = "examples/led/blinky.rs"
-required-features = ["led"]
+required-features = ["device", "led"]
 
 [[example]]
 name             = "led_scan"
 path             = "examples/led/led_scan.rs"
-required-features = ["led"]
+required-features = ["device", "led"]
 
 # --- examples/net ---
 [[example]]
@@ -128,25 +158,18 @@ required-features = ["led", "wifi", "action"]
 [[example]]
 name             = "behavior_tree"
 path             = "examples/app/behavior_tree.rs"
-required-features = ["action"]
+required-features = ["device", "action"]
 
 [[example]]
 name             = "ecs_router"
 path             = "examples/app/ecs_router.rs"
-required-features = ["router"]
+required-features = ["device", "router", "wifi"]
 
-# world_serde needs neither radio nor LED — core only, no required features.
+# world_serde needs neither radio nor LED — just the chip bring-up, so `device`.
 [[example]]
 name             = "world_serde"
 path             = "examples/app/world_serde.rs"
-
-# Dumps the canonical example scenes as JSON over defmt (the alvik ones gated on
-# `alvik`), to be saved under `scenes/`. The scene types live in this no_std
-# crate, so the scenes are built on-chip.
-[[example]]
-name             = "export_scenes"
-path             = "examples/app/export_scenes.rs"
-required-features = ["led", "router", "rhai"]
+required-features = ["device"]
 
 # --- examples/esp32 ---
 [[example]]
@@ -164,66 +187,66 @@ required-features = ["clock"]
 [[example]]
 name             = "alvik-codec-selftest"
 path             = "examples/alvik/codec_selftest.rs"
-required-features = ["alvik"]
+required-features = ["device", "alvik"]
 
 [[example]]
 name             = "alvik-blinky"
 path             = "examples/alvik/blinky.rs"
-required-features = ["alvik"]
+required-features = ["device", "alvik"]
 
 [[example]]
 name             = "alvik-wheels"
 path             = "examples/alvik/wheels.rs"
-required-features = ["alvik"]
+required-features = ["device", "alvik"]
 
 [[example]]
 name             = "alvik-drive"
 path             = "examples/alvik/drive.rs"
-required-features = ["alvik"]
+required-features = ["device", "alvik"]
 
 [[example]]
 name             = "alvik-servo"
 path             = "examples/alvik/servo.rs"
-required-features = ["alvik"]
+required-features = ["device", "alvik"]
 
 [[example]]
 name             = "alvik-sensors"
 path             = "examples/alvik/sensors.rs"
-required-features = ["alvik"]
+required-features = ["device", "alvik"]
 
 [[example]]
 name             = "alvik-line-follower"
 path             = "examples/alvik/line_follower.rs"
-required-features = ["alvik"]
+required-features = ["device", "alvik"]
 
 [[example]]
 name             = "alvik-touch-move"
 path             = "examples/alvik/touch_move.rs"
-required-features = ["alvik"]
+required-features = ["device", "alvik"]
 
 [[example]]
 name             = "alvik-rc"
 path             = "examples/alvik/rc.rs"
-required-features = ["alvik", "router"]
+required-features = ["device", "alvik", "router", "wifi"]
 
 # Engine-agnostic smoke test: builds against whichever backend is enabled
 # (quickjs or rhai), selected by cfg the same way `ScriptLanguage::default()` picks.
 [[example]]
 name             = "scripting"
 path             = "examples/scripting/scripting.rs"
-required-features = ["scripting"]
+required-features = ["device", "scripting"]
 
 [[example]]
 name             = "scripting_watchdog"
 path             = "examples/scripting/scripting_watchdog.rs"
-required-features = ["quickjs"]
+required-features = ["device", "quickjs"]
 
 # Engine-agnostic: builds against whichever backend is enabled (quickjs or rhai),
 # selected by cfg the same way `ScriptLanguage::default()` picks.
 [[example]]
 name             = "scripting_bench"
 path             = "examples/scripting/scripting_bench.rs"
-required-features = ["scripting"]
+required-features = ["device", "scripting"]
 
 [dependencies]
 # rhai's no_std build. The engine itself is reached through `beet::exports::rhai`
@@ -258,9 +281,9 @@ beet = { path = "/home/pete/me/worktrees/beet/apps/beet", default-features = fal
 # Sibling proc-macro crate providing #[beet_esp::main]. Builds for the host.
 beet_esp_macros = { path = "macros" }
 
-esp-hal = { version = "~1.1.0", features = ["defmt", "esp32s3", "unstable"] }
+esp-hal = { version = "~1.1.0", optional = true, features = ["defmt", "esp32s3", "unstable"] }
 
-esp-rtos = { version = "0.3.0", features = [
+esp-rtos = { version = "0.3.0", optional = true, features = [
   "defmt",
   "embassy",
   "esp-alloc",
@@ -268,8 +291,11 @@ esp-rtos = { version = "0.3.0", features = [
   "esp32s3",
 ] }
 
+# Always on: the scene-definition types derive `defmt::Format` and call
+# `defmt::info!`, and defmt compiles fine on the host. Only the firmware streams
+# it over RTT.
 defmt                  = "1.0.1"
-esp-bootloader-esp-idf = { version = "0.5.0", features = ["defmt", "esp32s3"] }
+esp-bootloader-esp-idf = { version = "0.5.0", optional = true, features = ["defmt", "esp32s3"] }
 
 # Networking stack — only pulled in by the `wifi` feature (see [features]).
 embassy-net = { version = "0.9.1", optional = true, features = [
@@ -284,14 +310,14 @@ embedded-io = { version = "0.7.1", optional = true, features = ["defmt"] }
 embedded-io-async = { version = "0.7.0", optional = true, features = ["defmt"] }
 # `internal-heap-stats` adds max-usage / total-allocated / total-freed counters,
 # which `health` uses for leak detection (cheap: an O(regions) tally per alloc).
-esp-alloc = { version = "0.10.0", features = ["defmt", "internal-heap-stats"] }
-panic-rtt-target = { version = "0.2.0", features = ["defmt"] }
-rtt-target = { version = "0.6.2", features = ["defmt"] }
+esp-alloc = { version = "0.10.0", optional = true, features = ["defmt", "internal-heap-stats"] }
+panic-rtt-target = { version = "0.2.0", optional = true, features = ["defmt"] }
+rtt-target = { version = "0.6.2", optional = true, features = ["defmt"] }
 # for more networking protocol support see https://crates.io/crates/edge-net
 # BLE host (`bt-hci`/`trouble-host`) — only pulled in by the `ble` feature.
 bt-hci = { version = "0.8.0", optional = true }
-embassy-executor = { version = "0.10.0", features = ["defmt"] }
-embassy-time = { version = "0.5.0", features = ["defmt"] }
+embassy-executor = { version = "0.10.0", optional = true, features = ["defmt"] }
+embassy-time = { version = "0.5.0", optional = true, features = ["defmt"] }
 # Radio — optional; the `wifi`/`ble`/`coex` features turn on the matching parts.
 esp-radio = { version = "0.18.0", optional = true, default-features = false, features = [
   "defmt",
@@ -318,15 +344,15 @@ trouble-host = { version = "0.6.0", optional = true, features = ["defmt", "gatt"
 # by the `random` feature, which provides the entropy symbol in `src/random.rs`.
 getrandom = { version = "0.3", optional = true }
 
-critical-section = "1.2.0"
+critical-section = { version = "1.2.0", optional = true }
 # Extension-trait macro (`#[extend::ext]`), matching beet's version. Used by the
 # `quickjs` module's esp-tuned `Runtime` constructor.
 extend           = "1"
-embassy-futures  = "0.1.2"
+embassy-futures  = { version = "0.1.2", optional = true }
 # Pinned to esp-rtos's embassy-sync (0.8.0) so the bridge's Signal/Channel share
 # the same version the runtime links.
-embassy-sync = { version = "0.8.0", features = ["defmt"] }
-static_cell  = "2.1.1"
+embassy-sync = { version = "0.8.0", optional = true, features = ["defmt"] }
+static_cell  = { version = "2.1.1", optional = true }
 
 # Compiles the `quickjs` feature's C shims (`src/quickjs_shim.c`) in build.rs.
 [build-dependencies]

@@ -64,14 +64,21 @@
 //! cycle it; press RST (or switch off the battery) for a clean reset.
 
 pub mod components;
-pub mod driver;
 pub mod events;
-pub mod pinout;
-pub mod plugin;
 pub mod protocol;
-pub mod systems;
 pub mod types;
 pub mod ucpack;
+// The UART driver, the per-frame transport systems, the pin map and the bring-up
+// plugin all touch esp-hal/embassy — device-only. The scene-carried
+// markers/components/actions above compile on the host for the `scenes/` generator.
+#[cfg(feature = "device")]
+pub mod driver;
+#[cfg(feature = "device")]
+pub mod pinout;
+#[cfg(feature = "device")]
+pub mod plugin;
+#[cfg(feature = "device")]
+pub mod systems;
 
 // The scene server and its route/action markers need beet's no_std router,
 // served over Wi-Fi — only compiled under the `router` feature.
@@ -87,11 +94,16 @@ pub mod scripting;
 
 pub mod prelude {
     pub use super::components::*;
+    #[cfg(feature = "device")]
     pub use super::driver::ALVIK_EVENTS;
+    #[cfg(feature = "device")]
     pub use super::driver::ALVIK_OUT;
+    #[cfg(feature = "device")]
     pub use super::driver::ALVIK_STATE;
     pub use super::events::*;
+    #[cfg(feature = "device")]
     pub use super::plugin::AlvikPlugin;
+    #[cfg(feature = "device")]
     pub use super::plugin::spawn_robot;
     pub use super::protocol::Command;
     pub use super::protocol::Status;

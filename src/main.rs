@@ -28,8 +28,9 @@
 //! Or drive it from the host with the upstream `beet` CLI:
 //! `beet load scenes/led-script.json` (with `BEET_REMOTE_URL` set to the device).
 //!
-//! The canonical example scenes live in the `export_scenes` example, which dumps
-//! each as JSON over defmt; save one under `scenes/` to try `/load`.
+//! The canonical example scenes are generated on the host by the `scenes` crate
+//! (`cd scenes && cargo run --release`), which writes each to
+//! `target/scenes/<name>.json`; load one to try `/load`.
 //!
 //! Run with (bare ESP32, the default): `cargo run --release`
 //!

@@ -2,8 +2,8 @@
 //! route/action/scene markers a loaded scene can carry, plus the Alvik
 //! [`ResetScene`] handler. The hardware-agnostic scene server and its
 //! meta-routes ([`LoadScene`], [`ClearScene`], …) live upstream in
-//! [`beet::router`]; the example scenes that wire these markers live in the
-//! `export_scenes` example.
+//! [`beet::router`]; the example scenes that wire these markers are generated on
+//! the host by the `scenes` crate.
 
 use crate::prelude::*;
 use beet::prelude::*;

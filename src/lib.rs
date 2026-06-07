@@ -4,20 +4,29 @@ extern crate alloc;
 
 // Re-exported so the macros below (and `#[beet_esp::main]`) can reach these
 // crates hermetically via absolute paths, without the calling example having to
-// import ESP internals itself.
+// import ESP internals itself. Gated on `device`: without the hardware stack the
+// crate compiles for the host (the scene-definition types only).
+#[cfg(feature = "device")]
 pub use esp_alloc;
+#[cfg(feature = "device")]
 pub use esp_bootloader_esp_idf;
+#[cfg(feature = "device")]
 pub use esp_hal;
+#[cfg(feature = "device")]
 pub use panic_rtt_target;
+#[cfg(feature = "device")]
 pub use rtt_target;
 
 /// `#[beet_esp::main]` — wraps `fn main` with the ESP32 entry boilerplate.
+#[cfg(feature = "device")]
 pub use beet_esp_macros::main;
 
 #[cfg(feature = "alvik")]
 pub mod alvik;
+#[cfg(feature = "device")]
 pub mod esp32_plugin;
 // ESP32 runtime plumbing: heap/PSRAM, health, the async bridge, the SNTP clock.
+#[cfg(feature = "device")]
 pub mod esp32_utils;
 // Scene-carried control scripting (rhai + quickjs backends).
 pub mod scripting;
@@ -34,9 +43,13 @@ pub mod net;
 pub mod prelude {
 	#[cfg(feature = "alvik")]
 	pub use crate::alvik::prelude::*;
+	#[cfg(feature = "device")]
 	pub use crate::esp32_plugin::*;
+	#[cfg(feature = "device")]
 	pub use crate::esp32_utils::prelude::*;
+	#[cfg(feature = "device")]
 	pub use crate::esp_app_desc;
+	#[cfg(feature = "device")]
 	pub use crate::main;
 	#[cfg(feature = "router")]
 	pub use crate::scene::prelude::*;
@@ -52,7 +65,8 @@ pub mod prelude {
 ///
 /// Invoke once at module scope (it defines a linker-section static, so it can't
 /// live inside `main`). Hides the `esp_bootloader_esp_idf::esp_app_desc!()`
-/// plumbing from examples.
+/// plumbing from examples. Device-only — it expands to a linker-section static.
+#[cfg(feature = "device")]
 #[macro_export]
 macro_rules! esp_app_desc {
 	() => {
@@ -63,4 +77,5 @@ macro_rules! esp_app_desc {
 /// Bytes of internal SRAM reclaimed from the second-stage bootloader, otherwise
 /// unused. Donated as an [`Internal`](crate::esp32_utils::mem::Internal) heap region so the
 /// Wi-Fi/BLE radio's DMA allocations have somewhere to go.
+#[cfg(feature = "device")]
 pub const RECLAIMED_INTERNAL_BYTES: usize = 73744;

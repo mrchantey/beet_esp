@@ -1,0 +1,34 @@
+[package]
+edition = "2024"
+name    = "scenes"
+version = "0.1.0"
+publish = false
+
+# Host scene generator: builds each canonical beet_esp scene and serializes it to
+# `../target/scenes/<name>.json`. The scene-definition types live in `beet_esp`
+# (built here for the host, without its `device` hardware stack); this program
+# constructs and serializes them on the PC rather than on the ESP32.
+[[bin]]
+name = "scenes"
+path = "src/main.rs"
+
+[dependencies]
+# The firmware crate, host build: no `device`, just the scene-definition types
+# (components, actions, scene bundles). Same scene-relevant features the firmware
+# enables so the types unify.
+beet_esp = { path = "..", default-features = false, features = [
+  "led",
+  "router",
+  "rhai",
+  "alvik",
+] }
+# beet, matching the firmware's features so the reflect types unify across crates.
+beet = { path = "/home/pete/me/worktrees/beet/apps/beet", default-features = false, features = [
+  "embedded",
+  "bevy_color",
+  "world_serde",
+  "json",
+  "net",
+] }
+# beet_esp's scene types derive `defmt::Format`, so the host build links defmt too.
+defmt = "1.0.1"

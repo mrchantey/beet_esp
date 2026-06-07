@@ -19,7 +19,8 @@ install-cli:
 run:
     timeout -s INT 30s cargo run --release
 
-# Dump the canonical example scenes as JSON over defmt; copy each into scenes/.
-# The scene types live in this no_std crate, so the scenes are built on-chip.
+# Generate the canonical example scenes as JSON into target/scenes/ (gitignored).
+# The scene types live in this crate; the `scenes` host crate builds them on the
+# PC (no device needed) and writes each file directly.
 export-scenes:
-    timeout -s INT 30s cargo run --release --example export_scenes
+    cd scenes && cargo run --release
