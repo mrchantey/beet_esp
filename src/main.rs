@@ -53,23 +53,33 @@ fn main() {
         WifiPlugin::from_env().with_env_static_ip(),
         RouterPlugin,
         EspScenePlugin,
-    ));
+    ))
+    .add_systems(Startup, setup);
 
     // The Alvik build drives the robot; the bare build drives the on-board
     // WS2812. Both expose `LedColor` entities, so the generic scene routes and
     // the reset handler work either way.
-    #[cfg(feature = "alvik")]
-    app.add_plugins(AlvikPlugin);
-    #[cfg(not(feature = "alvik"))]
-    {
-        app.add_plugins(LedPlugin);
-        app.spawn((LedColor::default(), Ws2812Led));
+    cfg_if! {
+      if #[cfg(feature = "alvik")]{
+        app.add_plugins(AlvikPlugin);
+      }else{
+        app.add_plugins(LedPlugin)
+          .add_systems(Startup, setup_builtin_led);
+      }
     }
 
-    // The bootstrap server: only the meta-routes. The real routes arrive via
-    // `/load`. `BeetSceneRoot`s get reparented here and picked up by the router.
-    // The router's default not-found middleware serves a route listing at `/`.
-    app.spawn((
+    app.run();
+}
+
+fn setup_builtin_led(mut commands: Commands) {
+    commands.spawn((LedColor::default(), Ws2812Led));
+}
+
+// The bootstrap server: only the meta-routes. The real routes arrive via
+// `/load`. `BeetSceneRoot`s get reparented here and picked up by the router.
+// The router's default not-found middleware serves a route listing at `/`.
+fn setup(mut commands: Commands) {
+    commands.spawn((
         HttpServer::new(DEFAULT_SERVER_PORT),
         default_router(),
         children![
@@ -78,6 +88,5 @@ fn main() {
             exchange_route("reset", Reset),
             exchange_route("dump", DumpScene),
         ],
-    ))
-    .run();
+    ));
 }
