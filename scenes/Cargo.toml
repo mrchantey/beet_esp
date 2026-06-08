@@ -22,13 +22,17 @@ beet_esp = { path = "..", default-features = false, features = [
   "rhai",
   "alvik",
 ] }
-# beet, matching the firmware's features so the reflect types unify across crates.
+# beet, matching the firmware's scene features so the reflect types unify across
+# crates. `router` (not the firmware's no_std `router_embedded`) pulls the std
+# scene-management commands — [`ExportScene`]/[`ExportPath`]/[`export_scenes`] —
+# this host generator drives.
 beet = { path = "/home/pete/me/worktrees/beet/apps/beet", default-features = false, features = [
   "embedded",
   "bevy_color",
   "world_serde",
   "json",
   "net",
+  "router",
 ] }
 # beet_esp's scene types derive `defmt::Format`, so the host build links defmt too.
 defmt = "1.0.1"

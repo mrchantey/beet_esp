@@ -82,6 +82,13 @@ impl WifiPlugin {
         Self::new(env!("WIFI_SSID"), env!("WIFI_PASSWORD"))
     }
 
+    /// Assign an explicit static IPv4 for the station. A `/24` is assumed with
+    /// the gateway at `.1`. Absent any static IP, the station uses DHCP.
+    pub fn with_static_ip(mut self, ip: [u8; 4]) -> Self {
+        self.static_ip = Some(ip);
+        self
+    }
+
     /// Assign a static IPv4 from the `WIFI_STATIC_IP` env var (dotted, eg
     /// `192.168.0.50`), which `build.rs` exposes from the local `.env`. Absent,
     /// the station falls back to DHCP. A `/24` is assumed with the gateway at

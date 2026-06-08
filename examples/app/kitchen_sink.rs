@@ -76,9 +76,9 @@ fn Handler(cx: In<ActionContext<Request>>) -> Response {
 
 fn dump_canonical(world: &mut World) {
     let temp = world.spawn(HelloWorld).id();
-    match WorldSerdeSaver::new(world)
-        .with_entity_tree(temp)
-        .save(MediaType::Json)
+    match WorldSerdeSaver::new()
+        .with_entity_tree(world, temp)
+        .save(world, MediaType::Json)
     {
         Ok(bytes) => match bytes.as_utf8() {
             Ok(text) => info!("canonical scene JSON:\n{}", text),

@@ -13,7 +13,7 @@ scene bundles), which compiles for the host without its `device` hardware stack,
 so the scenes are built on the PC rather than on the ESP32:
 
 ```sh
-cd scenes && cargo run --release   # or: just export-scenes
+cd scenes && cargo run   # or: just export-scenes
 ```
 
 It writes each scene to `../target/scenes/<name>.json`. Those files are

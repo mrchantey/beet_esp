@@ -23,4 +23,4 @@ run:
 # The scene types live in this crate; the `scenes` host crate builds them on the
 # PC (no device needed) and writes each file directly.
 export-scenes:
-    cd scenes && cargo run --release
+    cd scenes && cargo run
