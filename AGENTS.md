@@ -101,6 +101,6 @@ start debugging hardware. See the "sticky download mode" entry in trouibleshooti
 ## Deeper reference
 
 A full `esp-rust` skill (project generation, hardware setup, esp-hal coding
-patterns, troubleshooting) lives in-repo at `agent/skills/esp-rust/`.
+patterns, troubleshooting) lives in-repo at `.agents/skills/esp-rust/`.
 
-All troubleshooting is located at `agent/skills/esp-rust/troubleshooting.md`
+All troubleshooting is located at `.agents/skills/esp-rust/troubleshooting.md`

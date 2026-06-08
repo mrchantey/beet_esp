@@ -372,16 +372,37 @@ embedded-test = { version = "0.7.1", features = [
 
 # For fine tuning these settings, please refer to https://doc.rust-lang.org/cargo/reference/profiles.html
 [profile.dev]
-# The fast edit -> flash -> test loop. On this target the per-iteration cost is
-# flash time, which scales with image size, so dev keeps optimization on rather
-# than the desktop "unoptimized = big" default. `lto = "fat"` is what shrinks the
-# image (it collapses bevy/beet's huge monomorphized surface): it cuts the
-# flashed text+data from ~6.2 MB (no LTO) to ~4.3 MB at no extra build cost here,
-# because the relink is dominated by recompiling the `beet_esp` crate, not by
-# LTO. `lto = "thin"` is NOT usable: it re-emits `xtensa-lx-rt`'s inline asm
-# without the Xtensa CPU target-features and fails to assemble (LBEG/LEND/threadptr
-# "invalid operand"). debug-assertions + overflow-checks stay on (dev defaults),
-# so panics/overflows are caught on device; `debug` info stays on for backtraces.
+# The fast edit -> flash -> test loop. On this target the full edit->running
+# cycle is relink time + flash time, and BOTH are minimised by fat LTO, so dev
+# keeps the same heavy optimisation as release rather than the desktop default of
+# an unoptimised build.
+#
+# This is counter-intuitive, so it was measured on hardware. The dominant cost in
+# a one-line relink is NOT optimisation of the `beet_esp` crate; it is the final
+# LINK of bevy/beet's enormous monomorphised surface. Fat LTO collapses that
+# surface, which both shrinks the image (so it flashes faster) AND gives the
+# linker far less to chew on (so the relink is faster). Three variants, touch
+# `src/main.rs` then `cargo build`, then flash:
+#
+#   variant                         relink   image (text)   flash/boot   full cycle
+#   opt="s" + fat LTO + cgu=1        130 s    4.3 MB         ~46 s        ~176 s   <- this
+#   opt=1, deps opt=3, no LTO        187 s    8.3 MB         ~84 s        ~271 s
+#   opt=0, deps opt=3, no LTO        293 s    8.9 MB         ~90 s        ~383 s
+#
+# The Bevy-style "optimise deps, not our crate" split LOSES badly here: dropping
+# LTO nearly doubles the image and makes the link slower, not faster. Lower
+# opt-levels are worse still. So fat LTO stays on for dev.
+#
+# Two settings are NOT usable on this xtensa target and were ruled out on
+# hardware:
+#   - `lto = "thin"`: re-emits `xtensa-lx-rt`'s inline asm without the Xtensa CPU
+#     target-features and fails to assemble (LBEG/LEND/threadptr "invalid
+#     operand").
+#   - `codegen-units > 1`: same failure mode for `xtensa-lx-rt`'s inline asm. fat
+#     LTO already implies a single unit, so cgu = 1 here is for clarity.
+#
+# debug-assertions + overflow-checks stay on (dev defaults), so panics/overflows
+# are caught on device; `debug` info stays on for backtraces.
 opt-level     = "s"
 lto           = "fat"
 codegen-units = 1

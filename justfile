@@ -17,9 +17,11 @@ install-cli:
 
 # Flash + monitor the scene-server firmware on the device (the fast iterate
 # loop). Detaches after 30s. The dev profile is tuned for iteration: opt-level
-# "s" + fat LTO keep the image small (so it flashes fast) while debug-assertions
-# and overflow-checks stay on, so panics are caught on device. Use this for
-# day-to-day work; `run-release` builds the shippable image.
+# "s" + fat LTO keep the image small AND the relink fast (measured on hardware:
+# fat LTO collapses bevy/beet's monomorphised surface, so the linker has less to
+# do and the image flashes faster; dropping LTO nearly doubles both). debug-
+# assertions and overflow-checks stay on, so panics are caught on device. Use
+# this for day-to-day work; `run-release` builds the shippable image.
 run:
     timeout -s INT 30s cargo run
 
