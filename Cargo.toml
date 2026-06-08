@@ -372,9 +372,19 @@ embedded-test = { version = "0.7.1", features = [
 
 # For fine tuning these settings, please refer to https://doc.rust-lang.org/cargo/reference/profiles.html
 [profile.dev]
-# The default debug profile is too slow and too big for resource-constrained devices.
-# Always build with some optimizations enabled.
-opt-level = "s"
+# The fast edit -> flash -> test loop. On this target the per-iteration cost is
+# flash time, which scales with image size, so dev keeps optimization on rather
+# than the desktop "unoptimized = big" default. `lto = "fat"` is what shrinks the
+# image (it collapses bevy/beet's huge monomorphized surface): it cuts the
+# flashed text+data from ~6.2 MB (no LTO) to ~4.3 MB at no extra build cost here,
+# because the relink is dominated by recompiling the `beet_esp` crate, not by
+# LTO. `lto = "thin"` is NOT usable: it re-emits `xtensa-lx-rt`'s inline asm
+# without the Xtensa CPU target-features and fails to assemble (LBEG/LEND/threadptr
+# "invalid operand"). debug-assertions + overflow-checks stay on (dev defaults),
+# so panics/overflows are caught on device; `debug` info stays on for backtraces.
+opt-level     = "s"
+lto           = "fat"
+codegen-units = 1
 
 [profile.release]
 codegen-units = 1     # LLVM can perform better optimizations using a single thread

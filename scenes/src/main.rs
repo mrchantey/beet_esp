@@ -3,11 +3,10 @@
 //!
 //! The scene-definition types live in `beet_esp` (its ECS components,
 //! `#[action]`s and scene bundles), which compiles for the host without its
-//! `device` hardware stack. This uses the same export API as the upstream
-//! `beet-cli` `export_scenes` example: each scene root is spawned tagged with
-//! [`ExportScene`] + [`ExportPath`], and the upstream [`export_scenes`] system
-//! writes them all to disk in one pass. They land under `target/` (gitignored)
-//! and are regenerated on demand.
+//! `device` hardware stack. It is a regular [`CliServer`], built the same way as
+//! the upstream `beet-cli` `export_scenes` example: an [`ExportScenes`] root
+//! route whose children are the scene roots, each carrying its [`ExportPath`].
+//! Running with no args writes them all to `target/` (gitignored) on demand.
 //!
 //! Run with: `cd scenes && cargo run` (or `just export-scenes`).
 
@@ -18,15 +17,21 @@ use beet_esp::prelude::*;
 use beet_esp::scripting::rhai::Script;
 
 fn main() -> AppExit {
-    // RouterPlugin + EspScenePlugin register every scene type so reflection can
-    // serialize them. No hardware plugins (Esp32Plugin/HealthPlugin) — they are
-    // device-only and the scenes need only the reflect registrations. MinimalPlugins
-    // + LogPlugin give the schedule a runner and log output.
-    let mut app = App::new();
-    app.add_plugins((MinimalPlugins, LogPlugin::default(), RouterPlugin, EspScenePlugin))
-        // spawn each tagged scene root, then `export_scenes` writes them to disk.
-        .add_systems(Startup, (spawn_scenes, export_scenes).chain());
-    app.run_once().unwrap_or(AppExit::Success)
+    // RouterPlugin + ServerPlugin drive the CliServer (route dispatch + async);
+    // EspScenePlugin registers every scene type so reflection can serialize them.
+    // No hardware plugins (Esp32Plugin/HealthPlugin) — they are device-only and
+    // the scenes need only the reflect registrations. MinimalPlugins + LogPlugin
+    // give the schedule a runner and log output.
+    App::new()
+        .add_plugins((
+            MinimalPlugins,
+            LogPlugin::default(),
+            RouterPlugin,
+            ServerPlugin,
+            EspScenePlugin,
+        ))
+        .add_systems(Startup, spawn_host)
+        .run()
 }
 
 /// `<scenes-crate>/../target/scenes/<label>.json` — the firmware crate's
@@ -36,34 +41,30 @@ fn scene_path(label: &str) -> String {
     format!("{}/../target/scenes/{label}.json", env!("CARGO_MANIFEST_DIR"))
 }
 
-/// Spawn each canonical scene root, tagged with [`ExportScene`] + its
-/// [`ExportPath`]; [`export_scenes`] then serializes each (the export markers
-/// denied) to `target/scenes/<label>.json`.
-fn spawn_scenes(world: &mut World) {
-    spawn_scene(world, "led-script", led_script_scene());
-
-    // rc: two standalone route roots grouped under one `Router` scene root.
-    spawn_scene(
-        world,
-        "rc",
-        (
-            Router,
-            children![
-                (DriveRoute, PathPartial::new("drive/:dir")),
-                (LedRoute, PathPartial::new("led/:side/:state")),
-            ],
-        ),
-    );
-
-    spawn_scene(world, "dance-routine", dance_scene());
-    spawn_scene(world, "line-follower", line_follower_scene());
-    spawn_scene(world, "roomba", roomba_scene());
-    spawn_scene(world, "script", script_scene());
-}
-
-/// Spawn a scene root from `bundle`, tagged for export to `<label>.json`.
-fn spawn_scene(world: &mut World, label: &str, bundle: impl Bundle) {
-    world.spawn((ExportScene, ExportPath(scene_path(label)), bundle));
+/// Spawn the export host: a [`CliServer`] router whose root [`ExportScenes`]
+/// route writes each of its children as a standalone scene. The canonical
+/// beet_esp scenes are declared as that route's children, each carrying its
+/// [`ExportPath`]; running with no args serializes them all to disk.
+fn spawn_host(mut commands: Commands) {
+    commands.spawn((CliServer, default_router(), children![(
+        ExportScenes,
+        children![
+            (ExportPath(scene_path("led-script")), led_script_scene()),
+            // rc: two standalone route roots grouped under one `Router` scene root.
+            (
+                ExportPath(scene_path("rc")),
+                Router,
+                children![
+                    (DriveRoute, PathPartial::new("drive/:dir")),
+                    (LedRoute, PathPartial::new("led/:side/:state")),
+                ],
+            ),
+            (ExportPath(scene_path("dance-routine")), dance_scene()),
+            (ExportPath(scene_path("line-follower")), line_follower_scene()),
+            (ExportPath(scene_path("roomba")), roomba_scene()),
+            (ExportPath(scene_path("script")), script_scene()),
+        ],
+    )]));
 }
 
 // ---------------------------------------------------------------------------

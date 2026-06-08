@@ -15,11 +15,17 @@ default:
 install-cli:
     cd {{beet_dir}} && cargo install --path crates/beet-cli
 
-# Flash + monitor the scene-server firmware on the device. Detaches after 30s.
-# The dev profile already builds at opt-level "s" (see Cargo.toml), so no
-# --release is needed to fit + run on the device.
+# Flash + monitor the scene-server firmware on the device (the fast iterate
+# loop). Detaches after 30s. The dev profile is tuned for iteration: opt-level
+# "s" + fat LTO keep the image small (so it flashes fast) while debug-assertions
+# and overflow-checks stay on, so panics are caught on device. Use this for
+# day-to-day work; `run-release` builds the shippable image.
 run:
     timeout -s INT 30s cargo run
+
+# Flash + monitor the shippable release image (assertions off, smallest binary).
+run-release:
+    timeout -s INT 30s cargo run --release
 
 # Generate the canonical example scenes as JSON into target/scenes/ (gitignored).
 # The scene types live in this crate; the `scenes` host crate builds them on the
