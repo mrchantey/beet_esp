@@ -15,7 +15,7 @@ use crate::utils::units::Distance;
 use crate::utils::units::LinearVelocity;
 
 /// A command sent to the STM32 carrier.
-#[derive(Debug, Clone, Copy, PartialEq, defmt::Format)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Command {
     /// `B` — set behavior code.
     SetBehavior(u8),
@@ -107,7 +107,7 @@ impl Command {
 }
 
 /// A status message received from the STM32 carrier.
-#[derive(Debug, Clone, Copy, PartialEq, defmt::Format)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Status {
     /// `j` — measured wheel speeds.
     WheelSpeeds {

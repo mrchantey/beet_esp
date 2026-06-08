@@ -4,7 +4,6 @@
 
 use crate::prelude::*;
 use beet::prelude::*;
-use defmt::info;
 
 /// A drive velocity a behaviour-tree leaf can apply. Carried alongside
 /// [`ApplyDrive`] so a scene can configure each step's motion.

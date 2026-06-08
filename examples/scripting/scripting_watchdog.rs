@@ -22,7 +22,6 @@ use beet::exports::rquickjs::Runtime;
 use beet::prelude::*;
 use beet_esp::prelude::*;
 use core::time::Duration;
-use defmt::info;
 use esp_hal::time::Instant;
 
 fn now_ms() -> u64 {

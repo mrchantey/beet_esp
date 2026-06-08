@@ -26,8 +26,6 @@ use crate::esp32_utils::async_bridge::AsyncBridge;
 use crate::esp32_utils::async_bridge::drain_to_async;
 use crate::esp32_utils::async_bridge::spawn_driver;
 use beet::prelude::*;
-use defmt::info;
-use defmt::warn;
 use embassy_executor::Spawner;
 use embassy_net::Stack;
 use embassy_net::tcp::TcpSocket;
@@ -132,7 +130,7 @@ async fn server_loop(stack: Stack<'static>, port: u16, entity: Entity) {
         let request = match http_ext::parse_http_request(&raw) {
             Ok(request) => request,
             Err(e) => {
-                warn!("malformed request: {}", defmt::Debug2Format(&e));
+                warn!("malformed request: {:?}", e);
                 let _ = socket
                     .write_all(b"HTTP/1.1 400 Bad Request\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
                     .await;
@@ -158,7 +156,7 @@ async fn server_loop(stack: Stack<'static>, port: u16, entity: Entity) {
         let bytes = match http_ext::serialize_http_response(response).await {
             Ok(bytes) => bytes,
             Err(e) => {
-                warn!("serialise failed: {}", defmt::Debug2Format(&e));
+                warn!("serialise failed: {:?}", e);
                 socket.close();
                 continue;
             }

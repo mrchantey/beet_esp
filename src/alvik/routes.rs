@@ -6,7 +6,6 @@
 
 use crate::prelude::*;
 use beet::prelude::*;
-use defmt::info;
 
 extern crate alloc;
 use alloc::format;

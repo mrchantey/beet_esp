@@ -24,8 +24,6 @@
 
 use beet::prelude::*;
 use beet_esp::prelude::*;
-use defmt::Debug2Format;
-use defmt::info;
 
 #[beet_esp::main]
 fn main() {
@@ -61,5 +59,5 @@ fn random_demo() {
         info!("  d6 roll: {}", source.random_range(1u32..=6));
     }
     let bytes: [u8; 8] = core::array::from_fn(|_| source.random::<u8>());
-    info!("  8 random bytes: {:?}", Debug2Format(&bytes));
+    info!("  8 random bytes: {:?}", bytes);
 }

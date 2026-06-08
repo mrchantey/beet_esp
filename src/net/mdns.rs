@@ -42,8 +42,6 @@
 
 use crate::esp32_utils::async_bridge::AsyncBridge;
 use beet::prelude::*;
-use defmt::info;
-use defmt::warn;
 use embassy_net::IpAddress;
 use embassy_net::IpEndpoint;
 use embassy_net::Ipv4Address;

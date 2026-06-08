@@ -10,7 +10,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 #[cfg(test)]
 #[embedded_test::tests(executor = esp_rtos::embassy::Executor::new())]
 mod tests {
-    use defmt::assert_eq;
+    use log::info;
 
     #[init]
     fn init() {
@@ -21,12 +21,12 @@ mod tests {
             esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
         esp_rtos::start(timg0.timer0, sw_interrupt.software_interrupt0);
 
-        rtt_target::rtt_init_defmt!();
+        rtt_target::rtt_init_log!(log::LevelFilter::Info);
     }
 
     #[test]
     async fn hello_test() {
-        defmt::info!("Running test!");
+        info!("Running test!");
 
         embassy_time::Timer::after(embassy_time::Duration::from_millis(100)).await;
         assert_eq!(1 + 1, 2);

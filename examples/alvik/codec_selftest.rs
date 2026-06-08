@@ -19,8 +19,6 @@ use beet_esp::alvik::ucpack::Decoder;
 use beet_esp::alvik::ucpack::Encoder;
 use beet_esp::alvik::ucpack::crc8;
 use beet_esp::prelude::*;
-use defmt::error;
-use defmt::info;
 
 #[beet_esp::main]
 fn main() {

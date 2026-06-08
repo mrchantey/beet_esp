@@ -99,7 +99,7 @@ static mut RECLAIMED: MaybeUninit<[u8; crate::RECLAIMED_INTERNAL_BYTES]> = Maybe
 
 /// Outcome of bringing PSRAM up, reported once at boot so the placement model is
 /// observable rather than assumed.
-#[derive(Clone, Copy, defmt::Format)]
+#[derive(Debug, Clone, Copy)]
 pub struct PsramInfo {
     /// Base virtual address of the mapped PSRAM window.
     pub start: usize,
@@ -184,7 +184,7 @@ unsafe fn init_mem(
 }
 
 /// Full boot-time bring-up, and the only thing
-/// [`#[beet_esp::main]`](crate::main) has to call: start defmt/RTT logging,
+/// [`#[beet_esp::main]`](crate::main) has to call: start RTT `log` output,
 /// map + register the heaps, park the peripherals, record the PSRAM result, and
 /// snapshot/paint the stack.
 ///
@@ -206,9 +206,11 @@ unsafe fn init_mem(
 /// nowhere else — exactly the `static mut Reserve<N>` the entry macro declares
 /// and passes by `&raw mut`. Must be called once.
 pub unsafe fn init_esp<const N: usize>(reserve: *mut Reserve<N>) {
-    // Start defmt-over-RTT before anything logs. Declares the `_SEGGER_RTT`
-    // control block; guarded against a double call, so it's safe here.
-    crate::rtt_target::rtt_init_defmt!();
+    // Start the RTT `log` backend before anything logs. Declares the
+    // `_SEGGER_RTT` control block and installs the global logger; guarded against
+    // a double call, so it's safe here. `beet`'s `tracing` macros reach it via
+    // tracing's `log` fallback (no subscriber on bare metal).
+    crate::rtt_target::rtt_init_log!(log::LevelFilter::Info);
 
     // The static is `'static` and only touched here, so the exclusive borrow is
     // sound for the duration of registration.

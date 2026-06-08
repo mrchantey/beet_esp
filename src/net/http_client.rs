@@ -13,8 +13,6 @@
 use crate::esp32_utils::async_bridge::AsyncBridge;
 use crate::esp32_utils::async_bridge::run_worker;
 use beet::prelude::*;
-use defmt::info;
-use defmt::warn;
 use embassy_net::IpAddress;
 use embassy_net::IpEndpoint;
 use embassy_net::Stack;
@@ -82,7 +80,7 @@ pub(crate) fn esp_send(
 pub(crate) async fn client_driver(stack: Stack<'static>) {
     stack.wait_config_up().await;
     if let Some(cfg) = stack.config_v4() {
-        info!("Wi-Fi up: {}", cfg);
+        info!("Wi-Fi up: {:?}", cfg);
     }
     run_worker(&CLIENT_BRIDGE, |job: ClientJob| exchange(stack, job)).await;
 }

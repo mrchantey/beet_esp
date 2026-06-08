@@ -281,52 +281,56 @@ beet = { path = "/home/pete/me/worktrees/beet/apps/beet", default-features = fal
 # Sibling proc-macro crate providing #[beet_esp::main]. Builds for the host.
 beet_esp_macros = { path = "macros" }
 
-esp-hal = { version = "~1.1.0", optional = true, features = ["defmt", "esp32s3", "unstable"] }
+esp-hal = { version = "~1.1.0", optional = true, features = ["log-04", "esp32s3", "unstable"] }
 
 esp-rtos = { version = "0.3.0", optional = true, features = [
-  "defmt",
+  "log-04",
   "embassy",
   "esp-alloc",
   "esp-radio",
   "esp32s3",
 ] }
 
-# Always on: the scene-definition types derive `defmt::Format` and call
-# `defmt::info!`, and defmt compiles fine on the host. Only the firmware streams
-# it over RTT.
-defmt                  = "1.0.1"
-esp-bootloader-esp-idf = { version = "0.5.0", optional = true, features = ["defmt", "esp32s3"] }
+# The logging facade. Firmware logs route `tracing` events (beet re-exports the
+# `info!`/`error!` macros) through tracing's `log` fallback to the `rtt-target`
+# logger (`rtt_init_log!`), which probe-rs decodes as plain text over RTT. The esp
+# crates' own `log`/`log-04` features feed the same logger.
+log = "0.4"
+# Bridge beet's `tracing` macros to `log` on the device: with no tracing
+# subscriber installed (bare metal), the `log` feature emits a `log` record for
+# each event, which the RTT logger then prints.
+tracing = { version = "0.1", default-features = false, features = ["log"] }
+esp-bootloader-esp-idf = { version = "0.5.0", optional = true, features = ["log-04", "esp32s3"] }
 
 # Networking stack — only pulled in by the `wifi` feature (see [features]).
 embassy-net = { version = "0.9.1", optional = true, features = [
-  "defmt",
+  "log",
   "dhcpv4",
   "dns",
   "medium-ethernet",
   "tcp",
   "udp",
 ] }
-embedded-io = { version = "0.7.1", optional = true, features = ["defmt"] }
-embedded-io-async = { version = "0.7.0", optional = true, features = ["defmt"] }
+embedded-io = { version = "0.7.1", optional = true }
+embedded-io-async = { version = "0.7.0", optional = true }
 # `internal-heap-stats` adds max-usage / total-allocated / total-freed counters,
 # which `health` uses for leak detection (cheap: an O(regions) tally per alloc).
-esp-alloc = { version = "0.10.0", optional = true, features = ["defmt", "internal-heap-stats"] }
-panic-rtt-target = { version = "0.2.0", optional = true, features = ["defmt"] }
-rtt-target = { version = "0.6.2", optional = true, features = ["defmt"] }
+esp-alloc = { version = "0.10.0", optional = true, features = ["internal-heap-stats"] }
+panic-rtt-target = { version = "0.2.0", optional = true }
+rtt-target = { version = "0.6.2", optional = true, features = ["log"] }
 # for more networking protocol support see https://crates.io/crates/edge-net
 # BLE host (`bt-hci`/`trouble-host`) — only pulled in by the `ble` feature.
 bt-hci = { version = "0.8.0", optional = true }
-embassy-executor = { version = "0.10.0", optional = true, features = ["defmt"] }
-embassy-time = { version = "0.5.0", optional = true, features = ["defmt"] }
+embassy-executor = { version = "0.10.0", optional = true, features = ["log"] }
+embassy-time = { version = "0.5.0", optional = true, features = ["log"] }
 # Radio — optional; the `wifi`/`ble`/`coex` features turn on the matching parts.
 esp-radio = { version = "0.18.0", optional = true, default-features = false, features = [
-  "defmt",
+  "log-04",
   "esp-alloc",
   "esp32s3",
   "unstable",
 ] }
 smoltcp = { version = "0.13.0", optional = true, default-features = false, features = [
-  "defmt",
   "medium-ethernet",
   "multicast",
   "proto-dhcpv4",
@@ -338,7 +342,7 @@ smoltcp = { version = "0.13.0", optional = true, default-features = false, featu
   "socket-tcp",
   "socket-udp",
 ] }
-trouble-host = { version = "0.6.0", optional = true, features = ["defmt", "gatt", "scan"] }
+trouble-host = { version = "0.6.0", optional = true, features = ["log", "gatt", "scan"] }
 
 # getrandom's `custom` backend (selected in .cargo/config.toml) — only pulled in
 # by the `random` feature, which provides the entropy symbol in `src/random.rs`.
@@ -351,7 +355,7 @@ extend           = "1"
 embassy-futures  = { version = "0.1.2", optional = true }
 # Pinned to esp-rtos's embassy-sync (0.8.0) so the bridge's Signal/Channel share
 # the same version the runtime links.
-embassy-sync = { version = "0.8.0", optional = true, features = ["defmt"] }
+embassy-sync = { version = "0.8.0", optional = true, features = ["log"] }
 static_cell  = { version = "2.1.1", optional = true }
 
 # Compiles the `quickjs` feature's C shims (`src/quickjs_shim.c`) in build.rs.
@@ -360,7 +364,7 @@ cc = "1"
 
 [dev-dependencies]
 embedded-test = { version = "0.7.1", features = [
-  "defmt",
+  "log",
   "embassy-010",
   "external-executor",
   "xtensa-semihosting",

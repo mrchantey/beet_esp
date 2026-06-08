@@ -14,9 +14,9 @@ use core::cell::RefCell;
 
 use bt_hci::controller::ExternalController;
 use bt_hci::param::LeAdvReportsIter;
-use defmt::info;
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
+use log::info;
 use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
 use esp_hal::timer::timg::TimerGroup;
@@ -34,7 +34,7 @@ const MAX_SEEN: usize = 64;
 
 #[esp_rtos::main]
 async fn main(_spawner: Spawner) -> ! {
-    rtt_target::rtt_init_defmt!();
+    rtt_target::rtt_init_log!(log::LevelFilter::Info);
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);

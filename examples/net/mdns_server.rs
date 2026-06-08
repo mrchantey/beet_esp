@@ -23,8 +23,6 @@
 
 use beet::prelude::*;
 use beet_esp::prelude::*;
-use defmt::info;
-use defmt::warn;
 use embassy_time::Instant;
 
 extern crate alloc;
@@ -87,9 +85,9 @@ fn probe_peer(commands: AsyncCommands, mut last_tick: Local<Option<Instant>>) {
                 response.status().as_u16()
             ),
             Err(e) => warn!(
-                "resolver probe {} failed: {}",
+                "resolver probe {} failed: {:?}",
                 PEER_LOCAL,
-                defmt::Debug2Format(&e)
+                e
             ),
         }
     });

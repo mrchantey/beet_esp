@@ -23,8 +23,6 @@ use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering;
 use core::time::Duration;
 use critical_section::Mutex;
-use defmt::info;
-use defmt::warn;
 use embassy_executor::Spawner;
 use embassy_net::IpAddress;
 use embassy_net::IpEndpoint;

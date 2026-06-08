@@ -8,12 +8,10 @@
 
 use beet::prelude::*;
 use beet_esp::prelude::*;
-use defmt::Debug2Format;
-use defmt::info;
 
 extern crate alloc;
 
-/// Leaf action: logs the caller's [`Name`] over defmt, then passes.
+/// Leaf action: logs the caller's [`Name`], then passes.
 #[action]
 #[derive(Component)]
 async fn LogStep(cx: ActionContext) -> Result<Outcome> {
@@ -51,7 +49,7 @@ fn run_behavior_tree(commands: AsyncCommands) {
 
         info!("calling behavior tree root");
         let outcome = root.call::<(), Outcome>(()).await?;
-        info!("sequence finished: {}", Debug2Format(&outcome));
+        info!("sequence finished: {:?}", outcome);
         Ok(())
     });
 }

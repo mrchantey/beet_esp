@@ -28,7 +28,6 @@
 
 use beet::prelude::*;
 use beet_esp::prelude::*;
-use defmt::info;
 
 extern crate alloc;
 

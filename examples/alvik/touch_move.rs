@@ -10,8 +10,6 @@
 
 use beet::prelude::*;
 use beet_esp::prelude::*;
-use defmt::Debug2Format;
-use defmt::info;
 
 #[beet_esp::main]
 fn main() {
@@ -27,7 +25,7 @@ fn main() {
 
 /// Light both LEDs blue on any touch and log which button it was.
 fn on_touch(ev: On<TouchPressed>, mut leds: Query<&mut LedColor, With<AlvikLed>>) {
-    info!("touch: {}", Debug2Format(&ev.event().0));
+    info!("touch: {:?}", ev.event().0);
     for mut led in &mut leds {
         led.0 = Color::srgb(0.0, 0.0, 1.0);
     }
@@ -46,5 +44,5 @@ fn on_drop(_: On<Dropped>) {
 }
 
 fn on_tilt(ev: On<Tilted>) {
-    info!("motion: tilted {}", Debug2Format(&ev.event().0));
+    info!("motion: tilted {:?}", ev.event().0);
 }

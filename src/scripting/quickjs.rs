@@ -8,8 +8,6 @@
 
 use beet::exports::rquickjs;
 use beet::prelude::*;
-use defmt::error;
-use defmt::info;
 use esp_hal::time::Instant;
 use rquickjs::Coerced;
 use rquickjs::Ctx;
@@ -72,7 +70,7 @@ pub impl Runtime {
 }
 
 /// Install a `console` global on `ctx` whose `log`, `error` and `dir` methods
-/// stream to `defmt` over RTT. `log`/`error` join their arguments with spaces
+/// stream to the `log` facade over RTT. `log`/`error` join their arguments with spaces
 /// (JS string coercion); `dir` JSON-renders each argument so objects show their
 /// structure rather than `[object Object]`.
 pub fn install_console(ctx: &Ctx<'_>) -> rquickjs::Result<()> {

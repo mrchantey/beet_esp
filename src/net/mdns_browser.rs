@@ -68,8 +68,6 @@ use crate::esp32_utils::async_bridge::spawn_driver;
 use beet::prelude::*;
 use core::net::Ipv4Addr;
 use core::net::SocketAddr;
-use defmt::info;
-use defmt::warn;
 use embassy_executor::Spawner;
 use embassy_net::IpAddress;
 use embassy_net::IpEndpoint;
@@ -153,7 +151,7 @@ fn start_pending_browsers(world: &mut World) {
     for (entity, service_type) in pending {
         info!(
             "mDNS browser starting for {}",
-            defmt::Display2Format(&service_type)
+            service_type
         );
         spawn_driver(spawner, browser_task(stack, service_type));
         world.entity_mut(entity).insert(BrowserStarted);
@@ -195,7 +193,7 @@ async fn browser_task(stack: Stack<'static>, service_type: SmolStr) {
     let socket = match endpoint.bind(bind).await {
         Ok(socket) => socket,
         Err(e) => {
-            warn!("mDNS browser: bind :{} failed: {}", MDNS_PORT, defmt::Debug2Format(&e));
+            warn!("mDNS browser: bind :{} failed: {:?}", MDNS_PORT, e);
             return;
         }
     };
@@ -213,11 +211,11 @@ async fn browser_task(stack: Stack<'static>, service_type: SmolStr) {
     let query = &query[..query_len];
 
     if let Err(e) = socket.send_to(query, MDNS_ENDPOINT).await {
-        warn!("mDNS browser: initial query send failed: {}", defmt::Debug2Format(&e));
+        warn!("mDNS browser: initial query send failed: {:?}", e);
     }
     info!(
         "mDNS browser up: querying {} on 224.0.0.251:5353",
-        defmt::Display2Format(&service_type)
+        service_type
     );
 
     let mut recv = [0u8; 1536];
@@ -236,12 +234,12 @@ async fn browser_task(stack: Stack<'static>, service_type: SmolStr) {
                 }
             }
             Ok(Err(e)) => {
-                warn!("mDNS browser: recv failed: {}", defmt::Debug2Format(&e));
+                warn!("mDNS browser: recv failed: {:?}", e);
             }
             Err(_) => {
                 // Interval elapsed: re-multicast the query.
                 if let Err(e) = socket.send_to(query, MDNS_ENDPOINT).await {
-                    warn!("mDNS browser: re-query send failed: {}", defmt::Debug2Format(&e));
+                    warn!("mDNS browser: re-query send failed: {:?}", e);
                 }
             }
         }

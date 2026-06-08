@@ -4,7 +4,7 @@
 
 /// Which wheel a per-wheel command addresses. The discriminant is the wire
 /// label byte the STM32 expects.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, defmt::Format)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
     Left,
     Right,
@@ -21,7 +21,7 @@ impl Side {
 }
 
 /// A touch button, as decoded from the `t` bitmask.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, defmt::Format)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TouchButton {
     Ok,
     Cancel,
@@ -33,7 +33,7 @@ pub enum TouchButton {
 }
 
 /// A tilt axis, as decoded from the `m` bitmask.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, defmt::Format)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TiltAxis {
     X,
     NegX,

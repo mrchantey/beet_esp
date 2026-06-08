@@ -10,7 +10,6 @@
 
 use beet::prelude::*;
 use beet_esp::prelude::*;
-use defmt::info;
 
 #[beet_esp::main]
 fn main() {

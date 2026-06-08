@@ -14,8 +14,6 @@ use crate::scripting::rhai::ScriptMap;
 use crate::scripting::rhai::run_script;
 use crate::scripting::rhai::unpack_color;
 use beet::prelude::*;
-use defmt::info;
-use defmt::warn;
 
 /// Behaviour-tree leaf: gather the sensor snapshot, run this entity's
 /// [`Script`], apply the drive + LED output. Loop it with [`Repeat`] for a live

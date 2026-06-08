@@ -18,8 +18,6 @@
 
 use crate::esp32_utils::async_bridge::spawn_driver;
 use beet::prelude::*;
-use defmt::info;
-use defmt::warn;
 use embassy_executor::Spawner;
 use embassy_net::Ipv4Address;
 use embassy_net::Ipv4Cidr;

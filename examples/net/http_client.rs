@@ -12,8 +12,6 @@
 
 use beet::prelude::*;
 use beet_esp::prelude::*;
-use defmt::info;
-use defmt::warn;
 
 
 /// How often [`poll_example_com`] issues its periodic request.
@@ -53,7 +51,7 @@ fn get_example_com(commands: AsyncCommands) {
                     response.status().as_u16()
                 );
             }
-            Err(e) => warn!("client request failed: {}", defmt::Debug2Format(&e)),
+            Err(e) => warn!("client request failed: {:?}", e),
         }
     });
 }

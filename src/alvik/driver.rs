@@ -46,7 +46,7 @@ use esp_hal::uart::RxError;
 use esp_hal::uart::Uart;
 
 /// The firmware version this port targets (`__required_firmware_version__`).
-/// A mismatch is warned over defmt and otherwise ignored (never panics).
+/// A mismatch is logged as a warning and otherwise ignored (never panics).
 const REQUIRED_FW: (u8, u8, u8) = (1, 1, 1);
 
 /// Commands queued by ECS systems, drained and written by the driver.
@@ -179,9 +179,9 @@ impl AlvikDriver {
                     // so the dropped bytes are harmless. Log it quietly and only
                     // warn on the genuine line errors.
                     if e == RxError::FifoOverflowed {
-                        defmt::debug!("alvik rx fifo overflow (recovered)");
+                        debug!("alvik rx fifo overflow (recovered)");
                     } else {
-                        defmt::warn!("alvik rx error: {}", e);
+                        warn!("alvik rx error: {:?}", e);
                     }
                     None
                 }
@@ -196,11 +196,11 @@ impl AlvikDriver {
     /// The `begin()` handshake: wait for power, reset the STM32, await the ack +
     /// firmware version (warn-only on mismatch), then send the init commands.
     async fn bring_up(&mut self) {
-        defmt::info!("alvik: waiting for robot power (CHECK_STM32 high)...");
+        info!("alvik: waiting for robot power (CHECK_STM32 high)...");
         while self.check_stm32.is_low() {
             Timer::after(Duration::from_millis(100)).await;
         }
-        defmt::info!("alvik: robot on — resetting STM32");
+        info!("alvik: robot on — resetting STM32");
         self.reset.set_low();
         Timer::after(Duration::from_millis(100)).await;
         self.reset.set_high();
@@ -233,17 +233,17 @@ impl AlvikDriver {
 
         match firmware {
             Some(version) if version == REQUIRED_FW => {
-                defmt::info!("alvik: firmware {} OK", version)
+                info!("alvik: firmware {:?} OK", version)
             }
-            Some(version) => defmt::warn!(
-                "alvik: firmware {} != required {} — continuing anyway",
+            Some(version) => warn!(
+                "alvik: firmware {:?} != required {:?} — continuing anyway",
                 version,
                 REQUIRED_FW
             ),
-            None => defmt::warn!("alvik: no firmware version received — continuing"),
+            None => warn!("alvik: no firmware version received — continuing"),
         }
         if !got_ack {
-            defmt::warn!("alvik: no startup ack received — continuing");
+            warn!("alvik: no startup ack received — continuing");
         }
 
         // Init sequence: illuminator on, behaviors 1 & 2, servos centred.
@@ -260,14 +260,14 @@ impl AlvikDriver {
                 patch,
             });
         }
-        defmt::info!("alvik: bring-up complete");
+        info!("alvik: bring-up complete");
     }
 
     /// Encode `command` and write it to the UART.
     async fn send(&mut self, command: Command) {
         let bytes = command.encode(&mut self.encoder);
         if let Err(e) = self.uart.write_async(bytes).await {
-            defmt::warn!("alvik tx error: {}", e);
+            warn!("alvik tx error: {:?}", e);
         }
     }
 

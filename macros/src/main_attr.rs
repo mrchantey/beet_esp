@@ -135,7 +135,7 @@ pub fn impl_main_attr(
         #[::beet_esp::esp_hal::main]
         fn main() -> ! {
             // Hand the reserve to `mem::init_esp`, which does the actual bring-up
-            // — RTT/`defmt` logging, PSRAM + heap registration, the boot snapshot.
+            // — RTT `log` output, PSRAM + heap registration, the boot snapshot.
             unsafe { ::beet_esp::esp32_utils::mem::init_esp(&raw mut __BEET_ESP_RESERVE) };
 
             #block

@@ -34,5 +34,3 @@ beet = { path = "/home/pete/me/worktrees/beet/apps/beet", default-features = fal
   "net",
   "router",
 ] }
-# beet_esp's scene types derive `defmt::Format`, so the host build links defmt too.
-defmt = "1.0.1"

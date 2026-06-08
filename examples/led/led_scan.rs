@@ -2,7 +2,7 @@
 //!
 //! A diagnostic for when you don't know which pin the on-board WS2812 is wired
 //! to. It walks every safe-to-drive GPIO, blinking each (500 ms white on,
-//! 500 ms off = 1 s per pin) and logging the pin number over defmt. Watch the
+//! 500 ms off = 1 s per pin) and logging the pin number over RTT. Watch the
 //! board: when the LED blinks, read the log to see which `GPIOxx` is currently
 //! being driven. The sweep loops forever (~31 s per full pass).
 //!
@@ -28,7 +28,7 @@ use beet::prelude::Color;
 use beet_esp::prelude::Grb;
 use beet_esp::prelude::PIXEL_CODES;
 use beet_esp::prelude::start_embassy;
-use defmt::info;
+use log::info;
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
@@ -46,7 +46,7 @@ const PIN_COUNT: usize = 31;
 
 #[esp_rtos::main]
 async fn main(_spawner: Spawner) -> ! {
-    rtt_target::rtt_init_defmt!();
+    rtt_target::rtt_init_log!(log::LevelFilter::Info);
 
     let p = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()));
     start_embassy(p.TIMG0, p.SW_INTERRUPT);

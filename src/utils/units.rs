@@ -18,7 +18,7 @@ use core::ops::Neg;
 use core::ops::Sub;
 
 /// An angle. Inner unit is **radians**.
-#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, defmt::Format)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Angle(f32);
 
 impl Angle {
@@ -42,7 +42,7 @@ impl Angle {
 /// The `%`-of-max forms are context-dependent (`MOTOR_MAX_RPM` for a wheel,
 /// `ROBOT_MAX_DEG_S` for the robot), so they live on the robot/wheel helpers,
 /// not here.
-#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, Component, defmt::Format)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, Component)]
 pub struct AngularVelocity(f32);
 
 impl AngularVelocity {
@@ -58,7 +58,7 @@ impl AngularVelocity {
 }
 
 /// A linear distance. Inner unit is **millimeters**.
-#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, defmt::Format)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Distance(f32);
 
 impl Distance {
@@ -77,7 +77,7 @@ impl Distance {
 ///
 /// Also a [`Component`]: the Alvik robot root carries one as its measured
 /// forward speed (the `v` status), in the spirit of Avian's velocity components.
-#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, Component, defmt::Format)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd, Component)]
 pub struct LinearVelocity(f32);
 
 impl LinearVelocity {

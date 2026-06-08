@@ -5,7 +5,6 @@
 
 use crate::esp32_utils::async_bridge::spawn_driver;
 use beet::prelude::*;
-use defmt::info;
 use embassy_time::Duration;
 use embassy_time::Timer;
 use esp_hal::peripherals::Peripherals;

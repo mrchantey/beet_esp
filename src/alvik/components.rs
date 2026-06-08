@@ -17,11 +17,11 @@ use beet::prelude::*;
 pub struct AlvikRobot;
 
 /// Whether the bring-up handshake has completed and the link is live.
-#[derive(Component, Default, Clone, Copy, defmt::Format)]
+#[derive(Component, Default, Clone, Copy, Debug)]
 pub struct Connected(pub bool);
 
 /// The carrier firmware version reported at bring-up.
-#[derive(Component, Default, Clone, Copy, defmt::Format)]
+#[derive(Component, Default, Clone, Copy, Debug)]
 pub struct FirmwareVersion {
     pub major: u8,
     pub minor: u8,
@@ -29,11 +29,11 @@ pub struct FirmwareVersion {
 }
 
 /// The robot's current behavior code (`b` status).
-#[derive(Component, Default, Clone, Copy, defmt::Format)]
+#[derive(Component, Default, Clone, Copy, Debug)]
 pub struct BehaviorCode(pub u8);
 
 /// Battery state of charge; `charging` is the sign of the wire value.
-#[derive(Component, Default, Clone, Copy, defmt::Format)]
+#[derive(Component, Default, Clone, Copy, Debug)]
 pub struct BatterState {
     pub percent: f32,
     pub charging: bool,
@@ -42,21 +42,21 @@ pub struct BatterState {
 // --- wheels -----------------------------------------------------------------
 
 /// A wheel child entity, tagged with its side.
-#[derive(Component, Clone, Copy, defmt::Format)]
+#[derive(Component, Clone, Copy, Debug)]
 pub struct Wheel {
     pub side: Side,
 }
 
 /// Commanded wheel intent. Setting it (a change) queues the matching wire
 /// command in [`flush_wheels`](super::systems::flush_wheels).
-#[derive(Component, Clone, Copy, defmt::Format)]
+#[derive(Component, Clone, Copy, Debug)]
 pub enum WheelTarget {
     Speed(AngularVelocity),
     Position(Angle),
 }
 
 /// Measured wheel state from the `j` (speed) and `w` (position) status.
-#[derive(Component, Default, Clone, Copy, defmt::Format)]
+#[derive(Component, Default, Clone, Copy, Debug)]
 pub struct WheelState {
     pub speed: AngularVelocity,
     pub position: Angle,
@@ -66,7 +66,7 @@ pub struct WheelState {
 
 /// Differential-drive command: linear + angular velocity (`V`). Changing it
 /// queues a drive command.
-#[derive(Component, Default, Clone, Copy, defmt::Format)]
+#[derive(Component, Default, Clone, Copy, Debug)]
 pub struct DifferentialDrive {
     pub linear: LinearVelocity,
     pub angular: AngularVelocity,
@@ -75,14 +75,14 @@ pub struct DifferentialDrive {
 // --- servos -----------------------------------------------------------------
 
 /// Which servo header a [`Servo`] drives.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, defmt::Format)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServoId {
     A,
     B,
 }
 
 /// A servo child entity. `position` is clamped to 0..=180° on flush.
-#[derive(Component, Clone, Copy, defmt::Format)]
+#[derive(Component, Clone, Copy, Debug)]
 pub struct Servo {
     pub id: ServoId,
     pub position: Angle,
@@ -107,17 +107,17 @@ pub struct AlvikLed {
 }
 
 /// The illuminator LED on the robot root.
-#[derive(Component, Default, Clone, Copy, defmt::Format)]
+#[derive(Component, Default, Clone, Copy, Debug)]
 pub struct Illuminator(pub bool);
 
 /// The built-in LED on the robot root.
-#[derive(Component, Default, Clone, Copy, defmt::Format)]
+#[derive(Component, Default, Clone, Copy, Debug)]
 pub struct BuiltinLed(pub bool);
 
 // --- sensors ----------------------------------------------------------------
 
 /// Line-following reflectance sensors (`l` status), raw counts.
-#[derive(Component, Default, Clone, Copy, defmt::Format)]
+#[derive(Component, Default, Clone, Copy, Debug)]
 pub struct LineSensors {
     pub left: i16,
     pub center: i16,
@@ -159,7 +159,7 @@ impl ColorSensor {
 }
 
 /// Time-of-flight distance sensors (`d` short read; `f` adds top/bottom).
-#[derive(Component, Default, Clone, Copy, defmt::Format)]
+#[derive(Component, Default, Clone, Copy, Debug)]
 pub struct Tof {
     pub left: Distance,
     pub center_left: Distance,
@@ -187,7 +187,7 @@ pub struct RobotPose(pub Pose);
 
 /// Touch button bitmask (`t` status). See
 /// [`TouchButton`](super::types::TouchButton).
-#[derive(Component, Default, Clone, Copy, defmt::Format)]
+#[derive(Component, Default, Clone, Copy, Debug)]
 pub struct TouchValue(pub u8);
 
 impl TouchValue {
@@ -198,7 +198,7 @@ impl TouchValue {
 }
 
 /// Move/tilt bitmask (`m` status). Drives the shake/lift/tilt observer events.
-#[derive(Component, Default, Clone, Copy, defmt::Format)]
+#[derive(Component, Default, Clone, Copy, Debug)]
 pub struct MotionValue(pub u8);
 
 impl MotionValue {
@@ -211,7 +211,7 @@ impl MotionValue {
 // --- color classification ---------------------------------------------------
 
 /// The discrete colour the sensor sees, from the `hsv2label` classifier.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, defmt::Format)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum ColorLabel {
     #[default]
     Undefined,

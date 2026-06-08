@@ -22,9 +22,6 @@
 
 use beet::prelude::*;
 use beet_esp::prelude::*;
-use defmt::Debug2Format;
-use defmt::info;
-use defmt::warn;
 
 /// Marker component. Reflected + registered so `world_serde` can (de)serialize it.
 ///
@@ -72,9 +69,9 @@ fn dump_canonical(world: &mut World) {
     {
         Ok(bytes) => match bytes.as_utf8() {
             Ok(text) => info!("canonical scene JSON:\n{}", text),
-            Err(e) => warn!("serialized scene not UTF-8: {}", Debug2Format(&e)),
+            Err(e) => warn!("serialized scene not UTF-8: {:?}", e),
         },
-        Err(e) => warn!("failed to serialize scene: {}", Debug2Format(&e)),
+        Err(e) => warn!("failed to serialize scene: {:?}", e),
     }
     world.despawn(temp);
 }
@@ -84,7 +81,7 @@ fn load_scene(world: &mut World) {
     let bytes = MediaBytes::new_json(SCENE_JSON);
     match WorldSerdeLoader::new(world).load(&bytes) {
         Ok(spawned) => info!("loaded {} entit(ies) from hard-coded JSON scene", spawned.len()),
-        Err(e) => warn!("failed to load scene: {}", Debug2Format(&e)),
+        Err(e) => warn!("failed to load scene: {:?}", e),
     }
 }
 

@@ -15,7 +15,6 @@ use beet_esp::prelude::*;
 // Explicit to disambiguate from bevy's `Command` trait (both are in scope via
 // the glob preludes above).
 use beet_esp::alvik::protocol::Command;
-use defmt::info;
 
 #[beet_esp::main]
 fn main() {

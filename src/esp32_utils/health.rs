@@ -28,8 +28,6 @@
 //! shows up under the heap, not here.
 
 use beet::prelude::*;
-use defmt::info;
-use defmt::warn;
 use embassy_time::Instant;
 
 /// How often the periodic report fires.
@@ -147,7 +145,7 @@ fn stack_usage() -> (usize, usize, usize) {
 
 /// A point-in-time view of memory. All scalar, so it is `Copy` and lives in a
 /// static and in resources without ceremony.
-#[derive(Clone, Copy, defmt::Format)]
+#[derive(Debug, Clone, Copy)]
 pub struct MemSnapshot {
     /// Total heap size across all regions, bytes.
     pub heap_size: usize,
@@ -254,7 +252,7 @@ fn capture_baseline(mut state: ResMut<HealthState>) {
     info!("── health: baseline ──");
     match psram_info() {
         Some(p) if p.present() => info!(
-            "psram:       {} B mapped at {=usize:#x} (bulk pool: World, registry, request buffers)",
+            "psram:       {} B mapped at {:#x} (bulk pool: World, registry, request buffers)",
             p.size, p.start
         ),
         Some(_) => warn!("psram:       not detected — bulk allocations fall back to internal SRAM"),

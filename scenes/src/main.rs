@@ -1,109 +1,69 @@
 //! Host scene generator: build each canonical beet_esp scene and serialize it to
-//! `target/scenes/<name>.json`.
+//! `../target/scenes/<name>.json`.
 //!
 //! The scene-definition types live in `beet_esp` (its ECS components,
 //! `#[action]`s and scene bundles), which compiles for the host without its
-//! `device` hardware stack. So unlike the old on-device `export_scenes` example
-//! (which dumped JSON over defmt and was copy-pasted into git), this program
-//! constructs the scenes on the PC and writes the JSON files directly. They land
-//! under `target/` (gitignored) and are regenerated on demand.
+//! `device` hardware stack. This uses the same export API as the upstream
+//! `beet-cli` `export_scenes` example: each scene root is spawned tagged with
+//! [`ExportScene`] + [`ExportPath`], and the upstream [`export_scenes`] system
+//! writes them all to disk in one pass. They land under `target/` (gitignored)
+//! and are regenerated on demand.
 //!
-//! Run with: `cd scenes && cargo run --release`
+//! Run with: `cd scenes && cargo run` (or `just export-scenes`).
 
 use beet::prelude::*;
 use beet_esp::prelude::*;
 // disambiguate our scene `Script` from beet's own `Script` action, both pulled in
 // by the globs above.
 use beet_esp::scripting::rhai::Script;
-use std::fs;
-use std::path::Path;
-use std::path::PathBuf;
 
-// beet_esp always links `defmt` (its scene types `#[derive(defmt::Format)]` and
-// call `defmt::info!`). On the device a real RTT logger provides these symbols;
-// on the host nothing does, so we link a no-op one. The scene types we build
-// never actually log here, so discarding is fine.
-defmt::timestamp!("");
-
-#[defmt::global_logger]
-struct NoopLogger;
-
-unsafe impl defmt::Logger for NoopLogger {
-    fn acquire() {}
-    unsafe fn flush() {}
-    unsafe fn release() {}
-    unsafe fn write(_bytes: &[u8]) {}
-}
-
-fn main() {
-    // EspScenePlugin + RouterPlugin register every scene type so reflection can
-    // serialize them. No hardware plugins (Esp32Plugin/HealthPlugin) here — they
-    // are device-only and the scenes need only the reflect registrations.
+fn main() -> AppExit {
+    // RouterPlugin + EspScenePlugin register every scene type so reflection can
+    // serialize them. No hardware plugins (Esp32Plugin/HealthPlugin) — they are
+    // device-only and the scenes need only the reflect registrations. MinimalPlugins
+    // + LogPlugin give the schedule a runner and log output.
     let mut app = App::new();
-    app.add_plugins((RouterPlugin, EspScenePlugin));
-
-    let out_dir = scenes_dir();
-    fs::create_dir_all(&out_dir).expect("failed to create target/scenes");
-
-    let world = app.world_mut();
-    export_scenes(world, &out_dir);
-
-    println!("wrote scenes to {}", out_dir.display());
+    app.add_plugins((MinimalPlugins, LogPlugin::default(), RouterPlugin, EspScenePlugin))
+        // spawn each tagged scene root, then `export_scenes` writes them to disk.
+        .add_systems(Startup, (spawn_scenes, export_scenes).chain());
+    app.run_once().unwrap_or(AppExit::Success)
 }
 
-/// `<workspace>/target/scenes`. The generator lives in `beet_esp/scenes`, so the
-/// firmware crate's `target/` is one directory up.
-fn scenes_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("scenes crate has a parent dir")
-        .join("target")
-        .join("scenes")
+/// `<scenes-crate>/../target/scenes/<label>.json` — the firmware crate's
+/// `target/` is one directory up. Built from `CARGO_MANIFEST_DIR` so it is
+/// independent of the working directory `cargo run` is invoked from.
+fn scene_path(label: &str) -> String {
+    format!("{}/../target/scenes/{label}.json", env!("CARGO_MANIFEST_DIR"))
 }
 
-/// Build each example scene and write it to `<out_dir>/<name>.json`.
-fn export_scenes(world: &mut World, out_dir: &Path) {
-    save_scene(world, out_dir, "led-script", led_script_scene());
+/// Spawn each canonical scene root, tagged with [`ExportScene`] + its
+/// [`ExportPath`]; [`export_scenes`] then serializes each (the export markers
+/// denied) to `target/scenes/<label>.json`.
+fn spawn_scenes(world: &mut World) {
+    spawn_scene(world, "led-script", led_script_scene());
 
-    // rc: two standalone route roots in one scene.
-    let drive = world
-        .spawn((DriveRoute, PathPartial::new("drive/:dir")))
-        .id();
-    let led = world
-        .spawn((LedRoute, PathPartial::new("led/:side/:state")))
-        .id();
-    save_roots(world, out_dir, "rc", [drive, led]);
+    // rc: two standalone route roots grouped under one `Router` scene root.
+    spawn_scene(
+        world,
+        "rc",
+        (
+            Router,
+            children![
+                (DriveRoute, PathPartial::new("drive/:dir")),
+                (LedRoute, PathPartial::new("led/:side/:state")),
+            ],
+        ),
+    );
 
-    save_scene(world, out_dir, "dance-routine", dance_scene());
-    save_scene(world, out_dir, "line-follower", line_follower_scene());
-    save_scene(world, out_dir, "roomba", roomba_scene());
-    save_scene(world, out_dir, "script", script_scene());
+    spawn_scene(world, "dance-routine", dance_scene());
+    spawn_scene(world, "line-follower", line_follower_scene());
+    spawn_scene(world, "roomba", roomba_scene());
+    spawn_scene(world, "script", script_scene());
 }
 
-/// Spawn a one-root scene `bundle`, write it, then despawn it.
-fn save_scene(world: &mut World, out_dir: &Path, label: &str, bundle: impl Bundle) {
-    let root = world.spawn(bundle).id();
-    save_roots(world, out_dir, label, [root]);
-}
-
-/// Serialize the given scene `roots` to JSON via [`WorldSerdeSaver::save_roots`],
-/// write it to `<out_dir>/<label>.json`, then despawn them.
-fn save_roots(
-    world: &mut World,
-    out_dir: &Path,
-    label: &str,
-    roots: impl IntoIterator<Item = Entity>,
-) {
-    let roots = roots.into_iter().collect::<Vec<_>>();
-    let bytes = WorldSerdeSaver::save_roots(world, MediaType::Json, roots.iter().copied())
-        .expect("failed to serialize scene");
-    let json = bytes.as_utf8().expect("scene JSON is not UTF-8");
-    let path = out_dir.join(format!("{label}.json"));
-    fs::write(&path, json).expect("failed to write scene file");
-    roots
-        .iter()
-        .for_each(|root| world.entity_mut(*root).despawn());
-    println!("scene[{label}] -> {}", path.display());
+/// Spawn a scene root from `bundle`, tagged for export to `<label>.json`.
+fn spawn_scene(world: &mut World, label: &str, bundle: impl Bundle) {
+    world.spawn((ExportScene, ExportPath(scene_path(label)), bundle));
 }
 
 // ---------------------------------------------------------------------------

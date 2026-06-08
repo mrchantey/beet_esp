@@ -34,7 +34,6 @@ fn main() {
 fn smoke_test() {
     use beet::exports::rquickjs::Context;
     use beet::exports::rquickjs::Runtime;
-    use defmt::info;
 
     extern crate alloc;
     use alloc::string::String;
@@ -55,10 +54,10 @@ fn smoke_test() {
         // arrow-disambiguation pass run instead of overflowing.
         match ctx.eval::<i64, _>("(() => 6 * 7)()") {
             Ok(value) => info!("quickjs arrow fn = {}", value),
-            Err(err) => info!("quickjs arrow fn failed: {}", defmt::Debug2Format(&err)),
+            Err(err) => info!("quickjs arrow fn failed: {:?}", err),
         }
 
-        // `console.log` / `error` / `dir` stream to defmt over RTT.
+        // `console.log` / `error` / `dir` stream to the `log` facade over RTT.
         install_console(&ctx).unwrap();
         ctx.eval::<(), _>(
             r#"
@@ -77,7 +76,6 @@ fn smoke_test() {
 #[cfg(all(feature = "rhai", not(feature = "quickjs")))]
 fn smoke_test() {
     use beet::exports::rhai;
-    use defmt::info;
 
     extern crate alloc;
     use alloc::string::String;

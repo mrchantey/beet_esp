@@ -12,8 +12,6 @@
 
 use beet::prelude::*;
 use beet_esp::prelude::*;
-use defmt::Debug2Format;
-use defmt::info;
 
 #[beet_esp::main]
 fn main() {
@@ -60,8 +58,8 @@ fn log_measured_speed(
 
     for (wheel, state) in &wheels {
         info!(
-            "wheel {} measured {} rpm",
-            Debug2Format(&wheel.side),
+            "wheel {:?} measured {} rpm",
+            wheel.side,
             state.speed.as_rpm()
         );
     }

@@ -1,6 +1,6 @@
 //! Read and log the Alvik's sensors: line, color (+label), ToF, IMU,
 //! orientation, battery and touch. Consolidates the upstream `sensors/*.py`
-//! readers into one example, logged twice a second over defmt/RTT.
+//! readers into one example, logged twice a second over RTT.
 //!
 //! Run with: `cargo run --release --no-default-features --features alvik --example alvik-sensors`
 
@@ -9,8 +9,6 @@
 
 use beet::prelude::*;
 use beet_esp::prelude::*;
-use defmt::Debug2Format;
-use defmt::info;
 
 #[beet_esp::main]
 fn main() {
@@ -51,11 +49,11 @@ fn log_sensors(time: Res<Time>, mut elapsed: Local<f32>, robot: Single<Sensors, 
         robot.line.left, robot.line.center, robot.line.right
     );
     info!(
-        "COLOR raw=({}, {}, {}) label={}",
+        "COLOR raw=({}, {}, {}) label={:?}",
         robot.color.raw().0,
         robot.color.raw().1,
         robot.color.raw().2,
-        Debug2Format(&color_to_label(&robot.color.as_color()))
+        color_to_label(robot.color.color())
     );
     info!(
         "TOF   l={}mm c={}mm r={}mm",

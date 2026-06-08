@@ -154,8 +154,6 @@ mod led_step {
     use super::*;
     use crate::utils::led::LedColor;
     use crate::utils::led::Ws2812Led;
-    use defmt::info;
-    use defmt::warn;
 
     /// Behaviour-tree leaf: feed the elapsed time and the LED's current colour
     /// to this entity's [`Script`], then apply the colour it returns. Loop it

@@ -2,7 +2,6 @@
 runner = "probe-rs run --chip=esp32s3 --preverify --always-print-stacktrace --no-location"
 
 [env]
-DEFMT_LOG="info"
 # C deps (currently only rquickjs's bundled QuickJS engine under the `quickjs`
 # feature) are compiled by the espup bare-metal toolchain, which ships newlib —
 # so the engine's libc/libm calls resolve. Inert unless a crate compiles C.
