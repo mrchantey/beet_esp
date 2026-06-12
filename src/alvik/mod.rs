@@ -88,8 +88,9 @@ pub mod actions;
 pub mod routes;
 #[cfg(feature = "router")]
 pub mod scenes;
-// rhai control scripts wire into the scene routes, so they also need `router`.
-#[cfg(all(feature = "router", feature = "rhai"))]
+// Control scripts wire into the scene routes, so they also need `router`; the
+// step runs a beet `Script`, so it needs a scripting backend.
+#[cfg(all(feature = "router", any(feature = "rhai", feature = "quickjs")))]
 pub mod scripting;
 
 pub mod prelude {
@@ -116,6 +117,6 @@ pub mod prelude {
     pub use super::routes::*;
     #[cfg(feature = "router")]
     pub use super::scenes::*;
-    #[cfg(all(feature = "router", feature = "rhai"))]
+    #[cfg(all(feature = "router", any(feature = "rhai", feature = "quickjs")))]
     pub use super::scripting::*;
 }

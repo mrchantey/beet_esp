@@ -104,3 +104,10 @@ A full `esp-rust` skill (project generation, hardware setup, esp-hal coding
 patterns, troubleshooting) lives in-repo at `.agents/skills/esp-rust/`.
 
 All troubleshooting is located at `.agents/skills/esp-rust/troubleshooting.md`
+
+
+
+## Verification
+
+
+After making code changes, we need to verify on device if it's plugged in. Ensure everything is compiling, re-upload to the device which is plugged in, and verify all good

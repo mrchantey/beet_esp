@@ -2,8 +2,9 @@
 //! HTTP meta-routes ([`LoadScene`], [`ClearScene`], …), [`SpawnAction`], the
 //! [`BeetSceneRoot`] marker and the [`ResetScene`] event — now lives upstream in
 //! [`beet::router`]'s `scene_management`. Here we add the firmware's own scene
-//! types (rhai [`Script`](crate::scripting::rhai::Script)s) and the
-//! [`ResetScene`] handlers for its hardware (LEDs, and under `alvik` the robot).
+//! types (the script steps plus their [`ScriptState`](crate::scripting::ScriptState))
+//! and the [`ResetScene`] handlers for its hardware (LEDs, and under `alvik` the
+//! robot).
 
 use beet::prelude::*;
 
@@ -14,20 +15,28 @@ pub mod prelude {
 }
 
 /// Registers the firmware's scene capabilities on top of the upstream
-/// [`SceneServerPlugin`]: the rhai [`Script`](crate::scripting::rhai::Script)
-/// types and the [`ResetScene`] handlers for the on-board LED (and, under
-/// `alvik`, the robot). The router, `Sequence`/`Repeat` and `RunTimer` types are
-/// covered by [`RouterPlugin`]/[`ActionPlugin`].
+/// [`SceneServerPlugin`]: the script step types plus their
+/// [`ScriptState`](crate::scripting::ScriptState), and the [`ResetScene`]
+/// handlers for the on-board LED (and, under `alvik`, the robot). The router,
+/// `Sequence`/`Repeat` and `RunTimer` types are covered by
+/// [`RouterPlugin`]/[`ActionPlugin`]. The typed `Script` and its runtime come
+/// from beet_action.
 pub struct EspScenePlugin;
 
 impl Plugin for EspScenePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(SceneServerPlugin)
             .register_type::<EndInDuration>();
-        #[cfg(feature = "rhai")]
-        app.register_type::<crate::scripting::rhai::Script>();
-        #[cfg(all(feature = "rhai", feature = "led"))]
-        app.register_type::<crate::scripting::rhai::LedScriptStep>();
+        // The persistent state every stateful script step threads.
+        #[cfg(feature = "scripting")]
+        app.register_type::<crate::scripting::ScriptState>();
+        // The LED script step plus its typed `Script` data.
+        #[cfg(all(feature = "led", any(feature = "rhai", feature = "quickjs")))]
+        app.register_type::<crate::scripting::LedScriptStep>()
+            .register_type::<Script<
+                crate::scripting::LedInput,
+                crate::scripting::LedOutput,
+            >>();
         #[cfg(feature = "led")]
         app.add_observer(reset_leds);
         #[cfg(feature = "alvik")]

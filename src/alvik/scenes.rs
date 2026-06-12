@@ -24,8 +24,14 @@ impl Plugin for AlvikScenePlugin {
             .register_type::<LineFollowStep>()
             .register_type::<RoombaStep>()
             .add_observer(reset_robot);
-        #[cfg(feature = "rhai")]
-        app.register_type::<super::scripting::AlvikScriptStep>();
+        // The script step plus its data: the typed `Script` and the `ScriptState`
+        // it threads. `ScriptState` is registered once in `EspScenePlugin`.
+        #[cfg(any(feature = "rhai", feature = "quickjs"))]
+        app.register_type::<super::scripting::AlvikScriptStep>()
+            .register_type::<Script<
+                super::scripting::AlvikInput,
+                super::scripting::AlvikOutput,
+            >>();
     }
 }
 

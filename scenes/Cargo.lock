@@ -474,6 +474,7 @@ dependencies = [
  "extend",
  "log",
  "rhai",
+ "serde",
  "tracing",
 ]
 

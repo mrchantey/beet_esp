@@ -89,9 +89,10 @@ action = ["beet/action"]
 # firmware enables on top. See `examples/ecs_router.rs`.
 router = ["action", "beet/router_embedded"]
 mdns = ["wifi", "action", "embassy-net/multicast", "beet/mdns"]
-# Engine-agnostic scripting placeholder; mirrors beet's `scripting`. Does nothing
-# on its own yet — a backend (`rhai` or `quickjs`) builds on it.
-scripting = ["action"]
+# Engine-agnostic scripting layer; mirrors beet's `scripting`. Pulls `serde` for
+# the typed script input/output structs (marshalled through beet's `Value`); a
+# backend (`rhai` or `quickjs`) builds on it to actually run a `Script`.
+scripting = ["action", "dep:serde"]
 # The rhai engine on no_std, reached through `beet::exports::rhai`. Pulls the
 # agnostic `scripting` layer (the backend builds on it, not the reverse).
 # `beet/rhai` turns on the re-export (beet's serde `Script` runtime stays off
@@ -280,6 +281,11 @@ beet = { path = "/home/pete/me/worktrees/beet/apps/beet", default-features = fal
 
 # Sibling proc-macro crate providing #[beet_esp::main]. Builds for the host.
 beet_esp_macros = { path = "macros" }
+
+# serde for the scripting input/output structs. `no_std` with alloc; the `derive`
+# feature provides the `Serialize`/`Deserialize` macros (re-exported by beet's
+# prelude). Pulled in by the `scripting` feature.
+serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
 
 esp-hal = { version = "~1.1.0", optional = true, features = ["log-04", "esp32s3", "unstable"] }
 

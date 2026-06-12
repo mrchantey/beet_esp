@@ -53,8 +53,8 @@ pub mod prelude {
 	pub use crate::main;
 	#[cfg(feature = "router")]
 	pub use crate::scene::prelude::*;
-	// Empty unless a scripting backend is enabled; gate to avoid an unused glob.
-	#[cfg(any(feature = "rhai", feature = "quickjs"))]
+	// Empty unless the scripting layer is enabled; gate to avoid an unused glob.
+	#[cfg(feature = "scripting")]
 	pub use crate::scripting::prelude::*;
 	pub use crate::utils::prelude::*;
 	#[cfg(feature = "wifi")]

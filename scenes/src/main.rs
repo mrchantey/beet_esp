@@ -12,9 +12,6 @@
 
 use beet::prelude::*;
 use beet_esp::prelude::*;
-// disambiguate our scene `Script` from beet's own `Script` action, both pulled in
-// by the globs above.
-use beet_esp::scripting::rhai::Script;
 
 fn main() -> AppExit {
     // RouterPlugin + ServerPlugin drive the CliServer (route dispatch + async);
@@ -74,7 +71,7 @@ fn spawn_host(mut commands: Commands) {
 /// A demo LED script: cycle red/green/blue from the elapsed time, counting the
 /// ticks it has run in `state` to show the persistent map at work.
 const LED_SCRIPT: &str = r#"
-let count = if "count" in state { state.count } else { 0 };
+let count = if "count" in input.state { input.state.count } else { 0 };
 let phase = (input.elapsed_ms / 500) % 3;
 let led = if phase == 0 { 0xff0000 } else if phase == 1 { 0x00ff00 } else { 0x0000ff };
 #{
@@ -95,10 +92,7 @@ fn led_script_scene() -> impl Bundle {
                 children![
                     (
                         LedScriptStep,
-                        Script {
-                            source: String::from(LED_SCRIPT),
-                            state: ScriptMap::default(),
-                        }
+                        Script::<LedInput, LedOutput>::rhai(LED_SCRIPT),
                     ),
                     EndInDuration::pass(Duration::from_millis(100)),
                 ],
@@ -167,7 +161,7 @@ fn roomba_scene() -> impl Bundle {
 /// A demo Alvik script: back off when something is within 20 cm, otherwise
 /// cruise, pulsing the LEDs from a counter held in `state`.
 const ALVIK_SCRIPT: &str = r#"
-let t = if "t" in state { state.t } else { 0 };
+let t = if "t" in input.state { input.state.t } else { 0 };
 let near = input.depth_mm > 0 && input.depth_mm < 200;
 let bright = if t % 6 < 3 { 255 } else { 20 };
 #{
@@ -191,10 +185,7 @@ fn script_scene() -> impl Bundle {
                 children![
                     (
                         AlvikScriptStep,
-                        Script {
-                            source: String::from(ALVIK_SCRIPT),
-                            state: ScriptMap::default(),
-                        }
+                        Script::<AlvikInput, AlvikOutput>::rhai(ALVIK_SCRIPT),
                     ),
                     EndInDuration::pass(Duration::from_millis(100)),
                 ],

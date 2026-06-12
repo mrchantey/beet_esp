@@ -504,6 +504,7 @@ dependencies = [
  "rhai",
  "rquickjs",
  "rtt-target",
+ "serde",
  "smoltcp",
  "static_cell",
  "tracing",
