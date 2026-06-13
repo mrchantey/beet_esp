@@ -17,7 +17,7 @@ pub mod prelude {
     // the `async_bridge::` prefix (e.g. `async_bridge::spawn_worker`).
     pub use super::async_bridge;
     pub use super::health::*;
-    pub use super::mem::{External, Internal, PsramInfo};
+    pub use super::mem::{External, Internal, PsramInfo, init_rtt_log};
 
     #[cfg(feature = "action")]
     pub use super::async_utils::*;

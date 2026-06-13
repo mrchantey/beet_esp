@@ -272,7 +272,7 @@ rquickjs = { version = "0.12", default-features = false, features = [
 beet = { path = "/home/pete/me/worktrees/beet/apps/beet", default-features = false, features = [
   "embedded",
   "bevy_color",
-  "world_serde",
+  "template_serde",
   "json",
   # no_std core of beet_net: the transport-agnostic Request/Response wire types
   # and the `set_http_client` transport hook the wifi client installs.
@@ -368,11 +368,17 @@ static_cell  = { version = "2.1.1", optional = true }
 [build-dependencies]
 cc = "1"
 
+# `default-features = false` drops embedded-test's own `panic-handler`: the test
+# binary links `beet_esp`, whose `device` feature already provides the firmware's
+# `panic-rtt-target` handler, and two `#[panic_handler]`s collide. `semihosting`
+# (the harness's host channel) is re-enabled explicitly since it is otherwise a
+# default.
 [dev-dependencies]
-embedded-test = { version = "0.7.1", features = [
+embedded-test = { version = "0.7.1", default-features = false, features = [
   "log",
   "embassy-010",
   "external-executor",
+  "semihosting",
   "xtensa-semihosting",
 ] }
 

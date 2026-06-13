@@ -6,9 +6,9 @@
 //!
 //! What it does, all in one `Startup` chain:
 //! - [`dump_canonical`] spawns a [`HelloWorld`], serializes that subtree to JSON
-//!   with [`WorldSerdeSaver`], and logs it — this is the ground-truth wire format.
+//!   with [`TemplateSaver`], and logs it — this is the ground-truth wire format.
 //! - [`load_scene`] deserializes the hard-coded [`SCENE_JSON`] back into the world
-//!   with [`WorldSerdeLoader`].
+//!   with [`TemplateLoader`].
 //! - [`greet`] queries for [`HelloWorld`] and logs "hello world" for each — the
 //!   "a system runs when the component is present" half of the demo.
 //!
@@ -38,7 +38,7 @@ struct HelloWorld;
 /// first. Component values key by reflect type path.
 const SCENE_JSON: &str = r#"{
   "resources": {},
-  "entities": {
+  "nodes": {
     "4294967295": {
       "components": {
         "beet_esp::HelloWorld": {}
@@ -63,7 +63,7 @@ fn main() {
 /// so it doesn't show up in [`greet`].
 fn dump_canonical(world: &mut World) {
     let temp = world.spawn(HelloWorld).id();
-    match WorldSerdeSaver::new()
+    match TemplateSaver::new()
         .with_entity_tree(world, temp)
         .save(world, MediaType::Json)
     {
@@ -76,10 +76,10 @@ fn dump_canonical(world: &mut World) {
     world.despawn(temp);
 }
 
-/// Deserialize [`SCENE_JSON`] into the world via [`WorldSerdeLoader`].
+/// Deserialize [`SCENE_JSON`] into the world via [`TemplateLoader`].
 fn load_scene(world: &mut World) {
     let bytes = MediaBytes::new_json(SCENE_JSON);
-    match WorldSerdeLoader::new(world).load(&bytes) {
+    match TemplateLoader::new(world).load(&bytes) {
         Ok(spawned) => info!("loaded {} entit(ies) from hard-coded JSON scene", spawned.len()),
         Err(e) => warn!("failed to load scene: {:?}", e),
     }

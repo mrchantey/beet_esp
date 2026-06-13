@@ -73,7 +73,7 @@ fn Handler(cx: In<ActionContext<Request>>) -> Response {
 
 fn dump_canonical(world: &mut World) {
     let temp = world.spawn(HelloWorld).id();
-    match WorldSerdeSaver::new()
+    match TemplateSaver::new()
         .with_entity_tree(world, temp)
         .save(world, MediaType::Json)
     {
@@ -88,7 +88,7 @@ fn dump_canonical(world: &mut World) {
 
 fn load_scene(world: &mut World) {
     let bytes = MediaBytes::new_json(SCENE_JSON);
-    match WorldSerdeLoader::new(world).load(&bytes) {
+    match TemplateLoader::new(world).load(&bytes) {
         Ok(spawned) => info!("loaded {} entit(ies) from JSON scene", spawned.len()),
         Err(e) => warn!("failed to load scene: {:?}", e),
     }

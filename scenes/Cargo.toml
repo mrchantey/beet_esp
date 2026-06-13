@@ -29,7 +29,7 @@ beet_esp = { path = "..", default-features = false, features = [
 beet = { path = "/home/pete/me/worktrees/beet/apps/beet", default-features = false, features = [
   "embedded",
   "bevy_color",
-  "world_serde",
+  "template_serde",
   "json",
   "net",
   "router",

@@ -183,6 +183,18 @@ unsafe fn init_mem(
     (p, info)
 }
 
+/// Install the RTT `log` backend: declare the `_SEGGER_RTT` control block and the
+/// global logger. `beet`'s `tracing` macros reach it via tracing's `log` fallback
+/// (no subscriber on bare metal).
+///
+/// The `rtt_init_log!` macro may be expanded only once per binary (it emits a
+/// link-time `rtt_init_must_not_be_called_multiple_times` guard), so this is the
+/// single expansion site every binary shares: [`init_esp`] calls it at boot, and
+/// on-device tests call it directly instead of expanding the macro themselves.
+pub fn init_rtt_log() {
+    crate::rtt_target::rtt_init_log!(log::LevelFilter::Info);
+}
+
 /// Full boot-time bring-up, and the only thing
 /// [`#[beet_esp::main]`](crate::main) has to call: start RTT `log` output,
 /// map + register the heaps, park the peripherals, record the PSRAM result, and
@@ -206,11 +218,8 @@ unsafe fn init_mem(
 /// nowhere else — exactly the `static mut Reserve<N>` the entry macro declares
 /// and passes by `&raw mut`. Must be called once.
 pub unsafe fn init_esp<const N: usize>(reserve: *mut Reserve<N>) {
-    // Start the RTT `log` backend before anything logs. Declares the
-    // `_SEGGER_RTT` control block and installs the global logger; guarded against
-    // a double call, so it's safe here. `beet`'s `tracing` macros reach it via
-    // tracing's `log` fallback (no subscriber on bare metal).
-    crate::rtt_target::rtt_init_log!(log::LevelFilter::Info);
+    // Start the RTT `log` backend before anything logs.
+    init_rtt_log();
 
     // The static is `'static` and only touched here, so the exclusive borrow is
     // sound for the duration of registration.

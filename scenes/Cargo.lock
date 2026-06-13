@@ -359,7 +359,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "beet"
-version = "0.0.9-dev.11"
+version = "0.0.9-dev.16"
 dependencies = [
  "beet_action",
  "beet_core",
@@ -374,7 +374,7 @@ dependencies = [
 
 [[package]]
 name = "beet_action"
-version = "0.0.9-dev.11"
+version = "0.0.9-dev.16"
 dependencies = [
  "beet_core",
  "bevy",
@@ -389,7 +389,7 @@ dependencies = [
 
 [[package]]
 name = "beet_async"
-version = "0.0.9-dev.11"
+version = "0.0.9-dev.16"
 dependencies = [
  "bevy",
  "keyed_concurrent_queue",
@@ -399,7 +399,7 @@ dependencies = [
 
 [[package]]
 name = "beet_core"
-version = "0.0.9-dev.11"
+version = "0.0.9-dev.16"
 dependencies = [
  "async-channel",
  "async-executor",
@@ -437,6 +437,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "uuid",
+ "variadics_please",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -444,20 +445,19 @@ dependencies = [
 
 [[package]]
 name = "beet_core_macros"
-version = "0.0.9-dev.11"
+version = "0.0.9-dev.16"
 dependencies = [
  "beet_core_shared",
  "heck",
  "proc-macro2",
  "proc-macro2-diagnostics",
  "quote",
- "rstml",
  "syn",
 ]
 
 [[package]]
 name = "beet_core_shared"
-version = "0.0.9-dev.11"
+version = "0.0.9-dev.16"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -489,7 +489,7 @@ dependencies = [
 
 [[package]]
 name = "beet_infra"
-version = "0.0.9-dev.11"
+version = "0.0.9-dev.16"
 dependencies = [
  "async-process",
  "beet_action",
@@ -505,7 +505,7 @@ dependencies = [
 
 [[package]]
 name = "beet_net"
-version = "0.0.9-dev.11"
+version = "0.0.9-dev.16"
 dependencies = [
  "async-channel",
  "async-io",
@@ -540,7 +540,7 @@ dependencies = [
 
 [[package]]
 name = "beet_router"
-version = "0.0.9-dev.11"
+version = "0.0.9-dev.16"
 dependencies = [
  "beet_action",
  "beet_core",
@@ -559,7 +559,7 @@ dependencies = [
 
 [[package]]
 name = "beet_thread"
-version = "0.0.9-dev.11"
+version = "0.0.9-dev.16"
 dependencies = [
  "async-lock",
  "async-openai",
@@ -584,7 +584,7 @@ dependencies = [
 
 [[package]]
 name = "beet_ui"
-version = "0.0.9-dev.11"
+version = "0.0.9-dev.16"
 dependencies = [
  "beet_action",
  "beet_core",
@@ -929,7 +929,6 @@ dependencies = [
  "bevy_a11y",
  "bevy_android",
  "bevy_app",
- "bevy_asset",
  "bevy_color",
  "bevy_derive",
  "bevy_diagnostic",
@@ -943,7 +942,6 @@ dependencies = [
  "bevy_ptr",
  "bevy_reflect",
  "bevy_render",
- "bevy_scene",
  "bevy_state",
  "bevy_tasks",
  "bevy_time",
@@ -1215,39 +1213,6 @@ version = "0.19.0-rc.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a19c1272edca0b7c932ff6abae9b563d2a385ebf42502f30c7ed80be84530be0"
 dependencies = [
- "bevy_macro_utils",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "bevy_scene"
-version = "0.19.0-rc.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9cc34818c18ceca123a14a3e52753917b3a2969354b3dd054f1ab224e0f2b950"
-dependencies = [
- "bevy_app",
- "bevy_asset",
- "bevy_derive",
- "bevy_ecs",
- "bevy_log",
- "bevy_platform 0.19.0-rc.2",
- "bevy_reflect",
- "bevy_scene_macros",
- "bevy_utils",
- "thiserror 2.0.18",
- "tracing",
- "variadics_please",
-]
-
-[[package]]
-name = "bevy_scene_macros"
-version = "0.19.0-rc.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edc3b66a9879c58998b95d9fe8ea17e31f5db5152a1cb0ee464aefcffb1e1041"
-dependencies = [
- "bevy_ecs_macro_logic",
  "bevy_macro_utils",
  "proc-macro2",
  "quote",
@@ -2029,17 +1994,6 @@ checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
 dependencies = [
  "powerfmt",
  "serde_core",
-]
-
-[[package]]
-name = "derive-where"
-version = "1.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d08b3a0bcc0d079199cd476b2cae8435016ec11d1c0986c6901c5ac223041534"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -3996,27 +3950,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proc-macro-error-attr2"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96de42df36bb9bba5542fe9f1a054b8cc87e172759a1868aa05c1f3acc89dfc5"
-dependencies = [
- "proc-macro2",
- "quote",
-]
-
-[[package]]
-name = "proc-macro-error2"
-version = "2.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11ec05c52be0a07b08061f7dd003e7d7092e0472bc731b4af7bb1ef876109802"
-dependencies = [
- "proc-macro-error-attr2",
- "proc-macro2",
- "quote",
-]
-
-[[package]]
 name = "proc-macro2"
 version = "1.0.106"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4365,21 +4298,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "698077537c286a169de8693b216672bcef148bf2e2e112ebf50758c68e9afa09"
 dependencies = [
  "cc",
-]
-
-[[package]]
-name = "rstml"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61cf4616de7499fc5164570d40ca4e1b24d231c6833a88bff0fe00725080fd56"
-dependencies = [
- "derive-where",
- "proc-macro2",
- "proc-macro2-diagnostics",
- "quote",
- "syn",
- "syn_derive",
- "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -4791,18 +4709,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "syn_derive"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdb066a04799e45f5d582e8fc6ec8e6d6896040d00898eb4e6a835196815b219"
-dependencies = [
- "proc-macro-error2",
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
