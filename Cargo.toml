@@ -4,20 +4,27 @@ name         = "beet_esp"
 rust-version = "1.88"
 version      = "0.1.0"
 
-[[test]]
-harness = false
-name    = "hello_test"
-
+# On-device unit tests run through beet's own harness (`beet_core::testing` via
+# `testing_embedded`), registered with `linkme` and reported over semihosting.
+# The tests live at the bottom of `src/` modules, so the test target is the lib
+# itself (an integration test would not compile the lib's `#[cfg(test)]` code).
+# `harness = false`: the lib supplies its own no_std entry (see `device_test`),
+# not libtest's. The entry/panic-handler are `#[cfg(test)]`, so a normal build is
+# unaffected. `cargo test -p beet_esp --lib` flashes it; the probe-rs runner turns
+# the semihosting exit code into the test result.
 [lib]
-test = false
+harness = false
 
 # The default binary: the scene-server firmware (`cargo run`). Needs the LED +
 # router stack; the `default` feature set turns these on, and an Alvik build adds
 # `alvik` on top. Skipped for feature combos that omit them.
+# `test = false`: the firmware never exits, so it must not become a `cargo test`
+# target (it would flash and hang); the lib holds the device test entry instead.
 [[bin]]
 name              = "beet_esp"
 path              = "src/main.rs"
 required-features = ["device", "led", "router", "wifi"]
+test              = false
 
 [features]
 # The default `cargo run` target: the scene-server firmware on a bare ESP32
@@ -34,7 +41,6 @@ device = [
   "dep:esp-rtos",
   "dep:esp-alloc",
   "dep:esp-bootloader-esp-idf",
-  "dep:panic-rtt-target",
   "dep:rtt-target",
   "dep:embassy-executor",
   "dep:embassy-time",
@@ -322,7 +328,6 @@ embedded-io-async = { version = "0.7.0", optional = true }
 # `internal-heap-stats` adds max-usage / total-allocated / total-freed counters,
 # which `health` uses for leak detection (cheap: an O(regions) tally per alloc).
 esp-alloc = { version = "0.10.0", optional = true, features = ["internal-heap-stats"] }
-panic-rtt-target = { version = "0.2.0", optional = true }
 rtt-target = { version = "0.6.2", optional = true, features = ["log"] }
 # for more networking protocol support see https://crates.io/crates/edge-net
 # BLE host (`bt-hci`/`trouble-host`) — only pulled in by the `ble` feature.
@@ -368,19 +373,30 @@ static_cell  = { version = "2.1.1", optional = true }
 [build-dependencies]
 cc = "1"
 
-# `default-features = false` drops embedded-test's own `panic-handler`: the test
-# binary links `beet_esp`, whose `device` feature already provides the firmware's
-# `panic-rtt-target` handler, and two `#[panic_handler]`s collide. `semihosting`
-# (the harness's host channel) is re-enabled explicitly since it is otherwise a
-# default.
+# On-device tests run through beet's own harness, not `embedded-test`. These are
+# dev-deps so the firmware (`cargo build`/`run`, which ignores dev-deps) stays
+# lean and unaffected; only `cargo test` pulls them in.
+#
+# - `beet/testing_embedded` turns on the no_std beet test runner (`TestPlugin`,
+#   matchers, `embedded_tests()`), adding it to the `beet` already in
+#   `[dependencies]` for the test build only.
+# - `linkme` registers each `#[beet::test]` into the `BEET_TESTS` slice (the
+#   `#[beet::test]` macro emits `#[linkme::distributed_slice]`, so it must be a
+#   direct dep). `inventory`'s life-before-main ctors are dead on bare metal.
+# - `semihosting` is the host reporting channel: the test app exits through it
+#   and the probe-rs runner turns the exit code into the `cargo test` result.
+#   `openocd-semihosting` selects the calling convention probe-rs speaks.
+#
+# The test target supplies its own `#[panic_handler]` (see `src/device_test.rs`),
+# so it must NOT pull the firmware's `panic-rtt-target` (which loops instead of
+# exiting); that handler is only force-linked by `#[beet_esp::main]` in the bin.
 [dev-dependencies]
-embedded-test = { version = "0.7.1", default-features = false, features = [
-  "log",
-  "embassy-010",
-  "external-executor",
-  "semihosting",
-  "xtensa-semihosting",
+beet = { path = "/home/pete/me/worktrees/beet/apps/beet", default-features = false, features = [
+  "testing_embedded",
 ] }
+linkme = { version = "0.3", default-features = false }
+semihosting = { version = "0.1.25", features = ["openocd-semihosting"] }
+
 
 # For fine tuning these settings, please refer to https://doc.rust-lang.org/cargo/reference/profiles.html
 [profile.dev]

@@ -34,3 +34,6 @@ run-release:
 # PC (no device needed) and writes each file directly.
 export-scenes:
     cd scenes && cargo run
+
+test:
+	. $HOME/export-esp.sh && cargo test -p beet_esp --lib

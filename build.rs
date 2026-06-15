@@ -2,7 +2,9 @@ fn main() {
     linker_be_nice();
     load_dotenv();
     link_quickjs_runtime();
-    println!("cargo:rustc-link-arg-tests=-Tembedded-test.x");
+    // The on-device test target is the lib itself (`[lib] harness = false`), and
+    // it boots through `#[esp_hal::main]` like the firmware, so it just needs
+    // `linkall.x` below — not the old `embedded-test.x` (that crate is gone).
     // make sure linkall.x is the last linker script (otherwise might cause problems with flip-link)
     println!("cargo:rustc-link-arg=-Tlinkall.x");
 }

@@ -200,6 +200,25 @@ mod device {
         }
     }
 
+    #[cfg(test)]
+    mod test {
+        use super::*;
+
+        #[beet::test]
+        fn grb_packs_in_wire_order() {
+            // WS2812 wire order is green, red, blue: `g << 16 | r << 8 | b`.
+            Grb::from_color(Color::srgb(1.0, 0.0, 0.0), 255).0.xpect_eq(0x00_FF_00);
+            Grb::from_color(Color::srgb(0.0, 1.0, 0.0), 255).0.xpect_eq(0xFF_00_00);
+            Grb::from_color(Color::srgb(0.0, 0.0, 1.0), 255).0.xpect_eq(0x00_00_FF);
+        }
+
+        #[beet::test]
+        fn grb_scales_by_brightness() {
+            // Half brightness halves every channel (255 * 128 / 255 == 128).
+            Grb::from_color(Color::srgb(1.0, 1.0, 1.0), 128).0.xpect_eq(0x80_80_80);
+        }
+    }
+
     /// An on-board addressable LED (WS2812 / SK68xx) driven over RMT.
     ///
     /// Hides the RMT channel configuration and WS2812 bit-timing so callers just

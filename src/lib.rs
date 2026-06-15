@@ -1,4 +1,8 @@
 #![no_std]
+// The lib doubles as the on-device test target (`[lib] harness = false`): under
+// `cargo test` it is a `no_main` binary whose entry is `device_test::main`, not
+// libtest's. A normal `cargo build` is unaffected (no `test` cfg).
+#![cfg_attr(all(test, feature = "device"), no_main)]
 
 extern crate alloc;
 
@@ -13,9 +17,33 @@ pub use esp_bootloader_esp_idf;
 #[cfg(feature = "device")]
 pub use esp_hal;
 #[cfg(feature = "device")]
-pub use panic_rtt_target;
-#[cfg(feature = "device")]
 pub use rtt_target;
+
+/// Firmware panic handler: log the panic over RTT (in `BlockIfFull` so the
+/// message is never lost), then halt. This is `panic-rtt-target`'s behaviour
+/// inlined, so the crate owns its single `#[panic_handler]` rather than
+/// force-linking an external one — which is what lets the on-device test build
+/// swap in its own semihosting-exit handler (see `device_test`) without two
+/// handlers colliding.
+///
+/// `not(test)` so the lib-as-test target (`cargo test`) uses its handler instead.
+#[cfg(all(feature = "device", not(test)))]
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+	use core::fmt::Write;
+	critical_section::with(|_| {
+		rtt_target::with_terminal_channel(|term| {
+			term.set_mode(rtt_target::ChannelMode::BlockIfFull);
+			let mut channel = term.write(0);
+			let _ = writeln!(channel, "{info}");
+		});
+		loop {
+			core::sync::atomic::compiler_fence(
+				core::sync::atomic::Ordering::SeqCst,
+			);
+		}
+	})
+}
 
 /// `#[beet_esp::main]` — wraps `fn main` with the ESP32 entry boilerplate.
 #[cfg(feature = "device")]
@@ -23,6 +51,11 @@ pub use beet_esp_macros::main;
 
 #[cfg(feature = "alvik")]
 pub mod alvik;
+// The on-device test entry: chip bring-up + beet test runner + semihosting exit
+// + the test panic handler. Test-only, so a normal firmware build never links
+// its `#[panic_handler]` (which would collide with the firmware's).
+#[cfg(all(test, feature = "device"))]
+mod device_test;
 #[cfg(feature = "device")]
 pub mod esp32_plugin;
 // ESP32 runtime plumbing: heap/PSRAM, health, the async bridge, the SNTP clock.

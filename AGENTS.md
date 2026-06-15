@@ -24,9 +24,13 @@ Set at generation time — don't change without a reason.
 - **Async:** embassy via `esp-rtos`.
 - **Connectivity:** `esp-radio` — Wi-Fi + BLE (`trouble-host`), COEX enabled.
 - **Heap:** `esp-alloc` (two heaps; the second adds RAM for Wi-Fi/BLE COEX).
-- **Logging:** `defmt` over RTT. **Panic handler:** `panic-rtt-target`.
-- **Flash/debug:** `probe-rs` (S3 native USB JTAG — no external probe needed).
-- **Tests:** `embedded-test` (runs on hardware).
+- **Logging:** `log`/`tracing` over RTT. **Panic handler:** the crate's own RTT
+  handler (`beet_esp` lib `#[panic_handler]`, which the on-device test build
+  swaps for a semihosting-exit handler so a failed test reports rather than hangs).
+- **Flash/debug:** `probe-rs` (S3 native USB JTAG, no external probe needed).
+- **Tests:** beet's own on-hardware harness (`beet_core::testing` via the
+  `testing_embedded` feature, registered with `linkme`), run with
+  `cargo test -p beet_esp --lib`. See `src/device_test.rs`.
 
 The exact generator options are recorded in a `generator parameters:` comment at
 the top of `src/main.rs`.

@@ -113,9 +113,9 @@ pub fn impl_main_attr(
     let block = &func.block;
 
     Ok(quote! {
-        // Link the RTT panic handler (a global symbol) so apps need no panic
-        // boilerplate. `as _` forces the crate in without binding a name.
-        use ::beet_esp::panic_rtt_target as _;
+        // The RTT panic handler is now owned by the `beet_esp` lib itself (a
+        // `#[panic_handler]` gated on `device` + `not(test)`), so apps need no
+        // panic boilerplate and the on-device test build can swap in its own.
 
         // The esp-idf bootloader application descriptor: an item-scope linker
         // static, so it is emitted as a sibling of `main` rather than inside it.

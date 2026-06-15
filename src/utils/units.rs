@@ -117,3 +117,38 @@ impl_quantity_ops!(Angle);
 impl_quantity_ops!(AngularVelocity);
 impl_quantity_ops!(Distance);
 impl_quantity_ops!(LinearVelocity);
+
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[beet::test]
+	fn angle_round_trips() {
+		Angle::from_degrees(180.0).as_radians().xpect_close(PI);
+		Angle::from_revolutions(1.0).as_degrees().xpect_close(360.0);
+		Angle::from_percent(100.0).as_revolutions().xpect_close(1.0);
+		Angle::from_degrees(90.0).as_percent().xpect_close(25.0);
+	}
+
+	#[beet::test]
+	fn distance_round_trips() {
+		Distance::from_meters(1.0).as_millimeters().xpect_close(1000.0);
+		Distance::from_inches(1.0).as_millimeters().xpect_close(25.4);
+		Distance::from_centimeters(50.0).as_meters().xpect_close(0.5);
+	}
+
+	#[beet::test]
+	fn velocity_and_arithmetic() {
+		AngularVelocity::from_rpm(60.0).as_rev_per_sec().xpect_close(1.0);
+		LinearVelocity::from_m_per_sec(1.0)
+			.as_mm_per_sec()
+			.xpect_close(1000.0);
+		(Distance::from_meters(1.0) + Distance::from_meters(0.5))
+			.as_millimeters()
+			.xpect_close(1500.0);
+		(Distance::from_millimeters(300.0) * 0.5)
+			.as_millimeters()
+			.xpect_close(150.0);
+	}
+}

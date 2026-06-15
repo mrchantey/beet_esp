@@ -35,7 +35,9 @@ use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{AnyPin, Level, Pin};
 use esp_hal::rmt::{PulseCode, Rmt, TxChannelConfig, TxChannelCreator};
 use esp_hal::time::Rate;
-use panic_rtt_target as _;
+// Force-link `beet_esp`, whose lib provides the RTT `#[panic_handler]` (this
+// example uses a manual entry rather than `#[beet_esp::main]`).
+use beet_esp as _;
 
 esp_bootloader_esp_idf::esp_app_desc!();
 

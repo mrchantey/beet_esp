@@ -21,7 +21,9 @@ use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
 use esp_hal::timer::timg::TimerGroup;
 use esp_radio::ble::controller::BleConnector;
-use panic_rtt_target as _;
+// Force-link `beet_esp`, whose lib provides the RTT `#[panic_handler]` (this
+// example uses a manual entry rather than `#[beet_esp::main]`).
+use beet_esp as _;
 use trouble_host::prelude::*;
 
 extern crate alloc;
