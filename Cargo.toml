@@ -26,6 +26,16 @@ path              = "src/main.rs"
 required-features = ["device", "led", "router", "wifi"]
 test              = false
 
+# The AlvikCarrier (STM32) firmware flasher: a USB↔UART1 bridge into the STM32
+# ROM bootloader, so host-side `stm32flash` can write a new carrier `.bin`. Reuses
+# the `alvik` peripheral exposure (UART1 + BOOT0/RESET GPIOs + USB-Serial-JTAG).
+# `test = false`: it bridges forever, so it must never become a `cargo test` target.
+[[bin]]
+name              = "flash-firmware"
+path              = "src/bin/flash-firmware.rs"
+required-features = ["device", "alvik"]
+test              = false
+
 [features]
 # The default `cargo run` target: the scene-server firmware on a bare ESP32
 # breakout (on-board WS2812 driven by a rhai `Script`). `router` pulls in `wifi`;

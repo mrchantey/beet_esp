@@ -111,6 +111,12 @@ pub fn apply_status(
 ) {
     let mut robot = robot;
     if let Some(snapshot) = ALVIK_STATE.try_recv() {
+        // A received snapshot proves the link is live, so mark connected even if
+        // the firmware-version frame was never seen (a carrier that predates the
+        // version message, or one whose boot frame was flushed during bring-up).
+        if let Some(connected) = robot.connected.as_mut() {
+            connected.0 = true;
+        }
         if let Some(pose) = robot.pose.as_mut() {
             pose.0 = Pose::from_xy_theta(
                 snapshot.pose.0.as_millimeters(),

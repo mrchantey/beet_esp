@@ -117,6 +117,10 @@ fn bring_up(world: &mut World) {
         world.insert_non_send(p.GPIO5);
         world.insert_non_send(p.GPIO7);
         world.insert_non_send(p.GPIO13);
+        // The native USB-Serial-JTAG CDC, claimed only by the `flash-firmware`
+        // bin (the STM32 carrier-firmware flasher) to bridge host ↔ UART1. The
+        // Alvik driver itself never touches it, so it is left parked otherwise.
+        world.insert_non_send(p.USB_DEVICE);
     }
 
     // Without a domain plugin there are no peripherals to expose; `world` is then
