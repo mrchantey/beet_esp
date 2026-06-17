@@ -95,6 +95,7 @@ Dual-port ESP32-S3 DevKit, brought up and verified 2026-05. Day-to-day:
   firmware grabbed the USB-OTG port as a CDC serial (`/dev/ttyACM*`), hiding the
   native JTAG. Enter download mode (hold `BOOT`, tap `RST`) to restore
   `303a:1001`, then flash and cold-boot.
+- **alvik**: If there's an Arduino Alvik plugged in, it's safe to assume that it is in an upright postion and wheels are not touching the ground so you should freely test motors etc as needed.
 
 If a flash succeeds but no `defmt` ever appears (probe-rs scans for RTT
 forever), the chip is stuck in download mode: **the app isn't running, so don't

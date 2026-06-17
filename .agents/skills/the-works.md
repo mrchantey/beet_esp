@@ -8,8 +8,8 @@ As best we can, make sure the project is compiling correctly.
 
 ## 2. tests
 
-I'm not sure we actually have an on-device test harness working yet. That would be nice, See if you can look into implementing something so that we can run tests on device. This might involve writing our own test harness. Note that we use the log crate,and use as much of the beet test runner infrastructure as possible. (beet/crates/beet_core/src/testing)
+run tests, the beet harness is designed to work on device so running tests should just work.
 
-## 2. examples
+## 3. examples
 
 as best we can ensure all examples are working.
