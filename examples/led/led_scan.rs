@@ -27,6 +27,7 @@
 use beet::prelude::Color;
 use beet_esp::prelude::Grb;
 use beet_esp::prelude::PIXEL_CODES;
+use beet_esp::prelude::init_rtt_log;
 use beet_esp::prelude::start_embassy;
 use log::info;
 use embassy_executor::Spawner;
@@ -35,9 +36,6 @@ use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{AnyPin, Level, Pin};
 use esp_hal::rmt::{PulseCode, Rmt, TxChannelConfig, TxChannelCreator};
 use esp_hal::time::Rate;
-// Force-link `beet_esp`, whose lib provides the RTT `#[panic_handler]` (this
-// example uses a manual entry rather than `#[beet_esp::main]`).
-use beet_esp as _;
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -48,7 +46,7 @@ const PIN_COUNT: usize = 31;
 
 #[esp_rtos::main]
 async fn main(_spawner: Spawner) -> ! {
-    rtt_target::rtt_init_log!(log::LevelFilter::Info);
+    init_rtt_log();
 
     let p = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()));
     start_embassy(p.TIMG0, p.SW_INTERRUPT);

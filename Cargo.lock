@@ -433,7 +433,6 @@ dependencies = [
  "futures",
  "futures-lite",
  "getrandom 0.3.4",
- "glob",
  "heck",
  "itertools 0.14.0",
  "js-sys",

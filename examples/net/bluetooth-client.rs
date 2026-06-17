@@ -21,9 +21,7 @@ use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
 use esp_hal::timer::timg::TimerGroup;
 use esp_radio::ble::controller::BleConnector;
-// Force-link `beet_esp`, whose lib provides the RTT `#[panic_handler]` (this
-// example uses a manual entry rather than `#[beet_esp::main]`).
-use beet_esp as _;
+use beet_esp::prelude::init_rtt_log;
 use trouble_host::prelude::*;
 
 extern crate alloc;
@@ -36,7 +34,7 @@ const MAX_SEEN: usize = 64;
 
 #[esp_rtos::main]
 async fn main(_spawner: Spawner) -> ! {
-    rtt_target::rtt_init_log!(log::LevelFilter::Info);
+    init_rtt_log();
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
