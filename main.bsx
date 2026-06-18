@@ -1,0 +1,25 @@
+<!--
+beet_esp's entry: the host-side scene-push commands, wired as routes over the
+capabilities linked into the `beet` binary (`SceneManagementPlugin`). The `beet`
+CLI discovers this file by walking up from the cwd and runs one command per
+invocation, so from this directory the scene commands target the device.
+
+`BEET_REMOTE_URL` in this directory's `.env` points every command at the device,
+so a `--url` is optional:
+
+    beet load scenes/roomba.bsx      # push a `.bsx` scene to the device
+    beet run roomba                  # call a route the pushed scene installed
+    beet dump                        # print the device's current scene
+    beet clear                       # despawn the scene + reset the hardware
+    beet reset                       # return the hardware to its resting state
+
+Requires a `beet` built with the scene-management capabilities (this repo's
+`just install-cli`).
+-->
+<Router {(CliServer, ServeOnLoad)}>
+	<SceneLoad/>
+	<SceneRun/>
+	<SceneDump/>
+	<SceneClear/>
+	<SceneReset/>
+</Router>

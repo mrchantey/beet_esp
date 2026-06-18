@@ -1,0 +1,8 @@
+<!-- Alvik roomba: drive forward, spin away from a wall closer than 20cm, repeat
+     every 50ms. Push with `beet load scenes/roomba.bsx`, run with `beet run roomba`. -->
+<RouteAction path="roomba">
+	<Loop><Steps>
+		<RoombaStep/>
+		<Wait ms={50}/>
+	</Steps></Loop>
+</RouteAction>

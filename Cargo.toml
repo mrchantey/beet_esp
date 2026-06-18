@@ -3,6 +3,10 @@ edition      = "2024"
 name         = "beet_esp"
 rust-version = "1.88"
 version      = "0.1.0"
+# The scene-server firmware is the default `cargo run` target; `flash-firmware` is
+# the opt-in second bin (`cargo run --bin flash-firmware`). Without this `cargo
+# run` is ambiguous between the two.
+default-run  = "beet_esp"
 
 # On-device unit tests run through beet's own harness (`beet_core::testing` via
 # `testing_embedded`), registered with `linkme` and reported over semihosting.
@@ -290,6 +294,9 @@ beet = { path = "/home/pete/me/worktrees/beet/apps/beet", default-features = fal
   "bevy_color",
   "template_serde",
   "json",
+  # The no_std BSX parser so the device can receive + parse `.bsx` scene files
+  # pushed over `/load` (TemplateLoader dispatches `.bsx` bytes to it).
+  "bsx",
   # no_std core of beet_net: the transport-agnostic Request/Response wire types
   # and the `set_http_client` transport hook the wifi client installs.
   "net",

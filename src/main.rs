@@ -18,19 +18,20 @@
 //! ```sh
 //! curl http://192.168.86.222:8337/                 # this help + current routes
 //! curl http://192.168.86.222:8337/dump             # current scene as JSON
-//! curl --data-binary @scene.json \
-//!      -H 'content-type: application/json' \
+//! curl --data-binary @scenes/led-script.bsx \
+//!      -H 'content-type: text/x-bsx' \
 //!      http://192.168.86.222:8337/load             # load a scene
 //! curl http://192.168.86.222:8337/clear            # despawn scene + reset
 //! curl http://192.168.86.222:8337/reset            # stop hardware
 //! ```
 //!
-//! Or drive it from the host with the upstream `beet` CLI:
-//! `beet load scenes/led-script.json` (with `BEET_REMOTE_URL` set to the device).
+//! `/load` accepts a `.bsx` scene (parsed by beet's BSX engine, see
+//! [`beet_esp::scene`]'s authoring widgets) or a reflection-serialized JSON scene;
+//! the [`TemplateLoader`] dispatches on the `content-type`.
 //!
-//! The canonical example scenes are generated on the host by the `scenes` crate
-//! (`cd scenes && cargo run --release`), which writes each to
-//! `target/scenes/<name>.json`; load one to try `/load`.
+//! Or drive it from the host with the `beet` CLI: `beet load scenes/led-script.bsx`
+//! (with `BEET_REMOTE_URL` set to the device). The canonical example scenes are
+//! the hand-authored `.bsx` files in `scenes/`, pushed to the device as needed.
 //!
 //! Run with (bare ESP32, the default): `cargo run --release`
 //!
@@ -72,6 +73,9 @@ fn main() {
     app.run();
 }
 
+// Only the bare-ESP32 (non-alvik) build wires the on-board WS2812; the alvik
+// branch drives the robot's LEDs instead, so this is dead there.
+#[cfg(not(feature = "alvik"))]
 fn setup_builtin_led(mut commands: Commands) {
     commands.spawn((LedColor::default(), Ws2812Led));
 }
@@ -79,6 +83,11 @@ fn setup_builtin_led(mut commands: Commands) {
 // The bootstrap server: only the meta-routes. The real routes arrive via
 // `/load`. `BeetSceneRoot`s get reparented here and picked up by the router.
 // The router's default not-found middleware serves a route listing at `/`.
+//
+// Spawning the `HttpServer` is enough to serve: `WifiPlugin`'s server backend
+// boots every freshly-spawned server (see `net::http_server`), since upstream's
+// `HttpServer` is now a `StartServer`-driven transport that a bare spawn no longer
+// starts on its own.
 fn setup(mut commands: Commands) {
     commands.spawn((
         HttpServer::new(DEFAULT_SERVER_PORT),

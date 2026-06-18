@@ -1,0 +1,21 @@
+<!-- Alvik controller: a rhai program over the sensor snapshot, run every 100ms.
+     Backs off when something is within 20cm, otherwise cruises, pulsing the UI
+     LEDs from a counter in `state`. Push with `beet load scenes/script.bsx`, run
+     with `beet run script`. -->
+<RouteAction path="script">
+	<Loop><Steps>
+		<AlvikScript rhai='
+			let t = if "t" in input.state { input.state.t } else { 0 };
+			let near = input.depth_mm > 0 && input.depth_mm < 200;
+			let bright = if t % 6 < 3 { 255 } else { 20 };
+			#{
+				linear: if near { -40.0 } else { 50.0 },
+				angular: if near { 90.0 } else { 0.0 },
+				led_left: bright * 256,
+				led_right: bright,
+				state: #{ t: t + 1 },
+			}
+		'/>
+		<Wait ms={100}/>
+	</Steps></Loop>
+</RouteAction>

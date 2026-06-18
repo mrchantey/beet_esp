@@ -1,72 +1,42 @@
-# Scenes
+# scenes
 
-A beet *scene* is a reflection-serialized slice of the ECS that the firmware
-(`cargo run`) loads over HTTP to become its live API. A scene is not config data,
-it *is* the device's routes and behaviours. Send a different scene and the same
-firmware exposes a different device.
-
-## Generating the scenes
-
-This directory is a host crate that generates the canonical example scenes. The
-scene-definition types live in `beet_esp` (its ECS components, `#[action]`s and
-scene bundles), which compiles for the host without its `device` hardware stack,
-so the scenes are built on the PC rather than on the ESP32:
+Hand-authored beet scenes as `.bsx` files, pushed to the device over the wire.
+Each is a [BSX](https://github.com/mrchantey/beet) document the firmware parses
+on `/load` (beet's `TemplateLoader` dispatches `.bsx` bytes to its BSX engine),
+installing the route it carries. There is no build step: edit a file and push it.
 
 ```sh
-cd scenes && cargo run   # or: just export-scenes
+beet load scenes/roomba.bsx    # push (BEET_REMOTE_URL targets the device)
+beet run roomba                # call the route the scene installed
+beet dump                      # print the device's current scene
+beet clear                     # despawn it + reset the hardware
 ```
 
-It writes each scene to `../target/scenes/<name>.json`. Those files are
-gitignored and regenerated on demand (handy after changing a route component),
-not committed. The entity ids in them are placeholders, remapped on load; only
-the `ChildOf` wiring between them matters.
+## Authoring widgets
 
-## Sending a scene to the device
+The scenes read as behaviour trees because `beet_esp` registers a set of
+non-generic component tags (the generic primitives `Repeat`/`Sequence`/`Script`
+cannot resolve from a bare tag). See `src/scene.rs` and `src/alvik/scenes.rs`:
 
-Send one with the upstream `beet` CLI. The scene commands live in beet_router and
-are exported to `beet.json` by the beet-cli `default_cli` example; `just beet-json`
-regenerates it and `just install-cli` installs `beet`. The CLI reads the device
-address from `BEET_REMOTE_URL` in this project's `.env`:
-
-```sh
-beet load target/scenes/led-script.json   # POST it to /load
-beet run led-script                        # fire the action route it installed
-beet dump                                  # print the loaded scene as json
-beet clear                                 # despawn it + reset
-```
-
-or with curl (the firmware serves on beet's `DEFAULT_SERVER_PORT`, 8337):
-
-```sh
-curl --data-binary @target/scenes/led-script.json \
-     -H 'content-type: application/json' \
-     http://192.168.86.222:8337/load
-```
+- `<RouteAction path="..">` — a behaviour-tree route (`SpawnAction` + path); its
+  child tree runs when the route is called.
+- `<Loop>` — repeat the child forever (`Repeat`). `<Steps>` — run children in
+  order (`Sequence`). `<Wait ms={50}/>` — pass after a delay (`EndInDuration`).
+- `<At path="..">` — spread onto a direct route handler to bind its path.
+- `<LedScript rhai="..">` / `<AlvikScript rhai="..">` — run a rhai program each
+  tick over the WS2812 / the robot.
+- `<RoombaStep/>`, `<LineFollowStep/>`, `<Drive linear={..} angular={..}/>`,
+  `<DriveRoute/>`, `<LedRoute/>` — the Alvik leaves and route handlers.
 
 ## The scenes
 
-### Generic (bare ESP32)
+- `led-script.bsx` — bare-ESP32 WS2812 driven by a rhai colour program (the
+  default firmware).
+- `roomba.bsx`, `line-follower.bsx` — Alvik wander / line-follow loops.
+- `dance-routine.bsx` — Alvik forward/turn/forward/stop, once.
+- `script.bsx` — Alvik controller as a rhai program over the sensors.
+- `rc.bsx` — Alvik remote control: `drive/:dir` and `led/:side/:state` routes.
 
-- **led-script.json** — `led-script` runs a **rhai program** (`Script`) every
-  100 ms on the on-board WS2812: it reads `input.elapsed_ms` + `input.led` (the
-  current colour, packed `0xRRGGBB`) plus its own `state` map, and returns
-  `#{ led, state }`. Edit the `source` string to reprogram the LED with no
-  reflash. Served by the default firmware (`led,router,wifi,rhai,device`).
-
-### Alvik (`--features alvik`)
-
-- **rc.json** — the plain remote-control API: `drive/:dir` and `led/:side/:state`
-  wired to the `DriveRoute` / `LedRoute` components. Equivalent to the hard-coded
-  `alvik-rc` example, but sent over the wire.
-- **dance-routine.json** — an *action route*: `dance-routine` runs a `Sequence`
-  behaviour tree (forward 1s, left 1s, forward 1s, stop) via `ApplyDrive` +
-  `EndInDuration`. Firing it returns immediately; the tree plays out on the async
-  pool.
-- **line-follower.json** — `line-follower` repeats a bang-bang `LineFollowStep`
-  every 50 ms (forward on white, steer right on black).
-- **roomba.json** — `roomba` repeats `RoombaStep`: cruise until the centre ToF
-  sees a wall within 20 cm, then spin to clear it.
-- **script.json** — `script` runs a **rhai program** (`Script` + `AlvikScriptStep`)
-  every 100 ms: it reads an Alvik sensor snapshot (depth, line, yaw, touch,
-  elapsed) plus its own `state` map, and returns drive + LED + next `state`.
-  Requires the firmware built with `--features alvik,router,rhai,device`.
+The Alvik scenes need the `alvik` firmware build
+(`cargo run --no-default-features --features alvik,router,wifi,rhai`); they parse
+on any build but their leaves only run with the robot attached.

@@ -1,0 +1,8 @@
+<!-- Alvik line follower: a bang-bang follow step every 50ms.
+     Push with `beet load scenes/line-follower.bsx`, run with `beet run line-follower`. -->
+<RouteAction path="line-follower">
+	<Loop><Steps>
+		<LineFollowStep/>
+		<Wait ms={50}/>
+	</Steps></Loop>
+</RouteAction>

@@ -1,0 +1,15 @@
+<!-- Bare-ESP32 demo: the on-board WS2812 driven by a rhai program, cycling
+     red/green/blue from the elapsed time and counting ticks in `state`. Repeats
+     every 100ms. Push with `beet load scenes/led-script.bsx`, run with
+     `beet run led-script`. -->
+<RouteAction path="led-script">
+	<Loop><Steps>
+		<LedScript rhai='
+			let count = if "count" in input.state { input.state.count } else { 0 };
+			let phase = (input.elapsed_ms / 500) % 3;
+			let led = if phase == 0 { 0xff0000 } else if phase == 1 { 0x00ff00 } else { 0x0000ff };
+			#{ led: led, state: #{ count: count + 1 } }
+		'/>
+		<Wait ms={100}/>
+	</Steps></Loop>
+</RouteAction>

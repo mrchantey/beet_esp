@@ -48,7 +48,22 @@ pub(crate) fn http_server_plugin(app: &mut App) {
     if set_http_server(start_esp_server).is_err() {
         warn!("an HTTP server backend was already installed");
     }
-    app.add_systems(Update, drain_server_requests);
+    app.add_systems(Update, (drain_server_requests, start_added_servers));
+}
+
+/// Boot every freshly-spawned [`HttpServer`]. Upstream's `HttpServer` is now a
+/// [`StartServer`]-driven transport — its `on_add` only registers the boot
+/// observer, so a bare `spawn((HttpServer, ..))` no longer starts it. This
+/// restores the spawn-to-serve ergonomics the firmware and the server examples
+/// rely on: the [`Added`] filter fires the boot once per server, a frame after
+/// `on_add` has registered the observer, so the trigger always lands.
+fn start_added_servers(
+    servers: Query<Entity, Added<HttpServer>>,
+    mut commands: Commands,
+) {
+    for server in &servers {
+        commands.entity(server).trigger(StartServer::all);
+    }
 }
 
 /// beet's server backend hook (see [`set_http_server`]): run on the async layer
@@ -57,7 +72,17 @@ pub(crate) fn http_server_plugin(app: &mut App) {
 /// Reads the port off the [`HttpServer`] component, waits for the embassy
 /// [`Stack`]/[`Spawner`] (published by [`start_wifi`](super::start_wifi)) to
 /// exist — the hook can fire before Wi-Fi is up — then spawns the accept loop.
-fn start_esp_server(entity: AsyncEntity) -> MaybeSendBoxedFuture<'static, Result> {
+///
+/// `_shutdown` is the [`StopServer`] teardown receiver beet hands every backend.
+/// The firmware spawns exactly one long-lived scene server and never triggers
+/// `StopServer` on it, so there is no teardown path to wire here; the embassy
+/// accept loop is detached for the life of the process. (Honoring it would mean
+/// racing `server_loop`'s accept against the receiver across the embassy task
+/// boundary — unused weight on this target.)
+fn start_esp_server(
+    entity: AsyncEntity,
+    _shutdown: OnceValueRx<()>,
+) -> MaybeSendBoxedFuture<'static, Result> {
     Box::pin(async move {
         let id = entity.id();
         let port = entity

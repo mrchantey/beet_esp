@@ -2,6 +2,12 @@
 runner = "probe-rs run --chip=esp32s3 --preverify --always-print-stacktrace --no-location"
 
 [env]
+# The espup rustc fork overflows its default thread stack compiling bevy/beet's
+# deeply-recursive reflect impls (a SIGSEGV / `STR_SENTINEL` ICE in `bevy_reflect`),
+# so give rustc's threads a larger stack. Without this `cargo build`/`run`/`test`
+# crash mid-compile. 32 MiB is comfortably above the overflow; it is a reservation,
+# not committed memory.
+RUST_MIN_STACK = "33554432"
 # C deps (currently only rquickjs's bundled QuickJS engine under the `quickjs`
 # feature) are compiled by the espup bare-metal toolchain, which ships newlib —
 # so the engine's libc/libm calls resolve. Inert unless a crate compiles C.
