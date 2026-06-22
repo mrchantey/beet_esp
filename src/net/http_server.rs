@@ -52,17 +52,24 @@ pub(crate) fn http_server_plugin(app: &mut App) {
 }
 
 /// Boot every freshly-spawned [`HttpServer`]. Upstream's `HttpServer` is now a
-/// [`StartServer`]-driven transport — its `on_add` only registers the boot
-/// observer, so a bare `spawn((HttpServer, ..))` no longer starts it. This
-/// restores the spawn-to-serve ergonomics the firmware and the server examples
-/// rely on: the [`Added`] filter fires the boot once per server, a frame after
-/// `on_add` has registered the observer, so the trigger always lands.
+/// [`StartRunning<Boot>`]-driven transport — its `on_add` only registers the boot
+/// observer, so a bare `spawn((HttpServer, ..))` no longer starts it. The std boot
+/// verbs (`BootOnLoad`) parse CLI args and so are absent on no_std; this restores
+/// the spawn-to-serve ergonomics the firmware and the server examples rely on by
+/// firing the boot directly. The [`Added`] filter fires it once per server, a frame
+/// after `on_add` has registered the observer, so the trigger always lands.
+///
+/// The synthetic boot request carries no `--server` filter, so it selects every
+/// server on the entity (here just the http backend), and no `--port`, so the
+/// declared [`HttpServer`] port stands.
 fn start_added_servers(
     servers: Query<Entity, Added<HttpServer>>,
     mut commands: Commands,
 ) {
     for server in &servers {
-        commands.entity(server).trigger(StartServer::all);
+        commands.entity(server).trigger(|server| {
+            StartRunning::<Boot>::new(server, Request::get("/").into())
+        });
     }
 }
 

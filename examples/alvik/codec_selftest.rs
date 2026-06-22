@@ -24,12 +24,23 @@ use beet_esp::prelude::*;
 fn main() {
     App::new()
         .add_plugins((Esp32Plugin, HealthPlugin))
-        .add_systems(Startup, run_selftest)
+        .add_systems(Update, run_selftest)
         .run();
 }
 
-/// Run every check and log a final tally.
-fn run_selftest() {
+/// Run every check once and log a final tally.
+///
+/// Runs a couple seconds after boot (gated on the elapsed clock) rather than at
+/// `Startup`: the firmware's RTT logger is non-blocking, so a one-shot burst of
+/// ~25 lines emitted during the boot storm (PSRAM init + first health dump) is
+/// dropped before the host attaches. Waiting until the buffer has drained lets the
+/// whole tally stream out reliably.
+fn run_selftest(time: Res<Time>, mut done: Local<bool>) {
+    if *done || time.elapsed_secs() < 2.0 {
+        return;
+    }
+    *done = true;
+
     let mut checks = Checks::default();
 
     // Frame layout: `X` 'K' ack → START LEN CODE PAYLOAD END CRC.

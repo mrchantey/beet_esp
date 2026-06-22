@@ -13,3 +13,7 @@ run tests, the beet harness is designed to work on device so running tests shoul
 ## 3. examples
 
 as best we can ensure all examples are working.
+
+## 4. scenes
+
+Install the firmware `src/main.rs`, and run each scene in `./scenes`, verifying all working as expected.
