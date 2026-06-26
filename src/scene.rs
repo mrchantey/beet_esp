@@ -9,9 +9,9 @@
 //! A pushed `.bsx` scene reads as a behaviour tree authored straight from the
 //! upstream primitives — `<Repeat>`/`<Sequence>` (the generic `Repeat<()>` /
 //! `Sequence<(), ()>` resolve from a bare tag), `<EndInDuration duration="50ms"/>`
-//! (a delay leaf, the duration coerced from a number/string by beet's BSX engine),
-//! and `<LedScript>`/`<AlvikScript>` (script leaves). No non-generic alias
-//! components stand in for them.
+//! (a delay leaf, the unit-suffixed duration coerced by beet's BSX engine), and
+//! `<LedScript>`/`<AlvikScript>` (script leaves). No non-generic alias components
+//! stand in for them.
 
 use alloc::string::String;
 use beet::prelude::*;
@@ -26,9 +26,10 @@ pub mod prelude {
 }
 
 /// Registers the firmware's scene capabilities on top of the upstream
-/// [`SceneServerPlugin`]: the [`RouteAction`] path binder, the [`ScriptState`] a
-/// stateful script threads, and the [`ResetScene`] handler for the on-board LED
-/// (and, under `alvik`, the robot). The router, `Sequence`/`Repeat` and
+/// [`SceneServerPlugin`]: the upstream [`Route`] template (which [`RouterPlugin`]
+/// only registers under `std`), the [`RouteAction`] path binder, the
+/// [`ScriptState`] a stateful script threads, and the [`ResetScene`] handler for
+/// the on-board LED (and, under `alvik`, the robot). The `Sequence`/`Repeat` and
 /// `EndInDuration` types are covered by [`RouterPlugin`]/[`ActionPlugin`]; the
 /// typed `Script` and its runtime come from beet_action.
 pub struct EspScenePlugin;
@@ -36,6 +37,9 @@ pub struct EspScenePlugin;
 impl Plugin for EspScenePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(SceneServerPlugin)
+            // upstream's `<Route path=".." {handler}/>` template — registered here
+            // because `RouterPlugin` only registers it on a `std` target.
+            .register_template::<Route>()
             .register_type::<RouteAction>()
             // The behaviour-tree delay leaf. Registered already by `ActionPlugin`,
             // but augment its registration with `ReflectDefault` so a partial
@@ -75,11 +79,11 @@ pub fn reset_leds(_ev: On<ResetScene>, mut leds: Query<&mut crate::utils::led::L
 /// first child is the tree, spawned and run when the path is called (eg
 /// `beet run roomba`).
 ///
-/// The one path-binding component the firmware keeps: a route's path is a string,
-/// but [`PathPartial`]'s field is a parsed segment list, so a string-to-path
-/// bridge is unavoidable. Being a component (not a `#[template]`) its markup
-/// children build as real ECS children — the parent/child shape the behaviour
-/// tree runs on, and the single child [`SpawnAction`] runs on call.
+/// Distinct from upstream's [`Route`] template (the direct-handler binder,
+/// `<Route path=".." {handler}/>`): `Route` slots its markup children behind a
+/// `SlotTarget`, but a behaviour-tree route needs its tree as a *direct* ECS child
+/// for [`SpawnAction`] to find and run it — so this stays a plain component whose
+/// markup children build as real children.
 #[derive(Debug, Default, Component, Reflect)]
 #[reflect(Component, Default)]
 #[component(on_add = route_action_on_add)]

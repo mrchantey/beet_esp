@@ -21,8 +21,8 @@ alias components stand in for them:
   generic `Repeat<()>` / `Sequence<(), ()>` resolve from a bare tag (each is the
   sole registered instantiation).
 - `<EndInDuration duration="50ms"/>` — a behaviour-tree leaf that passes after the
-  delay. The duration coerces from a unit string (`"50ms"`, `"1s"`) or a bare number
-  of milliseconds, by beet's BSX engine.
+  delay. The duration coerces from a unit string (`"50ms"`, `"1s"`) by beet's BSX
+  engine; the unit is required.
 - `<RouteAction path="..">` — install a behaviour-tree route (`PathPartial` +
   `SpawnAction`); its child tree runs when the route is called.
 
@@ -33,8 +33,9 @@ The firmware adds a few domain widgets (see `src/scene.rs`, `src/alvik/scenes.rs
   — script leaves run each tick over the WS2812 / the robot. `language` selects the
   backend (rhai or quickjs), falling back to the build default when absent. Authoring
   templates over `Script` + the domain step, mirroring upstream's `ScriptRoute`.
-- `<DriveRoute path="drive/:dir"/>` / `<LedRoute path="led/:side/:state"/>` — bind a
-  direct route handler to a path (templates that insert the `PathPartial`).
+- `<Route path="drive/:dir" {DriveHandler}/>` / `<Route path="led/:side/:state" {LedHandler}/>`
+  — bind a direct route handler to a path. `Route` inserts the `PathPartial` the
+  router dispatches on; the handler action is spread onto the same entity.
 - `<RoombaStep/>`, `<LineFollowStep/>`, `<Drive linear={..} angular={..}/>` — the
   Alvik behaviour-tree leaves.
 

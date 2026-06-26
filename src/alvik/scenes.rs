@@ -20,9 +20,6 @@ impl Plugin for AlvikScenePlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<DriveHandler>()
             .register_type::<LedHandler>()
-            // The `<DriveRoute path="..."/>` / `<LedRoute path="..."/>` path binders.
-            .register_template::<DriveRoute>()
-            .register_template::<LedRoute>()
             .register_type::<ApplyDrive>()
             .register_type::<DriveCommand>()
             .register_type::<LineFollowStep>()
