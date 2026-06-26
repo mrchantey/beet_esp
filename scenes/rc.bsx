@@ -2,6 +2,6 @@
      robot with `beet run drive/forward` (forward/back/left/right/stop) and toggle
      a UI LED with `beet run led/left/on`. Push with `beet load scenes/rc.bsx`. -->
 <Router>
-	<DriveRoute {At{path:"drive/:dir"}}/>
-	<LedRoute {At{path:"led/:side/:state"}}/>
+	<DriveRoute path="drive/:dir"/>
+	<LedRoute path="led/:side/:state"/>
 </Router>

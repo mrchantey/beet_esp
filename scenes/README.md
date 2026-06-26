@@ -12,31 +12,40 @@ beet dump                      # print the device's current scene
 beet clear                     # despawn it + reset the hardware
 ```
 
-## Authoring widgets
+## Authoring
 
-The scenes read as behaviour trees because `beet_esp` registers a set of
-non-generic component tags (the generic primitives `Repeat`/`Sequence`/`Script`
-cannot resolve from a bare tag). See `src/scene.rs` and `src/alvik/scenes.rs`:
+The scenes are authored straight from beet's upstream primitives — no non-generic
+alias components stand in for them:
 
-- `<RouteAction path="..">` — a behaviour-tree route (`SpawnAction` + path); its
-  child tree runs when the route is called.
-- `<Loop>` — repeat the child forever (`Repeat`). `<Steps>` — run children in
-  order (`Sequence`). `<Wait ms={50}/>` — pass after a delay (`EndInDuration`).
-- `<At path="..">` — spread onto a direct route handler to bind its path.
-- `<LedScript rhai="..">` / `<AlvikScript rhai="..">` — run a rhai program each
-  tick over the WS2812 / the robot.
-- `<RoombaStep/>`, `<LineFollowStep/>`, `<Drive linear={..} angular={..}/>`,
-  `<DriveRoute/>`, `<LedRoute/>` — the Alvik leaves and route handlers.
+- `<Repeat>` / `<Sequence>` — repeat the child forever / run children in order. The
+  generic `Repeat<()>` / `Sequence<(), ()>` resolve from a bare tag (each is the
+  sole registered instantiation).
+- `<EndInDuration duration="50ms"/>` — a behaviour-tree leaf that passes after the
+  delay. The duration coerces from a unit string (`"50ms"`, `"1s"`) or a bare number
+  of milliseconds, by beet's BSX engine.
+- `<RouteAction path="..">` — install a behaviour-tree route (`PathPartial` +
+  `SpawnAction`); its child tree runs when the route is called.
+
+The firmware adds a few domain widgets (see `src/scene.rs`, `src/alvik/scenes.rs`,
+`src/alvik/routes.rs`):
+
+- `<LedScript script="..." language="rhai">` / `<AlvikScript script="..." language="rhai">`
+  — script leaves run each tick over the WS2812 / the robot. `language` selects the
+  backend (rhai or quickjs), falling back to the build default when absent. Authoring
+  templates over `Script` + the domain step, mirroring upstream's `ScriptRoute`.
+- `<DriveRoute path="drive/:dir"/>` / `<LedRoute path="led/:side/:state"/>` — bind a
+  direct route handler to a path (templates that insert the `PathPartial`).
+- `<RoombaStep/>`, `<LineFollowStep/>`, `<Drive linear={..} angular={..}/>` — the
+  Alvik behaviour-tree leaves.
 
 ## The scenes
 
-- `led-script.bsx` — bare-ESP32 WS2812 driven by a rhai colour program (the
+- `led-script.bsx` — bare-ESP32 WS2812 driven by a script colour program (the
   default firmware).
 - `roomba.bsx`, `line-follower.bsx` — Alvik wander / line-follow loops.
 - `dance-routine.bsx` — Alvik forward/turn/forward/stop, once.
-- `script.bsx` — Alvik controller as a rhai program over the sensors.
+- `script.bsx` — Alvik controller as a script over the sensors.
 - `rc.bsx` — Alvik remote control: `drive/:dir` and `led/:side/:state` routes.
 
-The Alvik scenes need the `alvik` firmware build
-(`cargo run --no-default-features --features alvik,router,wifi,rhai`); they parse
-on any build but their leaves only run with the robot attached.
+The Alvik scenes need the `alvik` firmware build (`cargo run --release --features
+alvik`); they parse on any build but their leaves only run with the robot attached.

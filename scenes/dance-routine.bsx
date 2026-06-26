@@ -1,14 +1,14 @@
-<!-- Alvik dance: forward 1s, turn left 1s, forward 1s, stop. Runs once (a
-     `<Steps>` sequence, no `<Loop>`). Push with `beet load scenes/dance-routine.bsx`,
+<!-- Alvik dance: forward 1s, turn left 1s, forward 1s, stop. Runs once (a bare
+     `<Sequence>`, no `<Repeat>`). Push with `beet load scenes/dance-routine.bsx`,
      run with `beet run dance-routine`. -->
 <RouteAction path="dance-routine">
-	<Steps>
+	<Sequence>
 		<Drive linear={60.0} angular={0.0}/>
-		<Wait ms={1000}/>
+		<EndInDuration duration="1s"/>
 		<Drive linear={0.0} angular={90.0}/>
-		<Wait ms={1000}/>
+		<EndInDuration duration="1s"/>
 		<Drive linear={60.0} angular={0.0}/>
-		<Wait ms={1000}/>
+		<EndInDuration duration="1s"/>
 		<Drive linear={0.0} angular={0.0}/>
-	</Steps>
+	</Sequence>
 </RouteAction>

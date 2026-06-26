@@ -52,6 +52,7 @@ fn main() {
         ))
         .spawn((
             HttpServer::new(8080),
+            BootOnLoad,
             default_router(),
             children![
                 exchange_route("", Home),

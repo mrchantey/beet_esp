@@ -48,28 +48,28 @@ pub(crate) fn http_server_plugin(app: &mut App) {
     if set_http_server(start_esp_server).is_err() {
         warn!("an HTTP server backend was already installed");
     }
-    app.add_systems(Update, (drain_server_requests, start_added_servers));
+    app.add_systems(Update, (drain_server_requests, boot_added_servers));
 }
 
-/// Boot every freshly-spawned [`HttpServer`]. Upstream's `HttpServer` is now a
-/// [`StartRunning<Boot>`]-driven transport — its `on_add` only registers the boot
-/// observer, so a bare `spawn((HttpServer, ..))` no longer starts it. The std boot
-/// verbs (`BootOnLoad`) parse CLI args and so are absent on no_std; this restores
-/// the spawn-to-serve ergonomics the firmware and the server examples rely on by
-/// firing the boot directly. The [`Added`] filter fires it once per server, a frame
-/// after `on_add` has registered the observer, so the trigger always lands.
+/// Fire [`LoadTemplate`] at every freshly-spawned [`HttpServer`] so its
+/// [`BootOnLoad`] verb boots it.
 ///
-/// The synthetic boot request carries no `--server` filter, so it selects every
-/// server on the entity (here just the http backend), and no `--port`, so the
-/// declared [`HttpServer`] port stands.
-fn start_added_servers(
+/// On a host, `LoadTemplate` fires as the app's template tree finishes building;
+/// bare-metal firmware spawns its server directly (there is no app template-load
+/// pipeline), so nothing fires it. This bridges that gap — the [`Added`] filter
+/// fires once per server, a frame after `BootOnLoad`'s `on_add` has registered its
+/// `LoadTemplate` observer, so the boot always lands. The boot itself (selecting
+/// the transport from the empty no_std `CliArgs`, then spawning the accept loop
+/// via the [`set_http_server`] backend) is upstream [`BootOnLoad`]; a server must
+/// carry it (see `setup` in `main.rs` and the server examples).
+fn boot_added_servers(
     servers: Query<Entity, Added<HttpServer>>,
     mut commands: Commands,
 ) {
     for server in &servers {
-        commands.entity(server).trigger(|server| {
-            StartRunning::<Boot>::new(server, Request::get("/").into())
-        });
+        commands
+            .entity(server)
+            .trigger(|entity| LoadTemplate { entity, is_error: false });
     }
 }
 

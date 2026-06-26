@@ -5,11 +5,11 @@
 //! `clear`, `reset`, `dump` — and loads its real routes over the wire. A scene
 //! (a reflection-serialized slice of the ECS) is POSTed to `/load`; from that
 //! moment the scene's routes *are* the API. The behaviours it wires
-//! ([`SpawnAction`], the behaviour-tree leaves, rhai [`Script`]s) live upstream
-//! in [`beet::router`] and in [`beet_esp::scene`]; the scene supplies only which
+//! ([`SpawnAction`], the behaviour-tree leaves, [`Script`]s) live upstream in
+//! [`beet::router`] and in [`beet_esp::scene`]; the scene supplies only which
 //! behaviour sits at which path.
 //!
-//! This runs on a bare ESP32 breakout: the on-board WS2812 is driven by a rhai
+//! This runs on a bare ESP32 breakout: the on-board WS2812 is driven by a
 //! `Script` (the `led-script` scene reads the elapsed tick + current colour and
 //! returns the next colour, keeping a counter in its persistent `state` map).
 //! Built with `--features alvik` it also brings up the Alvik robot, adding its
@@ -35,8 +35,7 @@
 //!
 //! Run with (bare ESP32, the default): `cargo run --release`
 //!
-//! Run with (Alvik):
-//! `cargo run --release --no-default-features --features alvik,router,rhai`
+//! Run with (Alvik): `cargo run --release --features alvik`
 
 #![no_std]
 #![no_main]
@@ -84,13 +83,14 @@ fn setup_builtin_led(mut commands: Commands) {
 // `/load`. `BeetSceneRoot`s get reparented here and picked up by the router.
 // The router's default not-found middleware serves a route listing at `/`.
 //
-// Spawning the `HttpServer` is enough to serve: `WifiPlugin`'s server backend
-// boots every freshly-spawned server (see `net::http_server`), since upstream's
-// `HttpServer` is now a `StartServer`-driven transport that a bare spawn no longer
-// starts on its own.
+// `BootOnLoad` is the upstream boot verb: on the server's `LoadTemplate` it boots
+// the transport (the accept loop). `WifiPlugin`'s `boot_added_servers` fires that
+// `LoadTemplate` for a freshly-spawned server (bare metal has no app template-load
+// pipeline to fire it), so spawning this bundle is enough to serve.
 fn setup(mut commands: Commands) {
     commands.spawn((
         HttpServer::new(DEFAULT_SERVER_PORT),
+        BootOnLoad,
         default_router(),
         children![
             exchange_route("load", LoadScene),

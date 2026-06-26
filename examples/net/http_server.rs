@@ -4,7 +4,8 @@
 //! standard [`HttpServer`] component alongside an [`exchange_handler`]-style
 //! action, and every request is dispatched through it. [`WifiPlugin`] brings the
 //! station up and installs the ESP32 server backend; spawning `(HttpServer,
-//! Handler)` drives the rest via beet's `on_add` hook.
+//! BootOnLoad, Handler)` boots the accept loop (`BootOnLoad` is the upstream boot
+//! verb the firmware's `boot_added_servers` fires on a fresh server).
 //!
 //! Each request runs [`Handler`] on the ECS — a full Bevy system with access to
 //! resources — and returns a beet [`Response`]. Hit it from the same LAN once it
@@ -32,7 +33,7 @@ fn main() {
     App::new()
         .add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::from_env()))
         .init_resource::<Visits>()
-        .spawn((HttpServer::new(8080), Handler))
+        .spawn((HttpServer::new(8080), BootOnLoad, Handler))
         .run();
 }
 

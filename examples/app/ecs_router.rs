@@ -35,6 +35,7 @@ fn main() {
         .init_resource::<Visits>()
         .spawn((
             HttpServer::new(8080),
+            BootOnLoad,
             default_router(),
             children![
                 exchange_route("", Home),

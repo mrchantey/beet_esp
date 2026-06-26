@@ -44,7 +44,7 @@ fn main() {
     App::new()
         .add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::from_env()))
         .init_resource::<Visits>()
-        .spawn((HttpServer::new(8080), MDns::new(HOSTNAME), Handler))
+        .spawn((HttpServer::new(8080), BootOnLoad, MDns::new(HOSTNAME), Handler))
         .add_systems(Update, probe_peer)
         .run();
 }

@@ -1,21 +1,24 @@
 //! ESP-specific scene wiring. The hardware-agnostic scene server — the bootstrap
 //! HTTP meta-routes ([`LoadScene`], [`ClearScene`], …), [`SpawnAction`], the
-//! [`BeetSceneRoot`] marker and the [`ResetScene`] event — now lives upstream in
-//! [`beet::router`]'s `scene_management`. Here we add the firmware's own scene
-//! types (the script steps plus their [`ScriptState`](crate::scripting::ScriptState))
-//! and the [`ResetScene`] handlers for its hardware (LEDs, and under `alvik` the
-//! robot).
+//! [`BeetSceneRoot`] marker and the [`ResetScene`] event — lives upstream in
+//! [`beet::router`]'s `scene_management`. Here we add only the firmware's own
+//! scene types: the [`RouteAction`] path binder, the [`ResetScene`] handlers for
+//! its hardware (LEDs, and under `alvik` the robot), and the [`LedScript`]
+//! authoring template.
+//!
+//! A pushed `.bsx` scene reads as a behaviour tree authored straight from the
+//! upstream primitives — `<Repeat>`/`<Sequence>` (the generic `Repeat<()>` /
+//! `Sequence<(), ()>` resolve from a bare tag), `<EndInDuration duration="50ms"/>`
+//! (a delay leaf, the duration coerced from a number/string by beet's BSX engine),
+//! and `<LedScript>`/`<AlvikScript>` (script leaves). No non-generic alias
+//! components stand in for them.
 
 use alloc::string::String;
 use beet::prelude::*;
 
 pub mod prelude {
-    pub use super::At;
     pub use super::EspScenePlugin;
-    pub use super::Loop;
     pub use super::RouteAction;
-    pub use super::Steps;
-    pub use super::Wait;
     #[cfg(all(feature = "led", any(feature = "rhai", feature = "quickjs")))]
     pub use super::LedScript;
     #[cfg(feature = "led")]
@@ -23,37 +26,35 @@ pub mod prelude {
 }
 
 /// Registers the firmware's scene capabilities on top of the upstream
-/// [`SceneServerPlugin`]: the script step types plus their
-/// [`ScriptState`](crate::scripting::ScriptState), and the [`ResetScene`]
-/// handlers for the on-board LED (and, under `alvik`, the robot). The router,
-/// `Sequence`/`Repeat` and `RunTimer` types are covered by
-/// [`RouterPlugin`]/[`ActionPlugin`]. The typed `Script` and its runtime come
-/// from beet_action.
+/// [`SceneServerPlugin`]: the [`RouteAction`] path binder, the [`ScriptState`] a
+/// stateful script threads, and the [`ResetScene`] handler for the on-board LED
+/// (and, under `alvik`, the robot). The router, `Sequence`/`Repeat` and
+/// `EndInDuration` types are covered by [`RouterPlugin`]/[`ActionPlugin`]; the
+/// typed `Script` and its runtime come from beet_action.
 pub struct EspScenePlugin;
 
 impl Plugin for EspScenePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(SceneServerPlugin)
-            .register_type::<EndInDuration>()
-            // The BSX scene-authoring widgets (see below), so a pushed `.bsx`
-            // resolves `<RouteAction>`/`<Loop>`/`<Steps>`/`<Wait>` as components.
             .register_type::<RouteAction>()
-            .register_type::<At>()
-            .register_type::<Loop>()
-            .register_type::<Steps>()
-            .register_type::<Wait>();
+            // The behaviour-tree delay leaf. Registered already by `ActionPlugin`,
+            // but augment its registration with `ReflectDefault` so a partial
+            // `<EndInDuration duration="50ms"/>` patch (only the duration) merges
+            // over `EndInDuration::default()` (value = `Outcome::PASS`) on load.
+            .register_type::<EndInDuration<(), Outcome>>()
+            .register_type_data::<EndInDuration<(), Outcome>, ReflectDefault>();
         // The persistent state every stateful script step threads.
         #[cfg(feature = "scripting")]
         app.register_type::<crate::scripting::ScriptState>();
         // The LED script step plus its typed `Script` data, and the `<LedScript>`
-        // BSX authoring façade over them.
+        // authoring template over them.
         #[cfg(all(feature = "led", any(feature = "rhai", feature = "quickjs")))]
         app.register_type::<crate::scripting::LedScriptStep>()
             .register_type::<Script<
                 crate::scripting::LedInput,
                 crate::scripting::LedOutput,
             >>()
-            .register_type::<LedScript>();
+            .register_template::<LedScript>();
         #[cfg(feature = "led")]
         app.add_observer(reset_leds);
         #[cfg(feature = "alvik")]
@@ -70,20 +71,15 @@ pub fn reset_leds(_ev: On<ResetScene>, mut leds: Query<&mut crate::utils::led::L
     }
 }
 
-// ---------------------------------------------------------------------------
-// BSX scene-authoring widgets
-// ---------------------------------------------------------------------------
-// Non-generic component tags so a pushed `.bsx` scene reads as a behaviour tree.
-// The tree primitives (`Repeat<_>`, `Sequence<_>`, `EndInDuration<_>`) are
-// generic, and a BSX tag resolves a registered *short type path* (generics and
-// all), so a bare `<Repeat>` cannot match `Repeat<()>`. These wrappers are the
-// non-generic façade: each requires or inserts the concrete behaviour component.
-// Being components (not `#[template]`s) their markup children build as real ECS
-// children — the parent/child shape the behaviour tree runs on.
-
 /// `<RouteAction path="roomba">` — install a behaviour-tree route at `path`. Its
 /// first child is the tree, spawned and run when the path is called (eg
 /// `beet run roomba`).
+///
+/// The one path-binding component the firmware keeps: a route's path is a string,
+/// but [`PathPartial`]'s field is a parsed segment list, so a string-to-path
+/// bridge is unavoidable. Being a component (not a `#[template]`) its markup
+/// children build as real ECS children — the parent/child shape the behaviour
+/// tree runs on, and the single child [`SpawnAction`] runs on call.
 #[derive(Debug, Default, Component, Reflect)]
 #[reflect(Component, Default)]
 #[component(on_add = route_action_on_add)]
@@ -106,91 +102,28 @@ fn route_action_on_add(mut world: DeferredWorld, cx: HookContext) {
         .insert((PathPartial::new(&path), SpawnAction));
 }
 
-/// `<DriveRoute {At{path:"drive/:dir"}}/>` — bind a route path to a direct
-/// `#[action(route)]` handler (vs the behaviour-tree [`RouteAction`]). Spread onto
-/// the handler tag, it inserts the `PathPartial` the router dispatches it on.
-#[derive(Debug, Default, Component, Reflect)]
-#[reflect(Component, Default)]
-#[component(on_add = at_on_add)]
-pub struct At {
-    /// The route path, eg `drive/:dir`.
-    pub path: String,
-}
-
-/// Insert the `PathPartial` parsed from the declared path.
-fn at_on_add(mut world: DeferredWorld, cx: HookContext) {
-    let path = world
-        .entity(cx.entity)
-        .get::<At>()
-        .map(|at| at.path.clone())
-        .unwrap_or_default();
-    world
-        .commands()
-        .entity(cx.entity)
-        .insert(PathPartial::new(&path));
-}
-
-/// `<Loop>` — repeat its single child forever (the non-generic `Repeat` façade).
-#[derive(Debug, Default, Component, Reflect)]
-#[reflect(Component, Default)]
-#[require(Repeat<()>)]
-pub struct Loop;
-
-/// `<Steps>` — run its children in order each tick (the non-generic `Sequence`
-/// façade).
-#[derive(Debug, Default, Component, Reflect)]
-#[reflect(Component, Default)]
-#[require(Sequence<(), ()>)]
-pub struct Steps;
-
-/// `<Wait ms="50"/>` — a behaviour-tree leaf that passes after `ms` milliseconds,
-/// the timer that paces a [`Loop`].
-#[derive(Debug, Default, Component, Reflect)]
-#[reflect(Component, Default)]
-#[component(on_add = wait_on_add)]
-pub struct Wait {
-    /// Milliseconds before the leaf passes.
-    pub ms: u64,
-}
-
-/// Insert the concrete `EndInDuration` timer from the declared milliseconds.
-fn wait_on_add(mut world: DeferredWorld, cx: HookContext) {
-    let ms = world
-        .entity(cx.entity)
-        .get::<Wait>()
-        .map(|wait| wait.ms)
-        .unwrap_or_default();
-    world
-        .commands()
-        .entity(cx.entity)
-        .insert(EndInDuration::pass(Duration::from_millis(ms)));
-}
-
-/// `<LedScript rhai="...">` — a behaviour-tree leaf running a rhai LED program
-/// each tick (`input.elapsed_ms`/`input.led`/`input.state` -> `#{ led, state }`).
-/// The non-generic façade over `(LedScriptStep, Script<LedInput, LedOutput>)`, so
-/// the on-board WS2812 is programmable from a pushed `.bsx`.
+/// `<LedScript script="..." language="rhai">` — a behaviour-tree leaf running a
+/// script LED program each tick (`input.elapsed_ms`/`input.led`/`input.state` ->
+/// `#{ led, state }`). The non-generic authoring template over `(LedScriptStep,
+/// Script<LedInput, LedOutput>)`, so the on-board WS2812 is programmable from a
+/// pushed `.bsx`.
+///
+/// `language` selects the backend ([`ScriptLanguage::from_str`]), falling back to
+/// the build default when absent — so the same scene runs under rhai or quickjs.
+/// Mirrors upstream's [`ScriptRoute`] template (see `beet::router`).
 #[cfg(all(feature = "led", any(feature = "rhai", feature = "quickjs")))]
-#[derive(Debug, Default, Component, Reflect)]
-#[reflect(Component, Default)]
-#[component(on_add = led_script_on_add)]
-pub struct LedScript {
-    /// The rhai source run each tick.
-    pub rhai: String,
-}
-
-/// Insert `(LedScriptStep, Script::rhai(..))` from the declared source.
-#[cfg(all(feature = "led", any(feature = "rhai", feature = "quickjs")))]
-fn led_script_on_add(mut world: DeferredWorld, cx: HookContext) {
-    let source = world
-        .entity(cx.entity)
-        .get::<LedScript>()
-        .map(|step| step.rhai.clone())
+#[template]
+pub fn LedScript(
+    #[prop(into)] script: String,
+    language: Option<String>,
+) -> impl Bundle {
+    let language = language
+        .and_then(|name| name.parse::<ScriptLanguage>().ok())
         .unwrap_or_default();
-    world.commands().entity(cx.entity).insert((
+    (
         crate::scripting::LedScriptStep,
-        Script::<crate::scripting::LedInput, crate::scripting::LedOutput>::rhai(
-            source,
+        Script::<crate::scripting::LedInput, crate::scripting::LedOutput>::new(
+            language, script,
         ),
-    ));
+    )
 }

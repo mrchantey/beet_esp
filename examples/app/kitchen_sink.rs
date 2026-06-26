@@ -36,7 +36,7 @@ fn main() {
     app.add_plugins((Esp32Plugin, HealthPlugin, LedPlugin, WifiPlugin::from_env()));
     app.init_resource::<AppTypeRegistry>();
     app.register_type::<HelloWorld>();
-    app.spawn((HttpServer::new(8080), Handler));
+    app.spawn((HttpServer::new(8080), BootOnLoad, Handler));
     app.add_systems(
         Startup,
         (setup_led, ping, dump_canonical, load_scene, greet).chain(),
