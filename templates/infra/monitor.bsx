@@ -1,0 +1,11 @@
+<!-- Reusable monitor step: stream the device's RTT log output over the USB-JTAG
+     probe (probe-rs attach). The firmware logs over RTT (`rtt_init_log!`), so this
+     tails what the running scene server prints (health, requests, scene events).
+     `${CARGO_TARGET_DIR:-target}` honours a redirected target dir. Referenced from
+     the talk demo via `<Template src>`, and run after `flash` in `main.bsx`.
+     Streams until Ctrl-C. -->
+<Command
+	exe="bash"
+	args={["-c", "probe-rs attach --chip esp32s3 ${CARGO_TARGET_DIR:-target}/xtensa-esp32s3-none-elf/release/beet_esp"]}
+	cwd="/home/pete/me/beet_esp"
+/>

@@ -1,0 +1,11 @@
+<!-- Reusable firmware flash step: build then flash the Alvik scene-server firmware
+     onto the device over the USB-JTAG probe (probe-rs), and exit. The build runs
+     first so the flash never races the compile; `probe-rs download` writes the
+     image and `reset` boots it, then the command returns (so `main.bsx` can run
+     `monitor` next). `${CARGO_TARGET_DIR:-target}` honours a redirected target dir.
+     Referenced from the talk demo via `<Template src>`, run as `... flash`. -->
+<Command
+	exe="bash"
+	args={["-c", ". $HOME/export-esp.sh && cargo build --release --features alvik && probe-rs download --chip esp32s3 --binary-format idf ${CARGO_TARGET_DIR:-target}/xtensa-esp32s3-none-elf/release/beet_esp && probe-rs reset --chip esp32s3"]}
+	cwd="/home/pete/me/beet_esp"
+/>

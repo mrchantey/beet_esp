@@ -1,25 +1,42 @@
 <!--
-beet_esp's entry: the host-side scene-push commands, wired as routes over the
-capabilities linked into the `beet` binary (`SceneManagementPlugin`). The `beet`
-CLI discovers this file by walking up from the cwd and runs one command per
-invocation, so from this directory the scene commands target the device.
+beet_esp's entry: the device dev loop as one `beet` interface. The `beet` CLI
+discovers this file by walking up from the cwd and runs one verb per invocation.
 
-`BEET_REMOTE_URL` in this directory's `.env` points every command at the device,
-so a `--url` is optional:
+Two kinds of verb:
 
-    beet load scenes/roomba.bsx      # push a `.bsx` scene to the device
-    beet run roomba                  # call a route the pushed scene installed
-    beet dump                        # print the device's current scene
-    beet clear                       # despawn the scene + reset the hardware
-    beet reset                       # return the hardware to its resting state
+  - scene push (load/run/dump/clear/reset): drive the *remote* scene server over
+    HTTP. `BEET_REMOTE_URL` in this directory's `.env` points them at the device,
+    so a `--url` is optional. Wired from the `beet` binary's scene-management
+    capabilities (this repo's `just install-cli`).
 
-Requires a `beet` built with the scene-management capabilities (this repo's
-`just install-cli`).
+        beet load templates/alvik/dance-routine.bsx   # push a scene to the device
+        beet run dance-routine                        # call a route the scene installed
+        beet dump                                     # print the device's current scene
+        beet clear                                    # despawn the scene + reset hardware
+        beet reset                                    # return the hardware to rest
+
+  - firmware lifecycle (build/flash/monitor): run the reusable `<Command>`
+    workflows in `templates/infra/` as `{BehaviorSequence}` routes. `flash` is
+    followed by `monitor`, so a flash drops straight into the RTT log stream.
+
+        beet build      # compile the Alvik firmware
+        beet flash      # build + flash over USB, then monitor
+        beet monitor    # tail the running firmware's RTT output (Ctrl-C to detach)
 -->
-<Router {(CliServer, ServeOnLoad)}>
+<Router {(CliServer, BootOnLoad)}>
 	<SceneLoad/>
 	<SceneRun/>
 	<SceneDump/>
 	<SceneClear/>
 	<SceneReset/>
+	<Route path="build" {BehaviorSequence}>
+		<Template src="templates/infra/build.bsx"/>
+	</Route>
+	<Route path="flash" {BehaviorSequence}>
+		<Template src="templates/infra/flash.bsx"/>
+		<Template src="templates/infra/monitor.bsx"/>
+	</Route>
+	<Route path="monitor" {BehaviorSequence}>
+		<Template src="templates/infra/monitor.bsx"/>
+	</Route>
 </Router>

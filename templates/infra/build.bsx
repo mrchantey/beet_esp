@@ -1,0 +1,10 @@
+<!-- Reusable firmware build step: compile the Alvik scene-server firmware. A
+     `<Command>` that shells out to cargo with the ESP (Xtensa) toolchain env
+     sourced. Referenced from the talk demo via `<Template src>` (see
+     `lfconf26-tool-engines/demo/09-robotics.bsx`), run as `... build`. `cwd` is
+     absolute so it resolves the same wherever the entry is invoked from. -->
+<Command
+	exe="bash"
+	args={["-c", ". $HOME/export-esp.sh && cargo build --release --features alvik"]}
+	cwd="/home/pete/me/beet_esp"
+/>
