@@ -60,9 +60,9 @@ pub struct WheelState {
 
 // --- drive ------------------------------------------------------------------
 
-// The robot's commanded velocity is `beet::prelude::LinearVelocity` +
-// `AngularVelocity` on the root (written by the upstream `Drive` leaf, read by
-// `flush_drive`), so there is no bespoke drive component here.
+// The robot's commanded velocity is the upstream `beet::prelude::DifferentialDrive`
+// on the root (written by the upstream `Drive` leaf, read by `flush_drive`), so
+// there is no bespoke drive component here.
 
 // --- servos -----------------------------------------------------------------
 

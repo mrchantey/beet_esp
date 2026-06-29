@@ -2,9 +2,10 @@
 //!
 //! Combines the [`AlvikPlugin`] (robot over UART) with beet's no_std router
 //! served over Wi-Fi (see [`ecs_router`](../../ecs_router.rs)). Each route is a
-//! Bevy system that mutates the robot's command components — [`DifferentialDrive`]
-//! for motion, [`LedColor`] on the [`AlvikLed`] children for the lights — and the
-//! Alvik transport systems carry the change to the wire on the next frame.
+//! Bevy system that mutates the robot's command components — the robot root's
+//! [`DifferentialDrive`] for motion, [`LedColor`] on the [`AlvikLed`] children
+//! for the lights — and the Alvik transport systems carry the change to the wire
+//! on the next frame.
 //!
 //! The station binds a **static IP** ([`ALVIK_IP`]) via
 //! [`WifiPlugin::with_static_ip`], so a controller can reach it at a fixed

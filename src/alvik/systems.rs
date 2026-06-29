@@ -30,8 +30,12 @@ pub fn flush_wheels(query: Populated<(&Wheel, &WheelTarget), Changed<WheelTarget
     }
 }
 
-/// Queue a drive command whenever the [`DifferentialDrive`] changes.
-pub fn flush_drive(query: Populated<&DifferentialDrive, Changed<DifferentialDrive>>) {
+/// Queue a drive command whenever the robot's commanded velocity changes. The
+/// upstream `Drive` leaf writes the robot's [`DifferentialDrive`] (its agent);
+/// this carries the latest linear/angular pair to the wire (`V`).
+pub fn flush_drive(
+    query: Populated<&DifferentialDrive, (With<AlvikRobot>, Changed<DifferentialDrive>)>,
+) {
     for drive in &query {
         let _ = ALVIK_OUT.send(Command::Drive {
             linear: drive.linear,
@@ -152,12 +156,10 @@ pub fn apply_status(
             tof.top = snapshot.tof_top;
             tof.bottom = snapshot.tof_bottom;
         }
-        if let Some(linear) = robot.linear.as_mut() {
-            **linear = snapshot.velocity.0;
-        }
-        if let Some(angular) = robot.angular.as_mut() {
-            **angular = snapshot.velocity.1;
-        }
+        // The robot's `LinearVelocity`/`AngularVelocity` are now the *commanded*
+        // velocity (written by `Drive`, read by `flush_drive`), so the measured
+        // `snapshot.velocity` is deliberately not written back over them — doing
+        // so would fight the command. It rides the snapshot unused downstream.
         if let Some(battery) = robot.battery.as_mut() {
             battery.percent = snapshot.battery.0;
             battery.charging = snapshot.battery.1;

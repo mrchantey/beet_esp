@@ -1,7 +1,7 @@
 //! Drive the Alvik by linear + angular velocity, and issue one-shot move /
 //! rotate commands. Ported from `actuators/pose_example.py`.
 //!
-//! [`DifferentialDrive`] on the robot root is the continuous velocity command;
+//! The robot root's [`DifferentialDrive`] is the continuous velocity command;
 //! [`Command::Move`] / [`Command::Rotate`] are one-shot commands pushed straight
 //! onto [`ALVIK_OUT`]. The robot's measured [`RobotPose`] is logged back.
 //!

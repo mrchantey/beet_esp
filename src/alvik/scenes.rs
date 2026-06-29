@@ -1,9 +1,9 @@
 //! Alvik scene support: the [`AlvikScenePlugin`] registration of the Alvik
 //! route/action/scene types a loaded scene can carry, the Alvik [`ResetScene`]
-//! handler, the [`bind_routes_to_robot`] binder that makes the robot the agent of
-//! every loaded route (so the upstream `<Drive>` leaf writes the robot's velocity),
-//! and the [`AlvikScript`] authoring widget. The hardware-agnostic scene server
-//! and its meta-routes ([`LoadScene`], [`ClearScene`], …) live upstream in
+//! handler, the [`Alvik`] marker that opts a route into being driven by the robot
+//! (so the upstream `<Drive>` leaf writes the robot's velocity), and the
+//! [`AlvikScript`] authoring widget. The hardware-agnostic scene server and its
+//! meta-routes ([`LoadScene`], [`ClearScene`], …) live upstream in
 //! [`beet::router`].
 
 use crate::prelude::*;
@@ -26,10 +26,10 @@ impl Plugin for AlvikScenePlugin {
             .register_type::<LedHandler>()
             .register_type::<LineFollowStep>()
             .register_type::<RoombaStep>()
-            // Bind every loaded route to the robot so the upstream `<Drive>` leaf
-            // (registered by `ActionPlugin`) resolves its agent to the robot and
-            // writes the robot's commanded velocity.
-            .add_systems(Update, bind_routes_to_robot)
+            // The `{Alvik}` opt-in marker: a `<RouteAction {Alvik}>` binds its tree
+            // to the robot as agent so the upstream `<Drive>` leaf (registered by
+            // `ActionPlugin`) resolves its `DifferentialDrive` to the robot.
+            .register_type::<Alvik>()
             .add_observer(reset_robot);
         // The script step plus its data: the typed `Script` and the `ScriptState`
         // it threads (registered once in `EspScenePlugin`), and the `<AlvikScript>`
@@ -52,8 +52,8 @@ fn reset_robot(
     mut drive: Single<&mut DifferentialDrive, With<AlvikRobot>>,
     mut wheels: Query<&mut WheelTarget>,
 ) {
-    drive.linear = LinearVelocity::from_mm_per_sec(0.0);
-    drive.angular = AngularVelocity::from_deg_per_sec(0.0);
+    drive.linear = LinearVelocity::default();
+    drive.angular = AngularVelocity::default();
     for mut target in &mut wheels {
         *target = WheelTarget::Speed(AngularVelocity::from_rpm(0.0));
     }
@@ -80,8 +80,8 @@ fn bind_routes_to_robot(
 
 // `<Drive linear={60.0} angular={0.0}/>` resolves to the upstream, environment-
 // agnostic `beet::prelude::Drive` leaf (registered by `ActionPlugin`): it writes
-// the agent's commanded `LinearVelocity`/`AngularVelocity`, which on the robot is
-// the `AlvikRobot` root (bound by `bind_routes_to_robot`). No firmware façade.
+// the agent's commanded `DifferentialDrive`, which on the robot is the `AlvikRobot`
+// root (bound by the `{Alvik}` marker on the `<RouteAction>`). No firmware façade.
 
 /// `<AlvikScript script="..." language="rhai">` — a behaviour-tree leaf running a
 /// script robot controller each tick (`input.depth_mm`/`input.line_*`/`input.state`
