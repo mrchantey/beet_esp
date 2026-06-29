@@ -105,8 +105,6 @@ pub mod prelude {
     pub use super::events::*;
     #[cfg(feature = "device")]
     pub use super::plugin::AlvikPlugin;
-    #[cfg(feature = "device")]
-    pub use super::plugin::spawn_robot;
     pub use super::protocol::Command;
     pub use super::protocol::Status;
     pub use super::types::Side;

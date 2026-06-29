@@ -9,6 +9,11 @@ use beet::prelude::*;
 /// Marker for the Alvik robot root entity. Its wheels, servos and LEDs are
 /// child entities; its own continuous state (battery, behavior, pose, sensors)
 /// rides on sibling components.
+///
+/// The firmware boots the robot as the *scene root* (the [`Alvik`](super::scenes::Alvik)
+/// element, with the `<Router>` slotted as its child), so a loaded behaviour's
+/// [`AgentQuery`](beet::prelude::AgentQuery) resolves its agent to this entity via
+/// root-ancestor fallback — no marker, no `ActionOf`, no resource needed.
 #[derive(Component, Default, Clone, Copy)]
 pub struct AlvikRobot;
 

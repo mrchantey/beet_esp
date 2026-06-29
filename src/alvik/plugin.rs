@@ -1,25 +1,27 @@
-//! The [`AlvikPlugin`] and the [`spawn_robot`] startup system it installs.
+//! The [`AlvikPlugin`]: the Alvik driver and per-frame transport systems.
 
-use crate::alvik::components::*;
 use crate::alvik::driver;
 use crate::alvik::events;
 use crate::alvik::systems;
-use crate::alvik::types::Side;
-use crate::utils::led::LedColor;
 use beet::prelude::*;
 
-/// Installs the Alvik driver and transport, and spawns the robot entity tree.
-/// Add after [`Esp32Plugin`](crate::esp32_plugin) (which exposes UART1 + the
-/// Alvik GPIOs) and [`LedPlugin`](crate::utils::led::LedPlugin) (the `AlvikLed` backend
-/// reuses [`LedColor`]).
+/// Installs the Alvik driver and transport. Add after
+/// [`Esp32Plugin`](crate::esp32_plugin) (which exposes UART1 + the Alvik GPIOs)
+/// and [`LedPlugin`](crate::utils::led::LedPlugin) (the `AlvikLed` backend reuses
+/// [`LedColor`](crate::utils::led::LedColor)).
 ///
-/// The plugin spawns the robot itself, so apps just add the plugin. To run logic
-/// when the robot appears, add an observer on `On<Add, AlvikRobot>`.
+/// The robot entity tree itself is no longer spawned here: the firmware's `setup`
+/// (in `main.rs`) spawns the [`AlvikRobot`] as the scene *root* — the bundle the
+/// [`Alvik`](super::scenes::Alvik) element assembles — with the scene server as a
+/// child, so the robot is the root ancestor a loaded behaviour's agent resolves
+/// to. The transport systems below query `With<AlvikRobot>` and so do not care
+/// where the robot sits in the tree. To run logic when the robot appears, add an
+/// observer on `On<Add, AlvikRobot>`.
 pub struct AlvikPlugin;
 
 impl Plugin for AlvikPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, (driver::spawn_alvik_driver, spawn_robot))
+        app.add_systems(Startup, driver::spawn_alvik_driver)
             // Read sensors, then detect touch/move edges off the fresh state.
             .add_systems(
                 PreUpdate,
@@ -36,60 +38,4 @@ impl Plugin for AlvikPlugin {
                 ),
             );
     }
-}
-
-/// Spawn the Alvik robot entity tree: the [`AlvikRobot`] root carrying every
-/// sensor/state component, with two wheel, two servo and two RGB-LED children.
-/// Apps read and write these components; unused ones cost only a default.
-pub fn spawn_robot(mut commands: Commands) {
-    commands.spawn((
-        AlvikRobot,
-        // Grouped into sub-bundles: a flat tuple would exceed the 15-element
-        // `Bundle` impl. State, then sensors.
-        (
-            Connected::default(),
-            FirmwareVersion::default(),
-            BehaviorCode::default(),
-            BatterState::default(),
-            DifferentialDrive::default(),
-            Illuminator(true),
-            BuiltinLed(false),
-        ),
-        (
-            LineSensors::default(),
-            ColorSensor::default(),
-            Tof::default(),
-            Imu::default(),
-            Orientation::default(),
-            RobotPose::default(),
-            // Commanded velocity: the upstream `Drive` leaf writes these on the
-            // robot (its agent), and `flush_drive` sends them to the wire.
-            LinearVelocity::default(),
-            AngularVelocity::default(),
-            TouchValue::default(),
-            MotionValue::default(),
-        ),
-        children![
-            (
-                Wheel { side: Side::Left },
-                WheelState::default(),
-                WheelTarget::Speed(AngularVelocity::default()),
-            ),
-            (
-                Wheel { side: Side::Right },
-                WheelState::default(),
-                WheelTarget::Speed(AngularVelocity::default()),
-            ),
-            (Servo {
-                id: ServoId::A,
-                position: Angle::from_degrees(90.0),
-            }),
-            (Servo {
-                id: ServoId::B,
-                position: Angle::from_degrees(90.0),
-            }),
-            (AlvikLed { side: Side::Left }, LedColor::default()),
-            (AlvikLed { side: Side::Right }, LedColor::default()),
-        ],
-    ));
 }

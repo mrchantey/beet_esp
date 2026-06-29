@@ -5,8 +5,8 @@
 //! The fixed-velocity `<Drive linear=.. angular=..>` leaf is the upstream,
 //! environment-agnostic [`Drive`](beet::prelude::Drive): it writes the agent's
 //! commanded [`DifferentialDrive`], which on the robot is the [`AlvikRobot`] root
-//! (bound via the [`Alvik`](super::scenes::Alvik) marker). The sensor-driven steps
-//! below set that same component directly.
+//! resolved by `AgentQuery`'s root-ancestor fallback (the robot is the scene root).
+//! The sensor-driven steps below set that same component directly.
 
 use crate::prelude::*;
 use beet::prelude::*;

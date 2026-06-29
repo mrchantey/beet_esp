@@ -80,13 +80,100 @@ fn setup_builtin_led(mut commands: Commands) {
 }
 
 // The bootstrap server: only the meta-routes. The real routes arrive via
-// `/load`. `BeetSceneRoot`s get reparented here and picked up by the router.
-// The router's default not-found middleware serves a route listing at `/`.
+// `/load`. `BeetSceneRoot`s get reparented under the server's root ancestor and
+// picked up by the router. The router's default not-found middleware serves a
+// route listing at `/`.
 //
 // `BootOnLoad` is the upstream boot verb: on the server's `LoadTemplate` it boots
 // the transport (the accept loop). `WifiPlugin`'s `boot_added_servers` fires that
 // `LoadTemplate` for a freshly-spawned server (bare metal has no app template-load
-// pipeline to fire it), so spawning this bundle is enough to serve.
+// pipeline to fire it), so spawning this bundle is enough to serve — it finds the
+// `HttpServer` by `Added<HttpServer>` wherever it sits in the tree.
+//
+// Under `alvik` the server is *nested under the robot*: the boot tree is the
+// `AlvikRobot` root (carrying `DifferentialDrive` + every sensor/state component,
+// with the wheel/servo/LED hardware as children) and the scene server as one more
+// child. So a loaded behaviour's `AgentQuery` resolves its agent to the robot by
+// root-ancestor fallback (the loaded `<RouteAction>` is reparented under the
+// server, whose root ancestor is the robot) — no `{Alvik}` marker needed. The
+// `RouteTree` is built on that same root ancestor, so the nested router's dispatch
+// (which walks ancestors for the tree) still resolves every route.
+//
+// Spawned imperatively rather than through the `<Alvik>` template: a Rust `rsx!`
+// wraps every child of a capitalized tag in a `SlotChild`, but `Router` is a plain
+// component with no `<Slot>`, so `rsx!{ <Router><SceneServer/></Router> }` would
+// leave unconsumed slot content and fail the build at boot. The declarative
+// `<Alvik>` element (in `alvik::scenes`) stays available for a `.bsx` scene, where
+// the parser routes a component's children as real children.
+//
+// The bare (non-alvik) build has no robot, so the server stays a plain root.
+#[cfg(feature = "alvik")]
+fn setup(mut commands: Commands) {
+    commands.spawn((
+        AlvikRobot,
+        // Grouped into sub-bundles: a flat tuple would exceed the 15-element
+        // `Bundle` impl. State, then sensors.
+        (
+            Connected::default(),
+            FirmwareVersion::default(),
+            BehaviorCode::default(),
+            BatterState::default(),
+            Illuminator(true),
+            BuiltinLed(false),
+        ),
+        (
+            LineSensors::default(),
+            ColorSensor::default(),
+            Tof::default(),
+            Imu::default(),
+            Orientation::default(),
+            RobotPose::default(),
+            // Commanded velocity: the upstream `Drive` leaf writes this on the
+            // robot (its agent, resolved as the root ancestor), and `flush_drive`
+            // sends it to the wire.
+            DifferentialDrive::default(),
+            TouchValue::default(),
+            MotionValue::default(),
+        ),
+        children![
+            // --- the robot's hardware: wheels, servos, RGB UI LEDs ---
+            (
+                Wheel { side: Side::Left },
+                WheelState::default(),
+                WheelTarget::Speed(AngularVelocity::default()),
+            ),
+            (
+                Wheel { side: Side::Right },
+                WheelState::default(),
+                WheelTarget::Speed(AngularVelocity::default()),
+            ),
+            (Servo {
+                id: ServoId::A,
+                position: Angle::from_degrees(90.0),
+            }),
+            (Servo {
+                id: ServoId::B,
+                position: Angle::from_degrees(90.0),
+            }),
+            (AlvikLed { side: Side::Left }, LedColor::default()),
+            (AlvikLed { side: Side::Right }, LedColor::default()),
+            // --- the scene server: a child of the robot root ---
+            (
+                HttpServer::new(DEFAULT_SERVER_PORT),
+                BootOnLoad,
+                default_router(),
+                children![
+                    exchange_route("load", LoadScene),
+                    exchange_route("clear", ClearScene),
+                    exchange_route("reset", Reset),
+                    exchange_route("dump", DumpScene),
+                ],
+            ),
+        ],
+    ));
+}
+
+#[cfg(not(feature = "alvik"))]
 fn setup(mut commands: Commands) {
     commands.spawn((
         HttpServer::new(DEFAULT_SERVER_PORT),

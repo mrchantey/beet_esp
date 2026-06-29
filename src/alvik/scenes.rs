@@ -1,7 +1,6 @@
 //! Alvik scene support: the [`AlvikScenePlugin`] registration of the Alvik
-//! route/action/scene types a loaded scene can carry, the Alvik [`ResetScene`]
-//! handler, the [`Alvik`] marker that opts a route into being driven by the robot
-//! (so the upstream `<Drive>` leaf writes the robot's velocity), and the
+//! route/action/scene types a loaded scene can carry, the [`Alvik`] root element
+//! that assembles the robot bundle, the Alvik [`ResetScene`] handler, and the
 //! [`AlvikScript`] authoring widget. The hardware-agnostic scene server and its
 //! meta-routes ([`LoadScene`], [`ClearScene`], …) live upstream in
 //! [`beet::router`].
@@ -26,10 +25,11 @@ impl Plugin for AlvikScenePlugin {
             .register_type::<LedHandler>()
             .register_type::<LineFollowStep>()
             .register_type::<RoombaStep>()
-            // The `{Alvik}` opt-in marker: a `<RouteAction {Alvik}>` binds its tree
-            // to the robot as agent so the upstream `<Drive>` leaf (registered by
-            // `ActionPlugin`) resolves its `DifferentialDrive` to the robot.
-            .register_type::<Alvik>()
+            // The `<Alvik>` root element: assembles the robot's hardware bundle and
+            // slots its body (the `<Router>`). The firmware boots `<Alvik><Router>…`
+            // so the robot is the scene root and a loaded `<Drive>` leaf resolves its
+            // `DifferentialDrive` to the robot via root-ancestor (no marker needed).
+            .register_template::<Alvik>()
             .add_observer(reset_robot);
         // The script step plus its data: the typed `Script` and the `ScriptState`
         // it threads (registered once in `EspScenePlugin`), and the `<AlvikScript>`
@@ -59,18 +59,78 @@ fn reset_robot(
     }
 }
 
-/// Bind every loaded [`RouteAction`] to the [`AlvikRobot`] as its agent, so a
-/// `<Drive>` leaf in the route's tree resolves its agent (up the ancestors to the
-/// `RouteAction`, then through [`ActionOf`]) to the robot and writes the robot's
-/// commanded [`LinearVelocity`]/[`AngularVelocity`]. Idempotent: the
-/// `Without<ActionOf>` filter skips routes already bound.
-fn bind_routes_to_robot(
-    mut commands: Commands,
-    robot: Single<Entity, With<AlvikRobot>>,
-    routes: Query<Entity, (With<RouteAction>, Without<ActionOf>)>,
-) {
-    for entity in &routes {
-        commands.entity(entity).insert(ActionOf(*robot));
+/// The `<Alvik>` root element: the robot's full hardware bundle (the [`AlvikRobot`]
+/// marker, every state + sensor component including the commanded
+/// [`DifferentialDrive`], and the wheel / servo / RGB-LED children), with a
+/// `<Slot/>` hosting its body — the firmware slots the `<Router>` there, so the
+/// boot tree is `<Alvik><Router>…</Router></Alvik>`.
+///
+/// Because the robot is the *root* of that tree, a loaded behaviour's
+/// [`AgentQuery`] resolves its agent to this entity by root-ancestor fallback (a
+/// loaded `<RouteAction>` is reparented under the server, whose root ancestor is
+/// the robot). So a `<Drive>` leaf writes the robot's `DifferentialDrive` with no
+/// marker, no `ActionOf` and no resource; a route whose agent lacks a
+/// `DifferentialDrive` errors loudly, the desired feedback.
+///
+/// Mirrors beet's [`Foxie`](beet::prelude::Foxie) template: a Rust `#[template]`
+/// has no neutral host (`<Fragment>` is `.bsx`-only), so an inert `<span>` carries
+/// the bundle and the slot. The `Element` is harmless on a hardware entity (it is
+/// never rendered), and the robot's transport systems query `With<AlvikRobot>`
+/// regardless.
+#[template]
+pub fn Alvik() -> impl Bundle {
+    rsx! {
+        <span {(
+            AlvikRobot,
+            // Grouped into sub-bundles: a flat tuple would exceed the 15-element
+            // `Bundle` impl. State, then sensors.
+            (
+                Connected::default(),
+                FirmwareVersion::default(),
+                BehaviorCode::default(),
+                BatterState::default(),
+                Illuminator(true),
+                BuiltinLed(false),
+            ),
+            (
+                LineSensors::default(),
+                ColorSensor::default(),
+                Tof::default(),
+                Imu::default(),
+                Orientation::default(),
+                RobotPose::default(),
+                // Commanded velocity: the upstream `Drive` leaf writes this on the
+                // robot (its agent, resolved as the root ancestor), and `flush_drive`
+                // sends it to the wire.
+                DifferentialDrive::default(),
+                TouchValue::default(),
+                MotionValue::default(),
+            ),
+            children![
+                (
+                    Wheel { side: Side::Left },
+                    WheelState::default(),
+                    WheelTarget::Speed(AngularVelocity::default()),
+                ),
+                (
+                    Wheel { side: Side::Right },
+                    WheelState::default(),
+                    WheelTarget::Speed(AngularVelocity::default()),
+                ),
+                (Servo {
+                    id: ServoId::A,
+                    position: Angle::from_degrees(90.0),
+                }),
+                (Servo {
+                    id: ServoId::B,
+                    position: Angle::from_degrees(90.0),
+                }),
+                (AlvikLed { side: Side::Left }, LedColor::default()),
+                (AlvikLed { side: Side::Right }, LedColor::default()),
+            ],
+        )}>
+            <Slot/>
+        </span>
     }
 }
 
@@ -81,7 +141,8 @@ fn bind_routes_to_robot(
 // `<Drive linear={60.0} angular={0.0}/>` resolves to the upstream, environment-
 // agnostic `beet::prelude::Drive` leaf (registered by `ActionPlugin`): it writes
 // the agent's commanded `DifferentialDrive`, which on the robot is the `AlvikRobot`
-// root (bound by the `{Alvik}` marker on the `<RouteAction>`). No firmware façade.
+// root resolved by `AgentQuery`'s root-ancestor fallback (the loaded route is a
+// descendant of the robot, which is the scene root). No firmware façade, no marker.
 
 /// `<AlvikScript script="..." language="rhai">` — a behaviour-tree leaf running a
 /// script robot controller each tick (`input.depth_mm`/`input.line_*`/`input.state`
