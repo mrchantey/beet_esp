@@ -1,10 +1,14 @@
 //! Alvik scene support: the [`AlvikScenePlugin`] registration of the Alvik
 //! route/action/scene types a loaded scene can carry, the Alvik [`ResetScene`]
-//! handler, and the [`Drive`] / [`AlvikScript`] authoring widgets. The
-//! hardware-agnostic scene server and its meta-routes ([`LoadScene`],
-//! [`ClearScene`], …) live upstream in [`beet::router`].
+//! handler, the [`bind_routes_to_robot`] binder that makes the robot the agent of
+//! every loaded route (so the upstream `<Drive>` leaf writes the robot's velocity),
+//! and the [`AlvikScript`] authoring widget. The hardware-agnostic scene server
+//! and its meta-routes ([`LoadScene`], [`ClearScene`], …) live upstream in
+//! [`beet::router`].
 
 use crate::prelude::*;
+// Only the `<AlvikScript>` template (gated on a scripting backend) names `String`.
+#[cfg(any(feature = "rhai", feature = "quickjs"))]
 use alloc::string::String;
 use beet::prelude::*;
 
@@ -20,12 +24,12 @@ impl Plugin for AlvikScenePlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<DriveHandler>()
             .register_type::<LedHandler>()
-            .register_type::<ApplyDrive>()
-            .register_type::<DriveCommand>()
             .register_type::<LineFollowStep>()
             .register_type::<RoombaStep>()
-            // The `<Drive>` authoring façade over `(ApplyDrive, DriveCommand)`.
-            .register_type::<Drive>()
+            // Bind every loaded route to the robot so the upstream `<Drive>` leaf
+            // (registered by `ActionPlugin`) resolves its agent to the robot and
+            // writes the robot's commanded velocity.
+            .add_systems(Update, bind_routes_to_robot)
             .add_observer(reset_robot);
         // The script step plus its data: the typed `Script` and the `ScriptState`
         // it threads (registered once in `EspScenePlugin`), and the `<AlvikScript>`
@@ -55,35 +59,29 @@ fn reset_robot(
     }
 }
 
+/// Bind every loaded [`RouteAction`] to the [`AlvikRobot`] as its agent, so a
+/// `<Drive>` leaf in the route's tree resolves its agent (up the ancestors to the
+/// `RouteAction`, then through [`ActionOf`]) to the robot and writes the robot's
+/// commanded [`LinearVelocity`]/[`AngularVelocity`]. Idempotent: the
+/// `Without<ActionOf>` filter skips routes already bound.
+fn bind_routes_to_robot(
+    mut commands: Commands,
+    robot: Single<Entity, With<AlvikRobot>>,
+    routes: Query<Entity, (With<RouteAction>, Without<ActionOf>)>,
+) {
+    for entity in &routes {
+        commands.entity(entity).insert(ActionOf(*robot));
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Alvik authoring widgets
 // ---------------------------------------------------------------------------
 
-/// `<Drive linear={60.0} angular={0.0}/>` — a behaviour-tree leaf applying a fixed
-/// drive velocity (mm/s, deg/s), the façade over `(ApplyDrive, DriveCommand)`.
-/// Pair with an `<EndInDuration>` in a `<Sequence>` to "drive like this for N ms".
-#[derive(Debug, Default, Component, Reflect)]
-#[reflect(Component, Default)]
-#[component(on_add = drive_on_add)]
-pub struct Drive {
-    /// Forward speed, mm/s (negative = reverse).
-    pub linear: f32,
-    /// Turn rate, deg/s (positive = left).
-    pub angular: f32,
-}
-
-/// Insert `(ApplyDrive, DriveCommand)` from the declared velocities.
-fn drive_on_add(mut world: DeferredWorld, cx: HookContext) {
-    let (linear, angular) = world
-        .entity(cx.entity)
-        .get::<Drive>()
-        .map(|drive| (drive.linear, drive.angular))
-        .unwrap_or_default();
-    world
-        .commands()
-        .entity(cx.entity)
-        .insert((ApplyDrive, DriveCommand::drive(linear, angular)));
-}
+// `<Drive linear={60.0} angular={0.0}/>` resolves to the upstream, environment-
+// agnostic `beet::prelude::Drive` leaf (registered by `ActionPlugin`): it writes
+// the agent's commanded `LinearVelocity`/`AngularVelocity`, which on the robot is
+// the `AlvikRobot` root (bound by `bind_routes_to_robot`). No firmware façade.
 
 /// `<AlvikScript script="..." language="rhai">` — a behaviour-tree leaf running a
 /// script robot controller each tick (`input.depth_mm`/`input.line_*`/`input.state`

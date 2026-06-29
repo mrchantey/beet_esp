@@ -1,9 +1,9 @@
-//! Cross-cutting, hardware-light utilities: pure `no_std` math ([`units`]) plus
-//! the thin peripheral wrappers that don't belong to any one subsystem (the
-//! on-board WS2812 [`led`] and the hardware-RNG [`random`] backend).
-
-// Crate-wide typed quantities (pure no_std math, no hardware deps).
-pub mod units;
+//! Cross-cutting, hardware-light utilities: the thin peripheral wrappers that
+//! don't belong to any one subsystem (the on-board WS2812 [`led`] and the
+//! hardware-RNG [`random`] backend). The crate-wide typed quantities now live
+//! upstream in `beet_core` (`beet::prelude::{Angle, AngularVelocity, Distance,
+//! LinearVelocity}`); the prelude re-exports them so callers keep their old
+//! `crate::prelude::LinearVelocity` paths.
 
 #[cfg(feature = "led")]
 pub mod led;
@@ -13,5 +13,7 @@ pub mod random;
 pub mod prelude {
     #[cfg(feature = "led")]
     pub use super::led::*;
-    pub use super::units::*;
+    // Typed quantities moved to beet_core; surface them here so the crate's old
+    // `crate::utils::units::*` / `crate::prelude::*` import sites still resolve.
+    pub use beet::prelude::{Angle, AngularVelocity, Distance, LinearVelocity};
 }

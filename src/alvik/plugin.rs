@@ -6,9 +6,6 @@ use crate::alvik::events;
 use crate::alvik::systems;
 use crate::alvik::types::Side;
 use crate::utils::led::LedColor;
-use crate::utils::units::Angle;
-use crate::utils::units::AngularVelocity;
-use crate::utils::units::LinearVelocity;
 use beet::prelude::*;
 
 /// Installs the Alvik driver and transport, and spawns the robot entity tree.
@@ -65,6 +62,8 @@ pub fn spawn_robot(mut commands: Commands) {
             Imu::default(),
             Orientation::default(),
             RobotPose::default(),
+            // Commanded velocity: the upstream `Drive` leaf writes these on the
+            // robot (its agent), and `flush_drive` sends them to the wire.
             LinearVelocity::default(),
             AngularVelocity::default(),
             TouchValue::default(),

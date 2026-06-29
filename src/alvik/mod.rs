@@ -5,8 +5,9 @@
 //! [`Esp32Plugin`](crate::esp32_plugin)); it claims UART1 and the STM32 control
 //! GPIOs, runs the bring-up handshake on an embassy task, installs the per-frame
 //! transport systems, and spawns the robot entity tree. Apps then read sensor
-//! components and write command components (`WheelTarget`, `DifferentialDrive`,
-//! `Servo`, `LedColor`); the systems carry them to and from the wire. To run
+//! components and write command components (`WheelTarget`, the robot's commanded
+//! `LinearVelocity`/`AngularVelocity`, `Servo`, `LedColor`); the systems carry
+//! them to and from the wire. To run
 //! logic when the robot appears, add an observer on `On<Add, AlvikRobot>`.
 //!
 //! The wire protocol (ucPack framing, command/status codes) lives in

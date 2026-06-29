@@ -11,8 +11,6 @@ use crate::alvik::protocol::Command;
 use crate::alvik::protocol::Status;
 use crate::alvik::types::Side;
 use crate::utils::led::LedColor;
-use crate::utils::units::AngularVelocity;
-use crate::utils::units::LinearVelocity;
 use beet::prelude::*;
 
 /// Queue a per-wheel speed/position command whenever a [`WheelTarget`] changes.
@@ -226,8 +224,6 @@ pub struct AlvikComponents {
     line: Option<&'static mut LineSensors>,
     color: Option<&'static mut ColorSensor>,
     tof: Option<&'static mut Tof>,
-    linear: Option<&'static mut LinearVelocity>,
-    angular: Option<&'static mut AngularVelocity>,
     battery: Option<&'static mut BatterState>,
     touch: Option<&'static mut TouchValue>,
     motion: Option<&'static mut MotionValue>,

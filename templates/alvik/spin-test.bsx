@@ -1,0 +1,11 @@
+<!-- Angular-only spin test: linear=0, angular=90 deg/s for 5s, then stop. Verifies
+     the upstream <Drive> leaf spins the robot in place (wheels opposite: left
+     forward / right back) when commanded a pure turn. Push with
+     `beet load templates/alvik/spin-test.bsx`, run with `beet run spin-test`. -->
+<RouteAction path="spin-test">
+	<Sequence>
+		<Drive linear={0.0} angular={90.0}/>
+		<EndInDuration duration="5s"/>
+		<Drive linear={0.0} angular={0.0}/>
+	</Sequence>
+</RouteAction>

@@ -4,10 +4,6 @@
 //! incoming status to the sensor components.
 
 use crate::alvik::types::Side;
-use crate::utils::units::Angle;
-use crate::utils::units::AngularVelocity;
-use crate::utils::units::Distance;
-use crate::utils::units::LinearVelocity;
 use beet::prelude::*;
 
 /// Marker for the Alvik robot root entity. Its wheels, servos and LEDs are
@@ -64,13 +60,9 @@ pub struct WheelState {
 
 // --- drive ------------------------------------------------------------------
 
-/// Differential-drive command: linear + angular velocity (`V`). Changing it
-/// queues a drive command.
-#[derive(Component, Default, Clone, Copy, Debug)]
-pub struct DifferentialDrive {
-    pub linear: LinearVelocity,
-    pub angular: AngularVelocity,
-}
+// The robot's commanded velocity is `beet::prelude::LinearVelocity` +
+// `AngularVelocity` on the root (written by the upstream `Drive` leaf, read by
+// `flush_drive`), so there is no bespoke drive component here.
 
 // --- servos -----------------------------------------------------------------
 

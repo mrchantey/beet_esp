@@ -1,52 +1,15 @@
 //! Behaviour-tree leaves a scene can play over time. Unlike the one-shot
 //! [`routes`](super::routes), these are [`Outcome`]-returning actions meant to
 //! sit under a [`Sequence`] or [`Repeat`] and tick repeatedly.
+//!
+//! The fixed-velocity `<Drive linear=.. angular=..>` leaf is the upstream,
+//! environment-agnostic [`Drive`](beet::prelude::Drive): it writes the agent's
+//! commanded [`LinearVelocity`]/[`AngularVelocity`], which on the robot is the
+//! [`AlvikRobot`] root (bound via [`bind_routes_to_robot`](super::scenes::bind_routes_to_robot)).
+//! The sensor-driven steps below set those same two components directly.
 
 use crate::prelude::*;
 use beet::prelude::*;
-
-/// A drive velocity a behaviour-tree leaf can apply. Carried alongside
-/// [`ApplyDrive`] so a scene can configure each step's motion.
-#[derive(Debug, Default, Clone, Component, Reflect)]
-#[reflect(Component, Default)]
-#[type_path = "alvik"]
-pub struct DriveCommand {
-    /// Forward speed, mm/s (negative = reverse).
-    linear_mm_s: f32,
-    /// Turn rate, deg/s (positive = left).
-    angular_deg_s: f32,
-}
-
-impl DriveCommand {
-    /// A command with the given linear (mm/s) and angular (deg/s) rates.
-    pub const fn drive(linear_mm_s: f32, angular_deg_s: f32) -> Self {
-        Self { linear_mm_s, angular_deg_s }
-    }
-}
-
-/// Behaviour-tree leaf: apply this entity's [`DriveCommand`] to the robot, then
-/// [`Outcome::PASS`]. Pair with [`EndInDuration`] in a [`Sequence`] to "drive
-/// like this for N seconds".
-#[action(handler_only)]
-#[derive(Default, Clone, Component, Reflect)]
-#[reflect(Component)]
-#[type_path = "alvik"]
-#[require(DriveCommand)]
-pub fn ApplyDrive(
-    cx: In<ActionContext>,
-    commands: Query<&DriveCommand>,
-    mut drive: Single<&mut DifferentialDrive, With<AlvikRobot>>,
-) -> Outcome {
-    if let Ok(command) = commands.get(cx.id()) {
-        drive.linear = LinearVelocity::from_mm_per_sec(command.linear_mm_s);
-        drive.angular = AngularVelocity::from_deg_per_sec(command.angular_deg_s);
-        info!(
-            "scene: apply drive ({} mm/s, {} deg/s)",
-            command.linear_mm_s, command.angular_deg_s
-        );
-    }
-    Outcome::PASS
-}
 
 /// Line-sensor reading at or above this counts as "black" (over the line).
 /// A rough guess for the Alvik's reflectance sensors — tune on the bench.

@@ -24,7 +24,7 @@ const TURN_RATE_DEG_S: f32 = 90.0;
 #[type_path = "alvik"]
 pub fn DriveHandler(
     cx: In<ActionContext<RequestParts>>,
-    mut drive: Single<&mut DifferentialDrive, With<AlvikRobot>>,
+    mut drive: Single<(&mut LinearVelocity, &mut AngularVelocity), With<AlvikRobot>>,
 ) -> Response {
     let dir = cx.input.get_param("dir").unwrap_or("stop");
     let (linear, angular) = match dir {
@@ -34,8 +34,8 @@ pub fn DriveHandler(
         "right" => (0.0, -TURN_RATE_DEG_S),
         _ => (0.0, 0.0),
     };
-    drive.linear = LinearVelocity::from_mm_per_sec(linear);
-    drive.angular = AngularVelocity::from_deg_per_sec(angular);
+    *drive.0 = LinearVelocity::from_mm_per_sec(linear);
+    *drive.1 = AngularVelocity::from_deg_per_sec(angular);
     info!("scene: drive {} ({} mm/s, {} deg/s)", dir, linear, angular);
     Response::ok_text(format!("drive {dir}\n"))
 }

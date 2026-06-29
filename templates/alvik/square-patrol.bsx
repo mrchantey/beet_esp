@@ -1,0 +1,27 @@
+<!-- Alvik square patrol: drive each edge for 1s (60 mm/s), then turn left 90° (1s
+     at 90 deg/s), four times, then stop. The same agnostic <Drive>/<EndInDuration>
+     square patrol the headless (demo/08-behavior.bsx), wgpu (demo/wgpu-action.bsx)
+     and wasm (demo/wasm.bsx) demos run — here the firmware maps each <Drive> to the
+     wheels. Push with `beet load templates/alvik/square-patrol.bsx`, run with
+     `beet run square-patrol`. -->
+<RouteAction path="square-patrol">
+	<Sequence>
+		<Drive linear={60.0} angular={0.0}/>
+		<EndInDuration duration="1s"/>
+		<Drive linear={0.0} angular={90.0}/>
+		<EndInDuration duration="1s"/>
+		<Drive linear={60.0} angular={0.0}/>
+		<EndInDuration duration="1s"/>
+		<Drive linear={0.0} angular={90.0}/>
+		<EndInDuration duration="1s"/>
+		<Drive linear={60.0} angular={0.0}/>
+		<EndInDuration duration="1s"/>
+		<Drive linear={0.0} angular={90.0}/>
+		<EndInDuration duration="1s"/>
+		<Drive linear={60.0} angular={0.0}/>
+		<EndInDuration duration="1s"/>
+		<Drive linear={0.0} angular={90.0}/>
+		<EndInDuration duration="1s"/>
+		<Drive linear={0.0} angular={0.0}/>
+	</Sequence>
+</RouteAction>

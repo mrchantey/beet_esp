@@ -9,10 +9,10 @@
 use crate::alvik::types::Side;
 use crate::alvik::ucpack::Encoder;
 use crate::alvik::ucpack::Frame;
-use crate::utils::units::Angle;
-use crate::utils::units::AngularVelocity;
-use crate::utils::units::Distance;
-use crate::utils::units::LinearVelocity;
+use beet::prelude::Angle;
+use beet::prelude::AngularVelocity;
+use beet::prelude::Distance;
+use beet::prelude::LinearVelocity;
 
 /// A command sent to the STM32 carrier.
 #[derive(Debug, Clone, Copy, PartialEq)]
