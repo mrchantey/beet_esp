@@ -155,7 +155,7 @@ async fn exchange_on(
 }
 
 /// Split an authority into `(host, port)`, falling back to `default_port`.
-fn split_authority(authority: &str, default_port: u16) -> (String, u16) {
+pub(crate) fn split_authority(authority: &str, default_port: u16) -> (String, u16) {
     match authority.rsplit_once(':') {
         Some((host, port)) => (host.to_string(), port.parse().unwrap_or(default_port)),
         None => (authority.to_string(), default_port),

@@ -22,6 +22,12 @@ Two kinds of verb:
         beet build      # compile the Alvik firmware
         beet flash      # build + flash over USB, then monitor
         beet monitor    # tail the running firmware's RTT output (Ctrl-C to detach)
+
+  - test server (socket-server): run the host WebSocket echo server the
+    `socket_client` example connects to, bound to `0.0.0.0` on the `SOCKET_SERVER`
+    port. Start it before flashing the socket_client example.
+
+        beet socket-server   # run the host echo server (Ctrl-C to stop)
 -->
 <Router {(CliServer, BootOnLoad)}>
 	<SceneLoad/>
@@ -38,5 +44,8 @@ Two kinds of verb:
 	</Route>
 	<Route path="monitor" {BehaviorSequence}>
 		<Template src="templates/infra/monitor.bsx"/>
+	</Route>
+	<Route path="socket-server" {BehaviorSequence}>
+		<Template src="templates/infra/socket-server.bsx"/>
 	</Route>
 </Router>

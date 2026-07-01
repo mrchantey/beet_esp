@@ -38,6 +38,8 @@ use static_cell::StaticCell;
 pub mod http_client;
 #[cfg(feature = "action")]
 pub mod http_server;
+#[cfg(feature = "sockets")]
+pub mod socket_client;
 #[cfg(feature = "mdns")]
 pub mod mdns;
 #[cfg(feature = "mdns")]
@@ -201,8 +203,13 @@ fn start_wifi(world: &mut World) {
     // accept loop and an HTTP client GET each take one; the `mdns` responder/
     // resolver task adds a persistent UDP socket. With mDNS active, a client GET
     // issued while the server is listening pushed past the old budget of 4 and
-    // smoltcp panicked ("adding a socket to a full SocketSet"), so allow 6.
-    static RESOURCES: StaticCell<StackResources<6>> = StaticCell::new();
+    // smoltcp panicked ("adding a socket to a full SocketSet"), so allow 6 — plus
+    // one more for a live WebSocket client socket under `sockets`.
+    #[cfg(feature = "sockets")]
+    const STACK_SOCKETS: usize = 7;
+    #[cfg(not(feature = "sockets"))]
+    const STACK_SOCKETS: usize = 6;
+    static RESOURCES: StaticCell<StackResources<STACK_SOCKETS>> = StaticCell::new();
     let resources = RESOURCES.init(StackResources::new());
     let (stack, runner) = embassy_net::new(interfaces.station, net_config, resources, seed);
 
@@ -216,6 +223,18 @@ fn start_wifi(world: &mut World) {
     // into beet_net) would already own it, so just warn rather than panic.
     if set_http_client(http_client::esp_send).is_err() {
         warn!("an HTTP transport was already installed; Request::send will not use Wi-Fi");
+    }
+
+    // The WebSocket client transport (mirrors the HTTP client): a driver owning
+    // the Stack plus the `Socket::connect` hook. Gated on `sockets`.
+    #[cfg(feature = "sockets")]
+    {
+        spawn_driver(spawner, socket_client::socket_driver(stack));
+        if sockets::set_socket_client(socket_client::esp_connect).is_err() {
+            warn!(
+                "a WebSocket transport was already installed; Socket::connect will not use Wi-Fi"
+            );
+        }
     }
 
     // Stack is Copy and !Send; keep it as a non-send resource so each server

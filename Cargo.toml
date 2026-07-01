@@ -109,6 +109,11 @@ action = ["beet/action"]
 # firmware enables on top. See `examples/ecs_router.rs`.
 router = ["action", "beet/router_embedded"]
 mdns = ["wifi", "action", "embassy-net/multicast", "beet/mdns"]
+# beet's no_std WebSocket socket core + this crate's esp `Socket::connect`
+# transport (the `net::socket_client` module). Needs `wifi` (the TCP stack) and
+# `action` (the async ECS effect the `Socket` reader/writer tasks run on), plus
+# `beet/sockets` to pull the socket core down into the no_std build.
+sockets = ["wifi", "action", "beet/sockets", "dep:futures-core"]
 # Engine-agnostic scripting layer; mirrors beet's `scripting`. Pulls `serde` for
 # the typed script input/output structs (marshalled through beet's `Value`); a
 # backend (`rhai` or `quickjs`) builds on it to actually run a `Script`.
@@ -154,6 +159,11 @@ required-features = ["wifi", "action"]
 name             = "http_server"
 path             = "examples/net/http_server.rs"
 required-features = ["wifi", "action"]
+
+[[example]]
+name             = "socket_client"
+path             = "examples/net/socket_client.rs"
+required-features = ["wifi", "action", "sockets"]
 
 [[example]]
 name             = "bluetooth-client"
@@ -381,6 +391,9 @@ critical-section = { version = "1.2.0", optional = true }
 # `quickjs` module's esp-tuned `Runtime` constructor.
 extend           = "1"
 embassy-futures  = { version = "0.1.2", optional = true }
+# The `Stream` trait for the socket client's inbound-channel reader (matches the
+# `futures-core` beet_net's `SocketReader` is defined over). Trait only, no alloc.
+futures-core = { version = "0.3", default-features = false, optional = true }
 # Pinned to esp-rtos's embassy-sync (0.8.0) so the bridge's Signal/Channel share
 # the same version the runtime links.
 embassy-sync = { version = "0.8.0", optional = true, features = ["log"] }
