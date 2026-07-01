@@ -117,8 +117,10 @@ pub(crate) async fn socket_driver(stack: Stack<'static>) {
 /// the `SOCKET_SERVER` env default, accepting a bare `host:port` or a `ws://` url.
 fn resolve_authority(url: &str) -> Result<String> {
 	let target = if url.is_empty() {
-		option_env!("SOCKET_SERVER").ok_or_else(|| {
-			bevyhow!("Socket::connect got an empty url and SOCKET_SERVER is unset")
+		option_env!("BEET_SOCKET_SERVER").ok_or_else(|| {
+			bevyhow!(
+				"Socket::connect got an empty url and BEET_SOCKET_SERVER is unset"
+			)
 		})?
 	} else {
 		url
@@ -156,7 +158,7 @@ async fn handle_connection(stack: Stack<'static>, job: &ConnectJob) -> Result<()
 
 	// RFC 6455 client handshake: send the upgrade request, validate the 101.
 	let key = ws_ext::encode_client_key(random_bytes::<16>());
-	let request = ws_ext::encode_handshake_request(&job.authority, "/", &key);
+	let request = ws_ext::encode_handshake_request(&job.authority, "/", &key)?;
 	socket
 		.write_all(&request)
 		.await

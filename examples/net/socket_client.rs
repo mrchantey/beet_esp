@@ -20,7 +20,7 @@ use beet_esp::prelude::*;
 
 /// The `host:port` the device connects to, from the local `.env` (`build.rs`
 /// forwards it as a `cargo:rustc-env`).
-const SOCKET_SERVER: &str = env!("SOCKET_SERVER");
+const SOCKET_SERVER: &str = env!("BEET_SOCKET_SERVER");
 
 #[beet_esp::main]
 fn main() {

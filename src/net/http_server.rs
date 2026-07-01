@@ -93,7 +93,7 @@ fn start_esp_server(
     Box::pin(async move {
         let id = entity.id();
         let port = entity
-            .get::<HttpServer, u16>(|server| server.port.unwrap_or(DEFAULT_SERVER_PORT))
+            .get::<HttpServer, u16>(|server| server.port.unwrap_or(DEFAULT_HTTP_PORT))
             .await?;
 
         // If the server entity also carries an `MDns` component, grab its hostname

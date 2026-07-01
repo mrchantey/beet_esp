@@ -1,8 +1,9 @@
 <!-- Reusable socket-server step: run the host WebSocket echo server the device's
-     `socket_client` example connects to. It binds `0.0.0.0` on the `SOCKET_SERVER`
-     port (from this repo's `.env`, forwarded by the beet CLI, default 1111) and
-     echoes + logs every message, so the device's round-trip is visible here.
-     Built with `tungstenite,action` in the beet worktree. Streams until Ctrl-C. -->
+     `socket_client` example connects to. It binds `0.0.0.0` on the
+     `BEET_SOCKET_SERVER` port (from this repo's `.env`, forwarded by the beet CLI,
+     default 8338) and echoes + logs every message, so the device's round-trip is
+     visible here. Built with `tungstenite,action` in the beet worktree. Streams
+     until Ctrl-C. -->
 <Command
 	exe="bash"
 	args={["-c", "cargo run --example socket_echo_server --features tungstenite,action"]}

@@ -59,7 +59,7 @@ pub(crate) fn esp_send(
         let (parts, body) = request.into_parts();
         let body = body.into_bytes().await?;
         let request = Request::from_parts(parts, body.into());
-        let bytes = http_ext::encode_request(&request)?;
+        let bytes = http_ext::encode_request(&request, Default::default())?;
 
         let job = ClientJob { host, port, bytes };
         // Outer `Err` is a full queue (no reply will arrive); the inner

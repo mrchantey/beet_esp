@@ -24,8 +24,8 @@ Two kinds of verb:
         beet monitor    # tail the running firmware's RTT output (Ctrl-C to detach)
 
   - test server (socket-server): run the host WebSocket echo server the
-    `socket_client` example connects to, bound to `0.0.0.0` on the `SOCKET_SERVER`
-    port. Start it before flashing the socket_client example.
+    `socket_client` example connects to, bound to `0.0.0.0` on the
+    `BEET_SOCKET_SERVER` port. Start it before flashing the socket_client example.
 
         beet socket-server   # run the host echo server (Ctrl-C to stop)
 -->

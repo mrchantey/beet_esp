@@ -159,7 +159,7 @@ fn setup(mut commands: Commands) {
             (AlvikLed { side: Side::Right }, LedColor::default()),
             // --- the scene server: a child of the robot root ---
             (
-                HttpServer::new(DEFAULT_SERVER_PORT),
+                HttpServer::new(DEFAULT_HTTP_PORT),
                 BootOnLoad,
                 default_router(),
                 children![
@@ -176,7 +176,7 @@ fn setup(mut commands: Commands) {
 #[cfg(not(feature = "alvik"))]
 fn setup(mut commands: Commands) {
     commands.spawn((
-        HttpServer::new(DEFAULT_SERVER_PORT),
+        HttpServer::new(DEFAULT_HTTP_PORT),
         BootOnLoad,
         default_router(),
         children![

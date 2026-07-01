@@ -67,7 +67,7 @@ pub struct WifiPlugin {
 }
 
 impl WifiPlugin {
-    /// Join the AP named by `ssid` using `password` (e.g. from `env!("SSID")`).
+    /// Join the AP named by `ssid` using `password` (eg from `env!("BEET_WIFI_SSID")`).
     pub fn new(ssid: &'static str, password: &'static str) -> Self {
         Self {
             ssid,
@@ -76,10 +76,11 @@ impl WifiPlugin {
         }
     }
 
-    /// Join the AP named by the `WIFI_SSID`/`WIFI_PASSWORD` env vars, which `build.rs`
-    /// exposes from the local `.env` (so credentials stay uncommitted).
+    /// Join the AP named by the `BEET_WIFI_SSID`/`BEET_WIFI_PASSWORD` env vars,
+    /// which `build.rs` exposes from the local `.env` (so credentials stay
+    /// uncommitted).
     pub fn from_env() -> Self {
-        Self::new(env!("WIFI_SSID"), env!("WIFI_PASSWORD"))
+        Self::new(env!("BEET_WIFI_SSID"), env!("BEET_WIFI_PASSWORD"))
     }
 
     /// Assign an explicit static IPv4 for the station. A `/24` is assumed with
@@ -89,12 +90,12 @@ impl WifiPlugin {
         self
     }
 
-    /// Assign a static IPv4 from the `WIFI_STATIC_IP` env var (dotted, eg
+    /// Assign a static IPv4 from the `BEET_WIFI_STATIC_IP` env var (dotted, eg
     /// `192.168.0.50`), which `build.rs` exposes from the local `.env`. Absent,
     /// the station falls back to DHCP. A `/24` is assumed with the gateway at
     /// `.1`.
     pub fn with_env_static_ip(mut self) -> Self {
-        self.static_ip = option_env!("WIFI_STATIC_IP").map(parse_ipv4);
+        self.static_ip = option_env!("BEET_WIFI_STATIC_IP").map(parse_ipv4);
         self
     }
 }
