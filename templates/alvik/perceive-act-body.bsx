@@ -1,0 +1,15 @@
+<!-- Alvik perceive-act body: the robot as the v3 socket body client. The composable
+     transport (<AgentSocket>, connecting back to the perceive-act agent's socket
+     server) wraps the individual capability routes it serves - `whoami` announces the
+     `body` role for the agent's handshake, `apply-heading` maps the chosen Heading onto
+     the wheels. The transport and each capability are distinct, visible pieces, not a
+     monolithic body element. The agent forwards each `apply-heading` tool call over the
+     socket; the same command drives the wgpu fox (demo/wgpu-action.bsx) and this robot.
+
+     Start the perceive-act agent (`ws://<this-host>:8338`, `bind_all`) first, then push
+     with `beet load templates/alvik/perceive-act-body.bsx` (BEET_REMOTE_URL set to the
+     device). Set `url` to the agent's host. -->
+<AgentSocket url="ws://192.168.86.220:8338">
+	<Route path="whoami" {WhoAmi}/>
+	<Route path="apply-heading" {ApplyHeading}/>
+</AgentSocket>

@@ -112,8 +112,10 @@ mdns = ["wifi", "action", "embassy-net/multicast", "beet/mdns"]
 # beet's no_std WebSocket socket core + this crate's esp `Socket::connect`
 # transport (the `net::socket_client` module). Needs `wifi` (the TCP stack) and
 # `action` (the async ECS effect the `Socket` reader/writer tasks run on), plus
-# `beet/sockets` to pull the socket core down into the no_std build.
-sockets = ["wifi", "action", "beet/sockets", "dep:futures-core"]
+# `beet/sockets` to pull the socket core down into the no_std build. Pulls `serde`
+# for the perceive-act body wire types (`src/extra`), whose JSON exchange must stay
+# byte-compatible with the agent.
+sockets = ["wifi", "action", "beet/sockets", "dep:futures-core", "dep:serde"]
 # Engine-agnostic scripting layer; mirrors beet's `scripting`. Pulls `serde` for
 # the typed script input/output structs (marshalled through beet's `Value`); a
 # backend (`rhai` or `quickjs`) builds on it to actually run a `Script`.

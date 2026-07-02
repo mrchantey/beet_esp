@@ -19,7 +19,7 @@
 //! curl http://192.168.86.222:8337/                 # this help + current routes
 //! curl http://192.168.86.222:8337/dump             # current scene as JSON
 //! curl --data-binary @scenes/led-script.bsx \
-//!      -H 'content-type: text/x-bsx' \
+//!      -H 'content-type: application/x-bsx' \
 //!      http://192.168.86.222:8337/load             # load a scene
 //! curl http://192.168.86.222:8337/clear            # despawn scene + reset
 //! curl http://192.168.86.222:8337/reset            # stop hardware
@@ -68,6 +68,13 @@ fn main() {
           .add_systems(Startup, setup_builtin_led);
       }
     }
+
+    // The perceive-act body: registers the `<AgentSocket>` transport + the
+    // `whoami`/`apply-heading` capability routes a pushed `.bsx` composes into a
+    // socket body client (see `templates/alvik/perceive-act-body.bsx`). Needs the
+    // Alvik (the robot the heading drives) and the socket exchange (back to the agent).
+    #[cfg(all(feature = "alvik", feature = "sockets"))]
+    app.add_plugins(PerceiveActBodyPlugin);
 
     app.run();
 }
