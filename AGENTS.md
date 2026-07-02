@@ -35,6 +35,47 @@ Set at generation time — don't change without a reason.
 The exact generator options are recorded in a `generator parameters:` comment at
 the top of `src/main.rs`.
 
+## First-time machine bootstrap
+
+A fresh machine has none of the toolchain. Verified from a clean state
+2026-07-02. Every step is user-level (`~/.cargo`, `~/.rustup`) except the udev
+rule, which is the one and only `sudo` step.
+
+```shell
+# 1. Xtensa Rust toolchain + ~/export-esp.sh (large download, ~1-2 GB)
+cargo binstall -y espup && espup install
+
+# 2. Flash/debug tooling (probe-rs, cargo-flash, cargo-embed)
+cargo binstall -y probe-rs-tools
+
+# 3. sccache. The global ~/.cargo/config.toml sets `rustc-wrapper = "sccache"`,
+#    so builds die with "could not execute process `sccache`" without it.
+cargo binstall -y sccache
+
+# 4. udev rule so probe-rs can open the USB-JTAG as a normal user (THE sudo step).
+#    Without it probe-rs errors "failed to open device (errno 13)". Note `probe-rs
+#    list` still works read-only, so a missing rule looks fine but is not:
+#    flashing needs write access.
+sudo curl -fsSL https://probe.rs/files/69-probe-rs.rules \
+  -o /etc/udev/rules.d/69-probe-rs.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+# then unplug/replug the USB port so the new ACL applies
+```
+
+The `303a:1001` rule tags the device `uaccess`, so an active desktop login gets
+access via logind, with no `plugdev`/`uucp` group membership required.
+
+```shell
+# 5. Wi-Fi credentials. The firmware reads BEET_WIFI_SSID / BEET_WIFI_PASSWORD
+#    via env! at compile time (build.rs exposes them from .env), so the build
+#    fails without them. Copy the template and fill in your network.
+cp .env.example .env   # then edit BEET_WIFI_SSID / BEET_WIFI_PASSWORD
+```
+
+Note the build honours a global `CARGO_TARGET_DIR` if set (this machine points it
+at `~/.cargo_target`), so the firmware ELF lands there, not in the project-local
+`target/`.
+
 ## Environment setup (required before building)
 
 The Xtensa toolchain comes from `espup`, not stock rustup. Every shell needs the
@@ -84,7 +125,10 @@ Dual-port ESP32-S3 DevKit, brought up and verified 2026-05. Day-to-day:
   drives), not `COM` (a CH340 UART bridge — serial only, no JTAG).
 - **Keep `COM` unplugged while using `probe-rs`** — its auto-reset lines can tug
   `GPIO0`/`EN` into download mode.
-- udev rules are installed and `probe-rs list` shows `ESP JTAG -- 303a:1001`.
+- Once the udev rule from "First-time machine bootstrap" is installed, `probe-rs
+  list` shows `ESP JTAG -- 303a:1001` and can flash. Note enumeration works
+  read-only even without the rule, so `probe-rs list` succeeding does not by
+  itself prove flashing will work.
 - **On-board addressable LED (WS2812) is on `GPIO48`**, driven over RMT. See
   `examples/blinky.rs` (RGB hue fade) and `examples/led_scan.rs` (the GPIO
   scanner that found it).
