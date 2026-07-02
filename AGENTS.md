@@ -56,14 +56,23 @@ cargo binstall -y sccache
 #    Without it probe-rs errors "failed to open device (errno 13)". Note `probe-rs
 #    list` still works read-only, so a missing rule looks fine but is not:
 #    flashing needs write access.
-sudo curl -fsSL https://probe.rs/files/69-probe-rs.rules \
-  -o /etc/udev/rules.d/69-probe-rs.rules
-sudo udevadm control --reload-rules && sudo udevadm trigger
-# then unplug/replug the USB port so the new ACL applies
+#
+#    The upstream probe-rs rule file matches with ATTRS{} (device-or-parent) and
+#    did NOT fire for the ESP32-S3 on this machine's udev (verified with
+#    `udevadm test`: the file is read but no rule matches, MODE stays 0664, no
+#    uaccess tag). Match the device's OWN attrs (ATTR) instead. GROUP="wheel"
+#    grants access directly (pete is in wheel) so it does not depend on
+#    logind/seat; uaccess is a bonus for the active desktop session.
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="303a", ATTR{idProduct}=="1001", MODE="0660", GROUP="wheel", TAG+="uaccess"' \
+  | sudo tee /etc/udev/rules.d/70-esp32s3-jtag.rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger --action=add --attr-match=idVendor=303a
+# GROUP="wheel" is applied by udev directly, so no physical replug is needed for
+# access. (uaccess only re-applies on a real device add/replug.)
 ```
 
-The `303a:1001` rule tags the device `uaccess`, so an active desktop login gets
-access via logind, with no `plugdev`/`uucp` group membership required.
+Confirm access with `probe-rs info --chip esp32s3`: the node becomes
+`group=wheel crw-rw----` and it attaches (`Xtensa Chip IDCODE ...`).
 
 ```shell
 # 5. Wi-Fi credentials. The firmware reads BEET_WIFI_SSID / BEET_WIFI_PASSWORD
