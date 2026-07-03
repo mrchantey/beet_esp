@@ -27,7 +27,7 @@ impl Plugin for AlvikScenePlugin {
             .register_type::<RoombaStep>()
             // The `<Alvik>` root element: assembles the robot's hardware bundle and
             // slots its body (the `<Router>`). The firmware boots `<Alvik><Router>…`
-            // so the robot is the scene root and a loaded `<Drive>` leaf resolves its
+            // so the robot is the scene root and a loaded `<SetDrive>` leaf resolves its
             // `DifferentialDrive` to the robot via root-ancestor (no marker needed).
             .register_template::<Alvik>()
             .add_observer(reset_robot);
@@ -68,7 +68,7 @@ fn reset_robot(
 /// Because the robot is the *root* of that tree, a loaded behaviour's
 /// [`AgentQuery`] resolves its agent to this entity by root-ancestor fallback (a
 /// loaded `<RouteAction>` is reparented under the server, whose root ancestor is
-/// the robot). So a `<Drive>` leaf writes the robot's `DifferentialDrive` with no
+/// the robot). So a `<SetDrive>` leaf writes the robot's `DifferentialDrive` with no
 /// marker, no `ActionOf` and no resource; a route whose agent lacks a
 /// `DifferentialDrive` errors loudly, the desired feedback.
 ///
@@ -99,7 +99,7 @@ pub fn Alvik() -> impl Bundle {
                 Imu::default(),
                 Orientation::default(),
                 RobotPose::default(),
-                // Commanded velocity: the upstream `Drive` leaf writes this on the
+                // Commanded velocity: the upstream `SetDrive` leaf writes this on the
                 // robot (its agent, resolved as the root ancestor), and `flush_drive`
                 // sends it to the wire.
                 DifferentialDrive::default(),
@@ -138,8 +138,8 @@ pub fn Alvik() -> impl Bundle {
 // Alvik authoring widgets
 // ---------------------------------------------------------------------------
 
-// `<Drive linear={60.0} angular={0.0}/>` resolves to the upstream, environment-
-// agnostic `beet::prelude::Drive` leaf (registered by `ActionPlugin`): it writes
+// `<SetDrive linear={60.0} angular={0.0}/>` resolves to the upstream, environment-
+// agnostic `beet::prelude::SetDrive` leaf (registered by `ActionPlugin`): it writes
 // the agent's commanded `DifferentialDrive`, which on the robot is the `AlvikRobot`
 // root resolved by `AgentQuery`'s root-ancestor fallback (the loaded route is a
 // descendant of the robot, which is the scene root). No firmware façade, no marker.

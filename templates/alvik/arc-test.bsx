@@ -5,8 +5,8 @@
      `beet run arc-test`. -->
 <RouteAction path="arc-test">
 	<Sequence>
-		<Drive linear={60.0} angular={90.0}/>
+		<SetDrive linear={60.0} angular={90.0}/>
 		<EndInDuration duration="5s"/>
-		<Drive linear={0.0} angular={0.0}/>
+		<SetDrive linear={0.0} angular={0.0}/>
 	</Sequence>
 </RouteAction>

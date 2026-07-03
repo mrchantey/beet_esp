@@ -3,12 +3,12 @@
      run with `beet run dance-routine`. -->
 <RouteAction path="dance-routine">
 	<Sequence>
-		<Drive linear={60.0} angular={0.0}/>
+		<SetDrive linear={60.0} angular={0.0}/>
 		<EndInDuration duration="1s"/>
-		<Drive linear={0.0} angular={90.0}/>
+		<SetDrive linear={0.0} angular={90.0}/>
 		<EndInDuration duration="1s"/>
-		<Drive linear={60.0} angular={0.0}/>
+		<SetDrive linear={60.0} angular={0.0}/>
 		<EndInDuration duration="1s"/>
-		<Drive linear={0.0} angular={0.0}/>
+		<SetDrive linear={0.0} angular={0.0}/>
 	</Sequence>
 </RouteAction>

@@ -52,7 +52,7 @@ The firmware adds a few domain widgets (see `src/scene.rs`, `src/alvik/scenes.rs
   backend (rhai or quickjs), falling back to the build default when absent.
 - `<Route path="drive/:dir" {DriveHandler}/>` / `<Route path="led/:side/:state" {LedHandler}/>`
   bind a direct route handler to a path.
-- `<RoombaStep/>`, `<LineFollowStep/>`, `<Drive linear={..} angular={..}/>` the
+- `<RoombaStep/>`, `<LineFollowStep/>`, `<SetDrive linear={..} angular={..}/>` the
   Alvik behaviour-tree leaves.
 
 ## Authoring infra workflows
