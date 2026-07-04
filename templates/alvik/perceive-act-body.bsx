@@ -6,10 +6,10 @@
      monolithic body element. The agent forwards each `apply-heading` tool call over the
      socket; the same command drives the wgpu fox and this robot.
 
-     apply-heading replies with the step's settle_secs and the agent's act waits that
-     long, so the next photo is only taken once the robot has stopped moving. Tune the
-     step via DriveStepConfig: step_secs (how long a heading drives), speed_mm_s,
-     turn_deg_s.
+     apply-heading replies with the step's settle duration and the agent waits it out,
+     so the next photo is only taken once the robot has stopped moving. Tune the step
+     via DriveStepConfig: duration (how long a heading drives, eg "0.8s"), speed (mm/s)
+     and turn_rate (deg/s).
 
      The transport reconnects on its own with exponential backoff (250ms doubling to a
      10s ceiling), so this scene can be pushed before the agent is up, and survives the
@@ -21,5 +21,5 @@
      firmware's BEET_SOCKET_SERVER build env. -->
 <AgentSocket url="ws://192.168.86.220:8338">
 	<Route path="whoami" {WhoAmi}/>
-	<Route path="apply-heading" {(ApplyHeading, DriveStepConfig{step_secs: 0.8})}/>
+	<Route path="apply-heading" {(ApplyHeading, DriveStepConfig{duration: "0.8s"})}/>
 </AgentSocket>

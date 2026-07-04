@@ -103,10 +103,11 @@ async fn WhoAmi(_cx: ActionContext<RequestParts>) -> Response {
 }
 
 /// How a heading maps onto the wheels: the drive-step tuning, authorable from
-/// the scene next to the `apply-heading` route:
+/// the scene next to the `apply-heading` route (bare numbers coerce in each
+/// unit's authoring form, mm/s and deg/s; durations from strings):
 ///
 /// ```xml
-/// <Route path="apply-heading" {(ApplyHeading, DriveStepConfig{step_secs: 0.5})}/>
+/// <Route path="apply-heading" {(ApplyHeading, DriveStepConfig{duration: "0.5s"})}/>
 /// ```
 ///
 /// Fields default sensibly, so a scene sets only what it tunes.
@@ -114,22 +115,22 @@ async fn WhoAmi(_cx: ActionContext<RequestParts>) -> Response {
 #[reflect(Component, Default)]
 #[type_path = "perceive_act"]
 pub struct DriveStepConfig {
-    /// Forward speed of a `Forward` heading, mm/s (matches the wgpu body's step).
-    pub speed_mm_s: f32,
-    /// Turn rate of a `Left`/`Right` heading, deg/s (positive = left, spin in place).
-    pub turn_deg_s: f32,
+    /// Forward speed of a `Forward` heading (matches the wgpu body's step).
+    pub speed: LinearVelocity,
+    /// Turn rate of a `Left`/`Right` heading (positive = left, spin in place).
+    pub turn_rate: AngularVelocity,
     /// How long a heading drives before the robot stops. A heading is a discrete,
     /// bounded step (matching the wgpu fox), not the RC routes' continuous drive,
     /// so the robot never runs away after the agent's loop ends.
-    pub step_secs: f32,
+    pub duration: Duration,
 }
 
 impl Default for DriveStepConfig {
     fn default() -> Self {
         Self {
-            speed_mm_s: 60.0,
-            turn_deg_s: 90.0,
-            step_secs: 0.8,
+            speed: LinearVelocity::from_mm_per_sec(60.0),
+            turn_rate: AngularVelocity::from_deg_per_sec(90.0),
+            duration: Duration::from_millis(800),
         }
     }
 }
@@ -140,11 +141,12 @@ impl Default for DriveStepConfig {
 /// halts between commands. Tuning comes from the route entity's
 /// [`DriveStepConfig`], falling back to the defaults.
 ///
-/// The reply carries [`ApplyHeadingReply::settle_secs`] (the step budget), and the
-/// agent's `act` sleeps that long before finishing, so the next photo waits for
-/// the robot to stop. The wait lives agent-side because this handler's beet task
-/// has no async-timer waker (the countdown rides bevy [`Time`] in the schedule),
-/// and holding the reply on a bridged poll starves the schedule loop.
+/// The reply carries [`ApplyHeadingReply::settle`] (the step budget), and the
+/// agent's `respond-multi-modal` sleeps that long before finishing, so the next
+/// photo waits for the robot to stop. The wait lives agent-side because this
+/// handler's beet task has no async-timer waker (the countdown rides bevy
+/// [`Time`] in the schedule), and holding the reply on a bridged poll starves
+/// the schedule loop.
 ///
 /// Bound with `<Route path="apply-heading" {ApplyHeading}/>`. The robot is found
 /// by a global `With<AlvikRobot>` query, so the socket client need not be nested
@@ -161,11 +163,17 @@ async fn ApplyHeading(cx: ActionContext<ApplyHeadingInput>) -> Response {
         .await
         .unwrap_or_default();
     let (linear, angular) = match heading {
-        Heading::Forward => (config.speed_mm_s, 0.0),
-        Heading::Left => (0.0, config.turn_deg_s),
-        Heading::Right => (0.0, -config.turn_deg_s),
+        Heading::Forward => (config.speed, AngularVelocity::default()),
+        Heading::Left => (LinearVelocity::default(), config.turn_rate),
+        Heading::Right => (LinearVelocity::default(), -config.turn_rate),
     };
-    info!("apply-heading: {:?} -> ({} mm/s, {} deg/s) for {}s", heading, linear, angular, config.step_secs);
+    info!(
+        "apply-heading: {:?} -> ({} mm/s, {} deg/s) for {:?}",
+        heading,
+        linear.as_mm_per_sec(),
+        angular.as_deg_per_sec(),
+        config.duration
+    );
     // set the velocity on the robot root and return its entity, skipping cleanly if
     // the Alvik is not up yet (the model trails several round-trips, so in practice
     // it is).
@@ -174,27 +182,26 @@ async fn ApplyHeading(cx: ActionContext<ApplyHeadingInput>) -> Response {
         .with_state::<Query<(Entity, &mut DifferentialDrive), With<AlvikRobot>>, _>(
             move |mut drives| {
                 let (entity, mut drive) = drives.iter_mut().next()?;
-                drive.linear = LinearVelocity::from_mm_per_sec(linear);
-                drive.angular = AngularVelocity::from_deg_per_sec(angular);
+                drive.linear = linear;
+                drive.angular = angular;
                 Some(entity)
             },
         )
         .await;
-    let settle_secs = match robot {
+    let settle = match robot {
         Some(robot) => {
             let _ = world
                 .entity(robot)
                 .insert(DriveStep {
-                    remaining_secs: config.step_secs,
+                    timer: Timer::new(config.duration, TimerMode::Once),
                 })
                 .await;
-            config.step_secs
+            config.duration
         }
         // no robot up: nothing will move, so nothing to settle
-        None => 0.0,
+        None => Duration::ZERO,
     };
-    Response::ok_json(&ApplyHeadingReply { settle_secs })
-        .unwrap_or_else(|_| Response::ok())
+    Response::ok_json(&ApplyHeadingReply { settle }).unwrap_or_else(|_| Response::ok())
 }
 
 /// Marks the robot as mid-step; [`expire_drive_step`] counts it down and stops the
@@ -202,11 +209,11 @@ async fn ApplyHeading(cx: ActionContext<ApplyHeadingInput>) -> Response {
 #[derive(Debug, Clone, Component, Reflect)]
 #[reflect(Component)]
 struct DriveStep {
-    /// Seconds left before the heading's drive is zeroed.
-    remaining_secs: f32,
+    /// Counts down the heading's drive budget.
+    timer: Timer,
 }
 
-/// End each heading's drive once its budget elapses, zeroing the
+/// End each heading's drive once its [`DriveStep`] timer finishes, zeroing the
 /// [`DifferentialDrive`] so a heading is a bounded step and the robot halts between
 /// commands (and after the loop's final one). Uses bevy [`Time`] (ticked by the
 /// esp's `TimePlugin`), so it runs in the schedule with no async-timer waker
@@ -217,11 +224,10 @@ fn expire_drive_step(
     mut commands: Commands,
 ) {
     for (entity, mut step, mut drive) in &mut robots {
-        step.remaining_secs -= time.delta_secs();
-        if step.remaining_secs <= 0.0 {
+        if step.timer.tick(time.delta()).is_finished() {
             info!("drive step complete, halting");
-            drive.linear = LinearVelocity::from_mm_per_sec(0.0);
-            drive.angular = AngularVelocity::from_deg_per_sec(0.0);
+            drive.linear = LinearVelocity::default();
+            drive.angular = AngularVelocity::default();
             commands.entity(entity).remove::<DriveStep>();
         }
     }
@@ -261,9 +267,10 @@ struct ApplyHeadingInput {
 }
 
 /// The `apply-heading` reply, mirroring the agent's `ApplyHeadingReply`: how long
-/// the commanded step runs, so the agent-side `act` can wait out the movement.
+/// the commanded step runs, so the agent-side `respond-multi-modal` can wait out
+/// the movement.
 #[derive(Default, Reflect, serde::Deserialize, serde::Serialize)]
 struct ApplyHeadingReply {
-    /// Seconds the drive step runs before the robot halts.
-    settle_secs: f32,
+    /// How long the drive step runs before the robot halts.
+    settle: Duration,
 }
