@@ -301,7 +301,7 @@ rquickjs = { version = "0.12", default-features = false, features = [
   "bindgen",
 ], optional = true }
 # Local beet worktree, no_std build exposing bevy_color etc.
-beet = { path = "/home/pete/me/worktrees/beet/apps/beet", default-features = false, features = [
+beet = { path = "/home/pete/me/beet", default-features = false, features = [
   "embedded",
   "bevy_color",
   "template_serde",
@@ -423,7 +423,7 @@ cc = "1"
 # so it must NOT pull the firmware's `panic-rtt-target` (which loops instead of
 # exiting); that handler is only force-linked by `#[beet_esp::main]` in the bin.
 [dev-dependencies]
-beet = { path = "/home/pete/me/worktrees/beet/apps/beet", default-features = false, features = [
+beet = { path = "/home/pete/me/beet", default-features = false, features = [
   "testing_embedded",
 ] }
 linkme = { version = "0.3", default-features = false }

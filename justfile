@@ -16,7 +16,7 @@
 # `BEET_REMOTE_URL` (this directory's `.env`). Requires a `beet` built with the
 # scene-management + Command/BehaviorSequence capabilities (`just install-cli`).
 
-beet_dir := "/home/pete/me/worktrees/beet/apps/beet"
+beet_dir := "/home/pete/me/beet"
 
 # List recipes.
 default:

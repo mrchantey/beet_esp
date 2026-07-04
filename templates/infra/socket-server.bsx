@@ -7,5 +7,5 @@
 <Command
 	exe="bash"
 	args={["-c", "cargo run --example socket_echo_server --features tungstenite,action"]}
-	cwd="/home/pete/me/worktrees/beet/apps/beet"
+	cwd="/home/pete/me/beet"
 />
