@@ -109,12 +109,20 @@ cargo test               # on-hardware tests (embedded-test)
 Target, runner and `build-std` are configured in `.cargo/config.toml`.
 
 **`cargo run` does not exit.** The probe-rs runner flashes and then attaches an
-RTT/`defmt` monitor that streams output indefinitely — it never returns on its
+RTT/`defmt` monitor that streams output indefinitely, it never returns on its
 own. When running non-interactively (e.g. from an agent), always wrap it in a
-timeout so it detaches after capturing output, e.g.:
+timeout so it detaches after capturing output.
+
+**Size the timeout to clear the flash first.** The timeout also kills the
+erase/program/verify that runs *before* any RTT appears, so too short a window
+aborts mid-program and leaves the chip in an unknown state (a silent app that
+looks like dead hardware). The full `alvik` release build (~2.5 MiB) takes
+~100-110s to flash before it streams, so 30s is only safe for re-attaching to an
+already-flashed chip. Give a fresh flash a generous window:
 
 ```shell
-timeout -s INT 30s cargo run --release   # flash, stream ~30s, then detach
+timeout -s INT 30s  cargo run --release                     # re-attach only (no reflash)
+timeout -s INT 240s cargo run --release --features alvik     # fresh flash: ~2 min to program, then streams
 ```
 
 ## Gotchas
