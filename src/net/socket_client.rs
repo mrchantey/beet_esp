@@ -97,19 +97,63 @@ pub(crate) fn esp_connect(
 	})
 }
 
-/// Services [`SOCKET_QUEUE`]: one connection at a time. Owns a copy of the
-/// [`Stack`]; waits for DHCP before the first job. Each job connects, handshakes
-/// and runs the duplex loop until the socket closes, then loops for the next.
+/// Services [`SOCKET_QUEUE`]: waits for DHCP, then hands each job its own
+/// reconnecting [`drive_job`] task, so one job's redial loop never starves
+/// another's dial.
 pub(crate) async fn socket_driver(stack: Stack<'static>) {
 	stack.wait_config_up().await;
+	// SAFETY: `socket_driver` is itself spawned on the embassy executor (see
+	// `start_wifi`'s `spawn_driver`), so the current-executor lookup is made
+	// from within a task as the contract requires.
+	let spawner =
+		unsafe { embassy_executor::Spawner::for_current_executor() }.await;
 	loop {
 		let job = SOCKET_QUEUE.recv().await;
+		crate::esp32_utils::async_bridge::spawn_driver(
+			spawner,
+			drive_job(stack, job),
+		);
+	}
+}
+
+/// Floor of the redial backoff.
+const MIN_BACKOFF_MS: u64 = 250;
+/// Ceiling of the redial backoff.
+const MAX_BACKOFF_MS: u64 = 10_000;
+
+/// Keep one job's transport connected for the life of the firmware: dial with
+/// exponential backoff (250ms doubling to a 10s ceiling), pump until the
+/// connection ends, then redial. The channels (and the ECS [`Socket`] they
+/// feed) stay the same across redials, so a loaded scene survives the agent
+/// restarting or being unreachable at boot; to the app a redial is silence, and
+/// each fresh connection re-runs the agent's `whoami` handshake server-side.
+async fn drive_job(stack: Stack<'static>, job: ConnectJob) {
+	let mut backoff_ms = MIN_BACKOFF_MS;
+	loop {
 		info!("socket connecting to `{}`", job.authority.as_str());
-		if let Err(err) = handle_connection(stack, &job).await {
-			warn!("socket connection failed: {:?}", err);
-			// surface the failure to the reader so the app's stream sees it.
-			job.inbound.send(Err(err)).await;
+		let mut connected = false;
+		match handle_connection(stack, &job, &mut connected).await {
+			Ok(()) => {
+				warn!(
+					"socket to `{}` closed, reconnecting",
+					job.authority.as_str()
+				);
+			}
+			Err(err) => {
+				warn!(
+					"socket to `{}` failed: {:?}, retrying in {}ms",
+					job.authority.as_str(),
+					err,
+					backoff_ms
+				);
+			}
 		}
+		// a connection that got as far as the handshake resets the backoff
+		if connected {
+			backoff_ms = MIN_BACKOFF_MS;
+		}
+		embassy_time::Timer::after(Duration::from_millis(backoff_ms)).await;
+		backoff_ms = (backoff_ms * 2).min(MAX_BACKOFF_MS);
 	}
 }
 
@@ -133,8 +177,13 @@ fn resolve_authority(url: &str) -> Result<String> {
 
 /// Open the socket, perform the RFC 6455 handshake, and run the duplex frame
 /// loop for one connection. All buffers live in this task's frame, so the
-/// borrowed `TcpSocket` never needs a `'static` buffer.
-async fn handle_connection(stack: Stack<'static>, job: &ConnectJob) -> Result<()> {
+/// borrowed `TcpSocket` never needs a `'static` buffer. Sets `connected` once
+/// the handshake lands, so the caller's backoff resets only on real progress.
+async fn handle_connection(
+	stack: Stack<'static>,
+	job: &ConnectJob,
+	connected: &mut bool,
+) -> Result<()> {
 	let remote = resolve_endpoint(stack, &job.host, job.port).await?;
 	info!("resolved `{}` -> {:?}", job.authority.as_str(), remote);
 	let mut rx = [0u8; 1536];
@@ -166,6 +215,7 @@ async fn handle_connection(stack: Stack<'static>, job: &ConnectJob) -> Result<()
 	let leftover = read_handshake_response(&mut socket, &key).await?;
 
 	info!("socket connected to `{}`", job.authority.as_str());
+	*connected = true;
 	run_duplex(&mut socket, job, leftover).await
 }
 
