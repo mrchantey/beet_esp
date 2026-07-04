@@ -9,7 +9,7 @@
      Start the perceive-act agent (`ws://<this-host>:8338`, `bind_all`) first, then push
      with `beet load templates/alvik/perceive-act-body.bsx` (BEET_REMOTE_URL set to the
      device). Set `url` to the agent's host. -->
-<AgentSocket url="ws://192.168.86.220:8338">
+<AgentSocket url="ws://192.168.86.221:8338">
 	<Route path="whoami" {WhoAmi}/>
 	<Route path="apply-heading" {ApplyHeading}/>
 </AgentSocket>
