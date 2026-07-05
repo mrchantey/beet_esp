@@ -1,15 +1,16 @@
 <!-- Alvik perceive-act body: the robot as the v3 socket body client. The composable
      transport (<AgentSocket>, connecting back to the perceive-act agent's socket
      server) wraps the individual capability routes it serves - `whoami` announces the
-     `body` role for the agent's handshake, `apply-heading` maps the chosen Heading onto
-     the wheels. The transport and each capability are distinct, visible pieces, not a
-     monolithic body element. The agent forwards each `apply-heading` tool call over the
-     socket; the same command drives the wgpu fox and this robot.
+     `body` role for the agent's handshake, `drive` runs the wheels at the commanded
+     differential velocity for a chosen duration. The transport and each capability are
+     distinct, visible pieces, not a monolithic body element. The agent forwards each
+     `drive` tool call over the socket; the same DriveForDuration command drives the
+     wgpu fox and this robot.
 
-     apply-heading replies with the step's settle duration and the agent waits it out,
-     so the next photo is only taken once the robot has stopped moving. Tune the step
-     via DriveStepConfig: duration (how long a heading drives, eg "0.8s"), speed (mm/s)
-     and turn_rate (deg/s).
+     drive replies with the command's settle duration and the agent waits it out, so the
+     next photo is only taken once the robot has stopped moving. The velocity (linear
+     mm/s, angular deg/s) and duration (eg "1.5s") are chosen by the model per command
+     and carried on the request, so there is no static tuning.
 
      The transport reconnects on its own with exponential backoff (250ms doubling to a
      10s ceiling), so this scene can be pushed before the agent is up, and survives the
@@ -29,5 +30,5 @@
 	     loudly with the missing list instead of unresolved tags -->
 	<CrateCheck features="beet_esp/alvik,beet_esp/sockets,beet_esp/secure"/>
 	<Route path="whoami" {WhoAmi}/>
-	<Route path="apply-heading" {(ApplyHeading, DriveStepConfig{duration: "1.2s"})}/>
+	<Route path="drive" {DriveForDurationAction}/>
 </AgentSocket>

@@ -70,9 +70,9 @@ fn main() {
     }
 
     // The perceive-act body: registers the `<AgentSocket>` transport + the
-    // `whoami`/`apply-heading` capability routes a pushed `.bsx` composes into a
+    // `whoami`/`drive` capability routes a pushed `.bsx` composes into a
     // socket body client (see `templates/alvik/perceive-act-body.bsx`). Needs the
-    // Alvik (the robot the heading drives) and the socket exchange (back to the agent).
+    // Alvik (the robot the drive commands move) and the socket exchange (back to the agent).
     #[cfg(all(feature = "alvik", feature = "sockets"))]
     app.add_plugins(PerceiveActBodyPlugin);
 

@@ -8,7 +8,7 @@
 //! transport back to the agent).
 
 // The perceive-act body: the reflectable types (the `<AgentSocket>` transport + the
-// `whoami`/`apply-heading` capability routes) a scene wires to turn the Alvik into
+// `whoami`/`drive` capability routes) a scene wires to turn the Alvik into
 // the v3 socket body client.
 pub mod perceive_act_body;
 

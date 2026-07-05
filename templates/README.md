@@ -26,7 +26,7 @@ beet clear                                     # despawn it + reset the hardware
   - `rc.bsx` remote control: `drive/:dir` and `led/:side/:state` routes.
   - `perceive-act-body.bsx` / `perceive-act-body-ws.bsx` the robot as the
     perceive-act socket body: an `<AgentSocket>` dialling the agent (wss / plain
-    ws), serving `whoami` + `apply-heading`. The `-ws` variant drops the `secure`
+    ws), serving `whoami` + `drive`. The `-ws` variant drops the `secure`
     feature; the agent accepts both on one port (see the file header). Needs the
     `sockets` firmware (`-ws`: `alvik,sockets`; secure: `alvik,sockets,secure`).
 - `infra/` the firmware dev loop, each a `<Command>` run as a `{BehaviorSequence}`
