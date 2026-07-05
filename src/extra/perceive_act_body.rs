@@ -25,8 +25,8 @@
 //! command the wgpu fox drives off) and stamps a [`DriveStep`];
 //! [`expire_drive_step`] zeroes the drive after the [`DriveStepConfig`] budget,
 //! so a heading is a bounded step (like the wgpu fox) and the robot halts
-//! between commands. The reply's `settle_secs` tells the agent how long to wait
-//! out the movement.
+//! between commands. The reply carries a [`SettleTime`] telling the agent how
+//! long to wait out the movement.
 
 use crate::prelude::*;
 use beet::prelude::*;
@@ -161,9 +161,9 @@ impl Default for DriveStepConfig {
 /// halts between commands. Tuning comes from the route entity's
 /// [`DriveStepConfig`], falling back to the defaults.
 ///
-/// The reply carries [`ApplyHeadingReply::settle`] (the step budget), and the
-/// agent's `respond-multi-modal` sleeps that long before finishing, so the next
-/// photo waits for the robot to stop. The wait lives agent-side because this
+/// The reply carries a [`SettleTime`] (the step budget), and the agent's
+/// `respond-multi-modal` sleeps that long before finishing, so the next photo
+/// waits for the robot to stop. The wait lives agent-side because this
 /// handler's beet task has no async-timer waker (the countdown rides bevy
 /// [`Time`] in the schedule), and holding the reply on a bridged poll starves
 /// the schedule loop.
@@ -216,12 +216,12 @@ async fn ApplyHeading(cx: ActionContext<ApplyHeadingInput>) -> Response {
                     timer: Timer::new(config.duration, TimerMode::Once),
                 })
                 .await;
-            config.duration
+            SettleTime::new(config.duration)
         }
         // no robot up: nothing will move, so nothing to settle
-        None => Duration::ZERO,
+        None => SettleTime::NONE,
     };
-    Response::ok_json(&ApplyHeadingReply { settle }).unwrap_or_else(|_| Response::ok())
+    Response::ok_json(&settle).unwrap_or_else(|_| Response::ok())
 }
 
 /// Marks the robot as mid-step; [`expire_drive_step`] counts it down and stops the
@@ -286,11 +286,3 @@ struct ApplyHeadingInput {
     heading: Heading,
 }
 
-/// The `apply-heading` reply, mirroring the agent's `ApplyHeadingReply`: how long
-/// the commanded step runs, so the agent-side `respond-multi-modal` can wait out
-/// the movement.
-#[derive(Default, Reflect, serde::Deserialize, serde::Serialize)]
-struct ApplyHeadingReply {
-    /// How long the drive step runs before the robot halts.
-    settle: Duration,
-}

@@ -29,5 +29,5 @@
 	     loudly with the missing list instead of unresolved tags -->
 	<CrateCheck features="beet_esp/alvik,beet_esp/sockets,beet_esp/secure"/>
 	<Route path="whoami" {WhoAmi}/>
-	<Route path="apply-heading" {(ApplyHeading, DriveStepConfig{duration: "0.8s"})}/>
+	<Route path="apply-heading" {(ApplyHeading, DriveStepConfig{duration: "1.2s"})}/>
 </AgentSocket>
