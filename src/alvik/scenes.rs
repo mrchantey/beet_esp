@@ -47,14 +47,22 @@ impl Plugin for AlvikScenePlugin {
 /// Alvik [`ResetScene`] handler: stop the motors and wheels — the safe resting
 /// state. The UI LEDs are turned off by the generic
 /// [`reset_leds`](crate::scene::reset_leds).
+///
+/// A plain [`Query`], not a [`Single`]: a reset handler must never fail
+/// validation (an empty robot query would skip or, worse, route an error that
+/// re-triggers the reset), so it iterates zero-or-one robot instead. Reset is
+/// also the error-recovery path (see `scene::trigger_reset_on_error`), so it has
+/// to be infallible.
 fn reset_robot(
     _ev: On<ResetScene>,
-    mut drive: Single<&mut DifferentialDrive, With<AlvikRobot>>,
+    mut drives: Query<&mut DifferentialDrive, With<AlvikRobot>>,
     mut wheels: Query<&mut WheelTarget>,
 ) {
     info!("reset: stopping motors and wheels");
-    drive.linear = LinearVelocity::default();
-    drive.angular = AngularVelocity::default();
+    for mut drive in &mut drives {
+        drive.linear = LinearVelocity::default();
+        drive.angular = AngularVelocity::default();
+    }
     for mut target in &mut wheels {
         *target = WheelTarget::Speed(AngularVelocity::from_rpm(0.0));
     }

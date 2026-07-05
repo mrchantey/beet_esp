@@ -14,7 +14,10 @@
 //! stand in for them.
 
 use alloc::string::String;
+use beet::exports::bevy::ecs::error::ErrorContext;
 use beet::prelude::*;
+use core::sync::atomic::AtomicBool;
+use core::sync::atomic::Ordering;
 
 pub mod prelude {
     pub use super::EspScenePlugin;
@@ -36,6 +39,13 @@ pub struct EspScenePlugin;
 
 impl Plugin for EspScenePlugin {
     fn build(&self, app: &mut App) {
+        // Return the hardware to rest on any otherwise-unhandled error instead of
+        // bevy's default panic (see `reset_on_unhandled_error`). Installed here
+        // rather than in `Esp32Plugin` so it rides the same `ResetScene` the scene
+        // server already owns, and only when a scene stack (with hardware to stop)
+        // is present.
+        app.try_set_error_handler(reset_on_unhandled_error)
+            .add_systems(Update, trigger_reset_on_error);
         app.add_plugins(SceneServerPlugin)
             // upstream's `<Route path=".." {handler}/>` template — registered here
             // because `RouterPlugin` only registers it on a `std` target.
@@ -72,6 +82,34 @@ impl Plugin for EspScenePlugin {
 pub fn reset_leds(_ev: On<ResetScene>, mut leds: Query<&mut crate::utils::led::LedColor>) {
     for mut color in &mut leds {
         color.0 = Color::BLACK;
+    }
+}
+
+/// Set by [`reset_on_unhandled_error`] when the app hits an otherwise-unhandled
+/// error; [`trigger_reset_on_error`] consumes it to return the hardware to rest.
+/// A plain flag, not a channel, because bevy's error handler is a bare `fn` with
+/// no world access.
+static ERRORED: AtomicBool = AtomicBool::new(false);
+
+/// The firmware's fallback error handler: log the error and flag it for a
+/// [`ResetScene`], instead of bevy's default of panicking.
+///
+/// A panic mid-schedule is catastrophic on the robot: the executor halts, so no
+/// system runs again and the wheels hold their last commanded speed — the robot
+/// drives off. Logging and flagging a reset keeps the schedule alive (motors
+/// stop, LEDs clear) and lets a `PersistentSocket` reconnect, so a stray fault
+/// degrades to a safe stop instead of a runaway or a brick.
+fn reset_on_unhandled_error(err: BevyError, cx: ErrorContext) {
+    error!("unhandled {}: {err}; returning hardware to rest", cx.kind());
+    ERRORED.store(true, Ordering::Relaxed);
+}
+
+/// Trigger one [`ResetScene`] after an unhandled error, so the hardware returns
+/// to rest (motors + wheels stopped, LEDs off). Idempotent: resetting resting
+/// hardware is a no-op, so a burst of errors collapses to a single reset.
+fn trigger_reset_on_error(mut commands: Commands) {
+    if ERRORED.swap(false, Ordering::Relaxed) {
+        commands.trigger(ResetScene);
     }
 }
 

@@ -24,6 +24,11 @@ beet clear                                     # despawn it + reset the hardware
   - `roomba.bsx`, `line-follower.bsx` wander / line-follow loops.
   - `script.bsx` a controller scripted over the sensor snapshot.
   - `rc.bsx` remote control: `drive/:dir` and `led/:side/:state` routes.
+  - `perceive-act-body.bsx` / `perceive-act-body-ws.bsx` the robot as the
+    perceive-act socket body: an `<AgentSocket>` dialling the agent (wss / plain
+    ws), serving `whoami` + `apply-heading`. The `-ws` variant drops the `secure`
+    feature; the agent accepts both on one port (see the file header). Needs the
+    `sockets` firmware (`-ws`: `alvik,sockets`; secure: `alvik,sockets,secure`).
 - `infra/` the firmware dev loop, each a `<Command>` run as a `{BehaviorSequence}`
   route by `../main.bsx`:
   - `build.bsx` compile the Alvik firmware (`cargo build --release --features alvik`).
