@@ -15,7 +15,6 @@
 //! drain the outbound channel to the wire.
 
 use crate::esp32_utils::async_bridge::Queue;
-use crate::net::http_client::split_authority;
 use alloc::sync::Arc;
 use beet::prelude::*;
 use beet::prelude::sockets::*;
@@ -72,12 +71,21 @@ static SOCKET_QUEUE: Queue<ConnectJob, 2> = Queue::new();
 /// Installed once by [`start_wifi`](super::start_wifi); thereafter any
 /// `Socket::connect` flows through here.
 pub(crate) fn esp_connect(
-	url: &str,
+	url: Url,
 ) -> MaybeSendBoxedFuture<'static, Result<Socket>> {
-	let url = url.to_string();
 	Box::pin(async move {
-		let authority = resolve_authority(&url)?;
-		let (host, port) = split_authority(&authority, 80);
+		let url = resolve_url(url)?;
+		let authority = url
+			.authority()
+			.ok_or_else(|| bevyhow!("socket url has no authority: {url}"))?
+			.to_string();
+		// a bracketed ipv6 host is unwrapped for DNS
+		let host = url
+			.host()
+			.unwrap_or_default()
+			.trim_matches(['[', ']'])
+			.to_string();
+		let port = url.port_or_default().unwrap_or(80);
 		let inbound = Arc::new(InboundChannel::new());
 		let outbound = Arc::new(OutboundChannel::new());
 		let job = ConnectJob {
@@ -157,22 +165,25 @@ async fn drive_job(stack: Stack<'static>, job: ConnectJob) {
 	}
 }
 
-/// Resolve the connect target's authority (`host:port`) from an explicit url or
-/// the `SOCKET_SERVER` env default, accepting a bare `host:port` or a `ws://` url.
-fn resolve_authority(url: &str) -> Result<String> {
-	let target = if url.is_empty() {
-		option_env!("BEET_SOCKET_SERVER").ok_or_else(|| {
-			bevyhow!(
-				"Socket::connect got an empty url and BEET_SOCKET_SERVER is unset"
-			)
-		})?
-	} else {
-		url
+/// The connect target: the given url, or the `BEET_SOCKET_SERVER` build env
+/// default when it carries no authority (accepting a bare `host:port` there).
+/// The esp transport is plaintext-only, so a TLS scheme is rejected.
+fn resolve_url(url: Url) -> Result<Url> {
+	let url = match url.authority() {
+		Some(_) => url,
+		None => option_env!("BEET_SOCKET_SERVER")
+			.ok_or_else(|| {
+				bevyhow!(
+					"Socket::connect got no authority and BEET_SOCKET_SERVER is unset"
+				)
+			})?
+			.xmap(|target| target.strip_prefix("ws://").unwrap_or(target))
+			.xmap(|target| Url::parse(format!("ws://{target}"))),
 	};
-	if target.starts_with("wss://") {
+	if url.scheme().is_secure() {
 		bevybail!("wss (TLS) is not supported by the esp socket transport");
 	}
-	Ok(target.strip_prefix("ws://").unwrap_or(target).to_string())
+	Ok(url)
 }
 
 /// Open the socket, perform the RFC 6455 handshake, and run the duplex frame

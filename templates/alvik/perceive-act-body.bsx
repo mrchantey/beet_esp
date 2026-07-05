@@ -20,6 +20,9 @@
      to the device). Set `url` to the agent's host; omitting it falls back to the
      firmware's BEET_SOCKET_SERVER build env. -->
 <AgentSocket url="ws://192.168.86.220:8338">
+	<!-- the firmware must be built with these features; a leaner build fails
+	     loudly with the missing list instead of unresolved tags -->
+	<CrateCheck features="beet_esp/alvik,beet_esp/sockets"/>
 	<Route path="whoami" {WhoAmi}/>
 	<Route path="apply-heading" {(ApplyHeading, DriveStepConfig{duration: "0.8s"})}/>
 </AgentSocket>

@@ -6,6 +6,6 @@
      Referenced from the talk demo via `<Template src>`, run as `... flash`. -->
 <Command
 	exe="bash"
-	args={["-c", ". $HOME/export-esp.sh && cargo build --release --features alvik && probe-rs download --chip esp32s3 --binary-format idf ${CARGO_TARGET_DIR:-target}/xtensa-esp32s3-none-elf/release/beet_esp && probe-rs reset --chip esp32s3"]}
+	args={["-c", ". $HOME/export-esp.sh && cargo build --release --features alvik,sockets && probe-rs download --chip esp32s3 --binary-format idf ${CARGO_TARGET_DIR:-target}/xtensa-esp32s3-none-elf/release/beet_esp && probe-rs reset --chip esp32s3"]}
 	cwd="/home/pete/me/beet_esp"
 />
