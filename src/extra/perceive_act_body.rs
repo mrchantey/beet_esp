@@ -15,14 +15,18 @@
 //! </AgentSocket>
 //! ```
 //!
-//! On load the [`AgentSocket`] root connects a [`Socket`] back to the agent's
-//! socket server, enables the duplex Request/Response exchange, and its route tree
-//! serves the agent's `whoami`/`apply-heading` requests. [`ApplyHeading`] maps the
-//! chosen [`Heading`] onto the Alvik's [`DifferentialDrive`] (the same command the
-//! wgpu fox drives off) and stamps a [`DriveStep`]; [`expire_drive_step`] zeroes
-//! the drive after the [`DriveStepConfig`] budget, so a heading is a bounded step
-//! (like the wgpu fox) and the robot halts between commands. The reply's
-//! `settle_secs` tells the agent how long to wait out the movement.
+//! On load the [`AgentSocket`] root keeps a [`Socket`] connected back to the
+//! agent's socket server (a [`PersistentSocket`], redialling with backoff for
+//! the life of the scene), enables the duplex Request/Response exchange, and its
+//! route tree serves the agent's `whoami`/`apply-heading` requests. Losing the
+//! connection triggers a [`ResetScene`] via [`ResetOnDisconnect`], so the robot
+//! halts (motors, wheels, LEDs) the moment its agent disappears. [`ApplyHeading`]
+//! maps the chosen [`Heading`] onto the Alvik's [`DifferentialDrive`] (the same
+//! command the wgpu fox drives off) and stamps a [`DriveStep`];
+//! [`expire_drive_step`] zeroes the drive after the [`DriveStepConfig`] budget,
+//! so a heading is a bounded step (like the wgpu fox) and the robot halts
+//! between commands. The reply's `settle_secs` tells the agent how long to wait
+//! out the movement.
 
 use crate::prelude::*;
 use beet::prelude::*;
@@ -51,40 +55,56 @@ impl Plugin for PerceiveActBodyPlugin {
             .register_type::<ApplyHeadingInput>()
             .register_type::<DriveStep>()
             .register_type::<DriveStepConfig>()
-            // The outbound socket-client transport: an `OnSpawn` connect effect + a
-            // non-reflect codec `Arc`, so it cannot be a bsx literal — a template
-            // provides it, expanding at build to leave no marker to re-fire on reload.
+            // the reconnecting transport + its disconnect reaction, so a pushed
+            // scene can also carry them directly (AgentSocket bakes them in).
+            .register_type::<PersistentSocket>()
+            .register_type::<ResetOnDisconnect>()
+            // The outbound socket-client transport: wraps a non-reflect codec
+            // `Arc`, so it cannot be a bsx literal — a template provides it,
+            // expanding at build to leave no marker to re-fire on reload.
             .register_template::<AgentSocket>()
             // ends each heading's drive after its budget, so the robot steps then stops.
             .add_systems(Update, expire_drive_step);
     }
 }
 
-/// `<AgentSocket url="ws://host:port">` — the outbound socket-client transport for
-/// the body, hosting the capability routes declared as its children.
+/// `<AgentSocket url="wss://host:port">` — the outbound socket-client transport
+/// for the body, hosting the capability routes declared as its children.
 ///
-/// Connects a [`Socket`] to the agent on spawn, enables the duplex
-/// Request/Response [`ExchangeSocket`], and adds a [`default_router`] whose route
-/// tree (built from the child `<Route>`s) serves the requests the agent
-/// originates. The one bsx-unauthorable piece of the body: [`Socket::insert_on_connect`]
-/// is an [`OnSpawn`] effect and [`ExchangeSocket::json`] wraps a non-reflect codec
-/// `Arc`, so both ride this template rather than a scene literal.
+/// Keeps a [`Socket`] connected to the agent ([`PersistentSocket`]: dial with
+/// backoff, redial on close, for the life of the scene), enables the duplex
+/// Request/Response [`ExchangeSocket`], and adds a [`default_router`] whose
+/// route tree (built from the child `<Route>`s) serves the requests the agent
+/// originates. [`ResetOnDisconnect`] rides along: a dropped connection triggers
+/// [`ResetScene`], halting the robot instead of letting the last drive command
+/// spin forever. [`ExchangeSocket::json`] wraps a non-reflect codec `Arc`, so
+/// the bundle rides this template rather than a scene literal.
 ///
-/// `url` defaults to the `BEET_SOCKET_SERVER` build env (the same default the esp
-/// [`Socket`] transport falls back to), so a scene may omit it on a firmware built
-/// with that env set.
+/// `url` defaults to the `BEET_SOCKET_SERVER` build env (the same default the
+/// esp [`Socket`] transport falls back to), so a scene may omit it on a
+/// firmware built with that env set. A bare `host:port` is prefixed as `ws://`;
+/// a `wss://` url needs the `secure` build.
 #[template]
 pub fn AgentSocket(
-    /// The agent's socket url, eg `ws://192.168.86.220:8338`; defaults to the
+    /// The agent's socket url, eg `wss://192.168.86.220:8338`; defaults to the
     /// `BEET_SOCKET_SERVER` build env.
     #[prop(into)]
     url: Option<String>,
 ) -> impl Bundle {
     let url = url
         .or_else(|| option_env!("BEET_SOCKET_SERVER").map(String::from))
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .xmap(|url| match url.contains("://") {
+            true => url,
+            false => alloc::format!("ws://{url}"),
+        });
     rsx! {
-        <span {(Socket::insert_on_connect(url), ExchangeSocket::json(), default_router())}>
+        <span {(
+            PersistentSocket::new(url),
+            ResetOnDisconnect,
+            ExchangeSocket::json(),
+            default_router(),
+        )}>
             <Slot/>
         </span>
     }

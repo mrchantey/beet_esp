@@ -40,6 +40,8 @@ pub mod http_client;
 pub mod http_server;
 #[cfg(feature = "sockets")]
 pub mod socket_client;
+#[cfg(feature = "secure")]
+pub mod tls_client;
 #[cfg(feature = "mdns")]
 pub mod mdns;
 #[cfg(feature = "mdns")]

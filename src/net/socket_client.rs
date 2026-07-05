@@ -4,17 +4,20 @@
 //! beet via [`set_socket_client`] (by [`start_wifi`](super::start_wifi)), so
 //! [`Socket::connect`] anywhere routes through [`esp_connect`].
 //!
-//! Unlike the one-shot HTTP client, a socket is long-lived and bidirectional, so
-//! this is not a `run_worker` request/reply. [`esp_connect`] creates a pair of
-//! `embassy_sync` channels, queues the `(host, port, channel ends)` for
-//! [`socket_driver`], and immediately builds and returns a [`Socket`] whose
-//! reader/writer are just those channel ends (the `impl_web_sys` shape).
-//! [`socket_driver`] owns the [`Stack`], and per connection opens a `TcpSocket`
-//! (with locally-owned buffers, so no `'static` puzzle), performs the RFC 6455
-//! handshake, then runs a `select` loop: decode inbound frames to the reader,
-//! drain the outbound channel to the wire.
+//! One call is one connection, matching the tungstenite transport's semantics:
+//! [`esp_connect`] queues a [`ConnectJob`] for [`socket_driver`] and awaits the
+//! dial + RFC 6455 handshake outcome, so a failed connect is the caller's
+//! `Err`. The returned [`Socket`]'s reader ends when the connection does (the
+//! driver drops its inbound sender), which upstream becomes [`SocketClosed`] —
+//! redial policy and disconnect reactions are upstream concerns (eg
+//! [`PersistentSocket`] + `ResetOnDisconnect`), not this transport's.
+//!
+//! A `wss://` url (the `secure` feature) wraps the `TcpSocket` in the
+//! pinned-cert TLS session from [`tls_client`](super::tls_client); the
+//! handshake + frame pump are generic over the transport.
 
-use crate::esp32_utils::async_bridge::Queue;
+use crate::esp32_utils::async_bridge::AsyncBridge;
+use crate::esp32_utils::async_bridge::Reply;
 use alloc::sync::Arc;
 use beet::prelude::*;
 use beet::prelude::sockets::*;
@@ -34,21 +37,24 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::Duration;
 use embassy_time::with_timeout;
-use embedded_io_async::Write as _;
+use embedded_io_async::Read;
+use embedded_io_async::Write;
 use esp_hal::rng::Rng;
 use futures_core::Stream;
 
-/// Depth of the per-connection inbound/outbound channels. A few in-flight
-/// messages is ample for request/response socket traffic.
+/// Depth of the per-connection outbound channel. A few in-flight messages is
+/// ample for request/response socket traffic.
 const CHANNEL_DEPTH: usize = 8;
 
-/// Inbound (socket → world) decoded messages, feeding the [`Socket`] reader.
-type InboundChannel = Channel<CriticalSectionRawMutex, Result<Message>, CHANNEL_DEPTH>;
 /// Outbound (world → socket) messages, drained by the driver onto the wire.
 type OutboundChannel = Channel<CriticalSectionRawMutex, Message, CHANNEL_DEPTH>;
+/// Inbound (socket → world) decoded messages, feeding the [`Socket`] reader.
+/// beet's agnostic mpsc, whose receiver ends when the sender drops — so "the
+/// driver task finished" *is* "the socket stream ended".
+type InboundSender = writer_channel::Sender<Result<Message>>;
 
-/// A pending connection handed from [`esp_connect`] to [`socket_driver`]: the
-/// target and the channel ends shared with the returned [`Socket`].
+/// A connection handed from [`esp_connect`] to [`socket_driver`]: the target
+/// plus the channel ends shared with the returned [`Socket`].
 struct ConnectJob {
 	/// The `host:port` authority for the handshake `Host` header.
 	authority: String,
@@ -56,17 +62,22 @@ struct ConnectJob {
 	host: String,
 	/// TCP port to connect to.
 	port: u16,
-	inbound: Arc<InboundChannel>,
+	/// Whether to wrap the transport in the pinned-cert TLS session (`wss://`).
+	secure: bool,
+	inbound: InboundSender,
 	outbound: Arc<OutboundChannel>,
 }
 
-/// Connect jobs queued for [`socket_driver`]. Depth 2 is plenty: the device
-/// opens sockets one at a time.
-static SOCKET_QUEUE: Queue<ConnectJob, 2> = Queue::new();
+/// Connect calls awaiting their dial + handshake outcome. Depth 2 is plenty:
+/// the device opens sockets one at a time.
+static CONNECT_BRIDGE: AsyncBridge<ConnectJob, Result<()>, 2> =
+	AsyncBridge::new();
 
 /// beet's socket transport hook (see [`set_socket_client`]): parse the target,
 /// create the connection channels, queue the job for [`socket_driver`], and
-/// return the [`Socket`] immediately. The driver connects and pumps frames.
+/// await the dial + handshake before returning the [`Socket`] — a failed
+/// connect is this call's `Err`, and the redial policy lives with the caller
+/// (eg [`PersistentSocket`]).
 ///
 /// Installed once by [`start_wifi`](super::start_wifi); thereafter any
 /// `Socket::connect` flows through here.
@@ -75,6 +86,7 @@ pub(crate) fn esp_connect(
 ) -> MaybeSendBoxedFuture<'static, Result<Socket>> {
 	Box::pin(async move {
 		let url = resolve_url(url)?;
+		let secure = url.scheme().is_secure();
 		let authority = url
 			.authority()
 			.ok_or_else(|| bevyhow!("socket url has no authority: {url}"))?
@@ -85,29 +97,37 @@ pub(crate) fn esp_connect(
 			.unwrap_or_default()
 			.trim_matches(['[', ']'])
 			.to_string();
-		let port = url.port_or_default().unwrap_or(80);
-		let inbound = Arc::new(InboundChannel::new());
+		let port = url.port_or_default().unwrap_or(match secure {
+			true => 443,
+			false => 80,
+		});
+		let (inbound_send, inbound_recv) =
+			writer_channel::unbounded::<Result<Message>>();
 		let outbound = Arc::new(OutboundChannel::new());
 		let job = ConnectJob {
 			authority,
 			host,
 			port,
-			inbound: inbound.clone(),
+			secure,
+			inbound: inbound_send,
 			outbound: outbound.clone(),
 		};
-		SOCKET_QUEUE
-			.send(job)
-			.map_err(|_| bevyhow!("Wi-Fi socket connect queue full"))?;
+		CONNECT_BRIDGE
+			.call(job)
+			.await
+			.map_err(|_| bevyhow!("Wi-Fi socket connect queue full"))??;
 		Ok(Socket::new(
-			InboundStream { inbound },
+			InboundStream {
+				inbound: inbound_recv,
+			},
 			OutboundWriter { outbound },
 		))
 	})
 }
 
-/// Services [`SOCKET_QUEUE`]: waits for DHCP, then hands each job its own
-/// reconnecting [`drive_job`] task, so one job's redial loop never starves
-/// another's dial.
+/// Services [`CONNECT_BRIDGE`]: waits for DHCP, then hands each job its own
+/// [`drive_connection`] task, so one connection's pump never starves another's
+/// dial.
 pub(crate) async fn socket_driver(stack: Stack<'static>) {
 	stack.wait_config_up().await;
 	// SAFETY: `socket_driver` is itself spawned on the embassy executor (see
@@ -116,58 +136,17 @@ pub(crate) async fn socket_driver(stack: Stack<'static>) {
 	let spawner =
 		unsafe { embassy_executor::Spawner::for_current_executor() }.await;
 	loop {
-		let job = SOCKET_QUEUE.recv().await;
+		let (job, reply) = CONNECT_BRIDGE.recv().await.split();
 		crate::esp32_utils::async_bridge::spawn_driver(
 			spawner,
-			drive_job(stack, job),
+			drive_connection(stack, job, reply),
 		);
 	}
 }
 
-/// Floor of the redial backoff.
-const MIN_BACKOFF_MS: u64 = 250;
-/// Ceiling of the redial backoff.
-const MAX_BACKOFF_MS: u64 = 10_000;
-
-/// Keep one job's transport connected for the life of the firmware: dial with
-/// exponential backoff (250ms doubling to a 10s ceiling), pump until the
-/// connection ends, then redial. The channels (and the ECS [`Socket`] they
-/// feed) stay the same across redials, so a loaded scene survives the agent
-/// restarting or being unreachable at boot; to the app a redial is silence, and
-/// each fresh connection re-runs the agent's `whoami` handshake server-side.
-async fn drive_job(stack: Stack<'static>, job: ConnectJob) {
-	let mut backoff_ms = MIN_BACKOFF_MS;
-	loop {
-		info!("socket connecting to `{}`", job.authority.as_str());
-		let mut connected = false;
-		match handle_connection(stack, &job, &mut connected).await {
-			Ok(()) => {
-				warn!(
-					"socket to `{}` closed, reconnecting",
-					job.authority.as_str()
-				);
-			}
-			Err(err) => {
-				warn!(
-					"socket to `{}` failed: {:?}, retrying in {}ms",
-					job.authority.as_str(),
-					err,
-					backoff_ms
-				);
-			}
-		}
-		// a connection that got as far as the handshake resets the backoff
-		if connected {
-			backoff_ms = MIN_BACKOFF_MS;
-		}
-		embassy_time::Timer::after(Duration::from_millis(backoff_ms)).await;
-		backoff_ms = (backoff_ms * 2).min(MAX_BACKOFF_MS);
-	}
-}
-
 /// The connect target: the given url, or the `BEET_SOCKET_SERVER` build env
-/// default when it carries no authority (accepting a bare `host:port` there).
-/// The esp transport is plaintext-only, so a TLS scheme is rejected.
+/// default when it carries no authority (a bare `host:port` there is prefixed
+/// as `ws://`). A `wss://` target requires the `secure` feature.
 fn resolve_url(url: Url) -> Result<Url> {
 	let url = match url.authority() {
 		Some(_) => url,
@@ -177,23 +156,50 @@ fn resolve_url(url: Url) -> Result<Url> {
 					"Socket::connect got no authority and BEET_SOCKET_SERVER is unset"
 				)
 			})?
-			.xmap(|target| target.strip_prefix("ws://").unwrap_or(target))
-			.xmap(|target| Url::parse(format!("ws://{target}"))),
+			.xmap(|target| match target.contains("://") {
+				true => Url::parse(target),
+				false => Url::parse(format!("ws://{target}")),
+			}),
 	};
-	if url.scheme().is_secure() {
-		bevybail!("wss (TLS) is not supported by the esp socket transport");
+	if url.scheme().is_secure() && !cfg!(feature = "secure") {
+		bevybail!(
+			"wss requires this firmware to be built with the `secure` feature"
+		);
 	}
 	Ok(url)
 }
 
-/// Open the socket, perform the RFC 6455 handshake, and run the duplex frame
-/// loop for one connection. All buffers live in this task's frame, so the
-/// borrowed `TcpSocket` never needs a `'static` buffer. Sets `connected` once
-/// the handshake lands, so the caller's backoff resets only on real progress.
+/// Drive one connection to completion: dial + handshake (answering `reply`
+/// with the outcome), then pump the duplex until the connection ends. Dropping
+/// the job's inbound sender on return ends the [`Socket`] stream, which the
+/// upstream reader task turns into [`SocketClosed`].
+async fn drive_connection(
+	stack: Stack<'static>,
+	job: ConnectJob,
+	reply: Reply<Result<()>>,
+) {
+	let mut reply = Some(reply);
+	let result = handle_connection(stack, &job, &mut reply).await;
+	match (reply.take(), result) {
+		// dial or handshake failed: the error belongs to the connect caller
+		(Some(reply), Err(err)) => reply.send(Err(err)),
+		// defensive: every success path replies at handshake time
+		(Some(reply), Ok(())) => reply.send(Ok(())),
+		// transport died mid-connection: surface it on the socket's stream
+		(None, Err(err)) => job.inbound.send(Err(err)),
+		(None, Ok(())) => {
+			info!("socket to `{}` closed", job.authority.as_str())
+		}
+	}
+}
+
+/// Open the transport (TCP, TLS-wrapped for a secure job) and run the
+/// handshake + frame pump for one connection. All buffers live in this task's
+/// frame, so the borrowed `TcpSocket` never needs a `'static` buffer.
 async fn handle_connection(
 	stack: Stack<'static>,
 	job: &ConnectJob,
-	connected: &mut bool,
+	reply: &mut Option<Reply<Result<()>>>,
 ) -> Result<()> {
 	let remote = resolve_endpoint(stack, &job.host, job.port).await?;
 	info!("resolved `{}` -> {:?}", job.authority.as_str(), remote);
@@ -214,8 +220,28 @@ async fn handle_connection(
 		.map_err(|err| {
 			bevyhow!("connect to {} failed: {:?}", job.authority.as_str(), err)
 		})?;
-	info!("tcp connected to `{}`, sending handshake", job.authority.as_str());
+	info!("tcp connected to `{}`", job.authority.as_str());
 
+	#[cfg(feature = "secure")]
+	if job.secure {
+		let mut read_buf = super::tls_client::read_buf();
+		let mut write_buf = super::tls_client::write_buf();
+		let mut tls =
+			super::tls_client::connect(socket, &mut read_buf, &mut write_buf)
+				.await?;
+		info!("tls session opened with `{}`", job.authority.as_str());
+		return run_socket(&mut tls, job, reply).await;
+	}
+	run_socket(&mut socket, job, reply).await
+}
+
+/// The RFC 6455 client handshake then the frame pump, generic over the
+/// transport (plain `TcpSocket` or a TLS session).
+async fn run_socket<S: Read + Write>(
+	socket: &mut S,
+	job: &ConnectJob,
+	reply: &mut Option<Reply<Result<()>>>,
+) -> Result<()> {
 	// RFC 6455 client handshake: send the upgrade request, validate the 101.
 	let key = ws_ext::encode_client_key(random_bytes::<16>());
 	let request = ws_ext::encode_handshake_request(&job.authority, "/", &key)?;
@@ -223,17 +249,24 @@ async fn handle_connection(
 		.write_all(&request)
 		.await
 		.map_err(|err| bevyhow!("handshake write failed: {:?}", err))?;
-	let leftover = read_handshake_response(&mut socket, &key).await?;
+	socket
+		.flush()
+		.await
+		.map_err(|err| bevyhow!("handshake flush failed: {:?}", err))?;
+	let leftover = read_handshake_response(socket, &key).await?;
 
 	info!("socket connected to `{}`", job.authority.as_str());
-	*connected = true;
-	run_duplex(&mut socket, job, leftover).await
+	// the connect caller gets its `Socket` the moment the handshake lands
+	if let Some(reply) = reply.take() {
+		reply.send(Ok(()));
+	}
+	run_duplex(socket, job, leftover).await
 }
 
 /// Read the server's handshake response up to the header terminator, validate
 /// the `101`, and return any bytes read past the headers (the first frame data).
-async fn read_handshake_response(
-	socket: &mut TcpSocket<'_>,
+async fn read_handshake_response<S: Read>(
+	socket: &mut S,
 	key: &str,
 ) -> Result<Vec<u8>> {
 	let mut response = Vec::new();
@@ -256,8 +289,8 @@ async fn read_handshake_response(
 
 /// The bidirectional frame pump: decode inbound frames to the reader, drain the
 /// outbound channel to the wire, until either side closes.
-async fn run_duplex(
-	socket: &mut TcpSocket<'_>,
+async fn run_duplex<S: Read + Write>(
+	socket: &mut S,
 	job: &ConnectJob,
 	mut decode_buf: Vec<u8>,
 ) -> Result<()> {
@@ -267,7 +300,7 @@ async fn run_duplex(
 		while let Some((message, consumed)) = ws_ext::parse_frame(&decode_buf)? {
 			decode_buf.drain(..consumed);
 			let is_close = matches!(message, Message::Close(_));
-			job.inbound.send(Ok(message)).await;
+			job.inbound.send(Ok(message));
 			if is_close {
 				return Ok(());
 			}
@@ -277,8 +310,8 @@ async fn run_duplex(
 				let n =
 					read.map_err(|err| bevyhow!("socket read failed: {:?}", err))?;
 				if n == 0 {
-					// remote closed the TCP stream without a Close frame.
-					job.inbound.send(Ok(Message::Close(None))).await;
+					// remote closed the stream without a Close frame; the ended
+					// inbound channel tells the reader task the same thing.
 					return Ok(());
 				}
 				decode_buf.extend_from_slice(&read_buf[..n]);
@@ -292,6 +325,10 @@ async fn run_duplex(
 					.write_all(&frame)
 					.await
 					.map_err(|err| bevyhow!("socket write failed: {:?}", err))?;
+				socket
+					.flush()
+					.await
+					.map_err(|err| bevyhow!("socket flush failed: {:?}", err))?;
 				if is_close {
 					return Ok(());
 				}
@@ -329,11 +366,12 @@ fn random_bytes<const N: usize>() -> [u8; N] {
 	out
 }
 
-/// The [`Socket`] reader: a stream over the inbound channel the driver pushes
-/// decoded [`Message`]s into. It never ends (the driver pushes a terminal
-/// `Close`/error item), matching the browser channel-fed reader.
+/// The [`Socket`] reader: yields the driver's decoded messages and ends when
+/// the driver drops its sender (the connection is over), so the upstream
+/// reader task fires [`SocketClosed`] — the seam `PersistentSocket` and
+/// `ResetOnDisconnect` build on.
 struct InboundStream {
-	inbound: Arc<InboundChannel>,
+	inbound: writer_channel::Receiver<Result<Message>>,
 }
 
 impl Stream for InboundStream {
@@ -342,7 +380,7 @@ impl Stream for InboundStream {
 		self: Pin<&mut Self>,
 		cx: &mut Context<'_>,
 	) -> Poll<Option<Self::Item>> {
-		self.get_mut().inbound.poll_receive(cx).map(Some)
+		self.get_mut().inbound.poll_recv(cx)
 	}
 }
 

@@ -2,6 +2,7 @@ fn main() {
     linker_be_nice();
     load_dotenv();
     link_quickjs_runtime();
+    embed_dev_cert();
     // The on-device test target is the lib itself (`[lib] harness = false`), and
     // it boots through `#[esp_hal::main]` like the firmware, so it just needs
     // `linkall.x` below — not the old `embedded-test.x` (that crate is gone).
@@ -66,6 +67,72 @@ fn link_quickjs_runtime() {
     ] {
         println!("cargo:rustc-link-arg={arg}");
     }
+}
+
+// The `secure` feature pins beet's dev certificate: the firmware trusts exactly
+// this cert (byte-equal leaf plus a CertificateVerify check against its P-256
+// key — see `net::tls_client`). Read `cert.pem` from `BEET_TLS_DIR` (default:
+// the sibling beet workspace's `target/tls`, where beet's `DevCert` caches it),
+// decode the PEM to DER, extract the uncompressed P-256 SPKI point, and emit
+// both to OUT_DIR for `include_bytes!`. `rerun-if-changed` on the cert means a
+// regenerated dev cert (eg a LAN IP change) re-pins on the next build.
+fn embed_dev_cert() {
+    if std::env::var_os("CARGO_FEATURE_SECURE").is_none() {
+        return;
+    }
+    println!("cargo:rerun-if-env-changed=BEET_TLS_DIR");
+    let dir = std::env::var("BEET_TLS_DIR").unwrap_or_else(|_| {
+        format!(
+            "{}/../beet/target/tls",
+            std::env::var("CARGO_MANIFEST_DIR").unwrap()
+        )
+    });
+    let cert_path = format!("{dir}/cert.pem");
+    println!("cargo:rerun-if-changed={cert_path}");
+    let pem = std::fs::read_to_string(&cert_path).unwrap_or_else(|err| {
+        panic!(
+            "secure: failed to read the beet dev cert at `{cert_path}`: {err}\n\
+             run any beet server with the `secure` feature once to generate it, \
+             or point BEET_TLS_DIR at a directory containing cert.pem"
+        )
+    });
+    let der = pem_to_der(&pem);
+    // The uncompressed P-256 point rides a fixed SPKI suffix: BIT STRING (0x03),
+    // len 0x42, no unused bits (0x00), then the point (0x04 + 64 bytes X||Y).
+    // Scanning for it avoids an ASN.1 parser; requiring exactly one occurrence
+    // catches a non-P-256 or otherwise unexpected certificate at build time.
+    let marker = [0x03u8, 0x42, 0x00, 0x04];
+    let hits = der
+        .windows(marker.len())
+        .enumerate()
+        .filter(|(_, window)| *window == marker)
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let [hit] = hits[..] else {
+        panic!(
+            "secure: expected exactly one P-256 public key in `{cert_path}`, found {} \
+             (beet's dev cert is ECDSA P-256; real certs are not supported yet)",
+            hits.len()
+        );
+    };
+    let point = &der[hit + 3..hit + 3 + 65];
+    let out_dir = std::env::var("OUT_DIR").unwrap();
+    std::fs::write(format!("{out_dir}/dev_cert.der"), &der).unwrap();
+    std::fs::write(format!("{out_dir}/dev_cert_pubkey.sec1"), point).unwrap();
+}
+
+// Decode the first PEM certificate block to DER.
+fn pem_to_der(pem: &str) -> Vec<u8> {
+    use base64::Engine as _;
+    let body = pem
+        .lines()
+        .skip_while(|line| !line.starts_with("-----BEGIN"))
+        .skip(1)
+        .take_while(|line| !line.starts_with("-----END"))
+        .collect::<String>();
+    base64::engine::general_purpose::STANDARD
+        .decode(body.trim())
+        .expect("secure: cert.pem is not valid PEM")
 }
 
 // Expose KEY=VALUE pairs from a local `.env` to the crate via `env!()`.

@@ -3,8 +3,12 @@
 //! system, exposes the raw peripherals as non-send resources, and installs a
 //! runner so a bare-metal app is driven by plain [`App::run`].
 
+use crate::esp32_utils::async_bridge::Queue;
 use crate::esp32_utils::async_bridge::spawn_driver;
+use alloc::sync::Arc;
 use beet::prelude::*;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 use embassy_time::Duration;
 use embassy_time::Timer;
 use esp_hal::peripherals::Peripherals;
@@ -66,6 +70,7 @@ impl Plugin for Esp32Plugin {
         // `Time`, and on this no_std target the clock has no backend until we
         // install one. Add `Esp32Plugin` first so nothing samples time earlier.
         install_bevy_clock();
+        install_beet_sleep();
         app.add_systems(PreStartup, bring_up)
             .add_systems(Startup, || info!("esp32 bevy app started"))
             // Bevy's `Time`, ticked each frame off `Instant::now()` (backed by
@@ -81,7 +86,7 @@ impl Plugin for Esp32Plugin {
             features: [
                 "action", "alvik", "ble", "clock", "coex", "device", "led",
                 "mdns", "quickjs", "random", "rhai", "router", "scripting",
-                "sockets", "wifi",
+                "secure", "sockets", "wifi",
             ]
         }));
         // beet's async bridge (the `action` feature) needs a task spawner; on
@@ -107,6 +112,9 @@ fn bring_up(world: &mut World) {
     // before the `World` was built); collect the peripherals it parked.
     let p = take_peripherals();
     start_embassy(p.TIMG0, p.SW_INTERRUPT);
+    // the embassy half of beet's `time_ext::sleep` (see `install_beet_sleep`).
+    let spawner = *world.non_send::<embassy_executor::Spawner>();
+    spawn_driver(spawner, sleep_driver());
     // Each esp-hal peripheral is a distinct type, so they key cleanly as
     // separate resources. A domain plugin removes whichever ones it owns; only
     // expose the ones a compiled-in domain plugin can actually claim.
@@ -166,6 +174,56 @@ fn install_bevy_clock() {
     // SAFETY: `elapsed` is a plain fn pointer with no shared mutable state; the
     // getter is installed once, before any `Instant::now()` can run.
     unsafe { Instant::set_elapsed(elapsed) };
+}
+
+/// Pending cross-executor sleeps: duration in µs plus the completion signal the
+/// sleeper awaits. Depth 8 covers the realistic concurrent-sleep count (eg one
+/// redial backoff per socket); a full queue resolves immediately with a warn.
+static SLEEP_QUEUE: Queue<(u64, Arc<Signal<CriticalSectionRawMutex, ()>>), 8> =
+    Queue::new();
+
+/// Back beet's cross-platform [`time_ext::sleep`] with the embassy timer.
+///
+/// beet async tasks sleep through `time_ext::sleep` — notably a
+/// [`PersistentSocket`]'s redial backoff — which has no source on a bare target
+/// until one is installed (see `time_ext::set_sleep`).
+///
+/// The hook must not await `embassy_time::Timer` directly: it is polled by a
+/// *beet* task (a bevy-pool waker), and embassy's integrated timer queue panics
+/// on foreign wakers. So the timer runs embassy-side ([`sleep_driver`]) and the
+/// hook awaits a [`Signal`], which is executor-agnostic — the same bridge shape
+/// as [`AsyncBridge`](crate::esp32_utils::async_bridge::AsyncBridge)'s replies.
+fn install_beet_sleep() {
+    time_ext::set_sleep(|duration| {
+        let signal = Arc::new(Signal::new());
+        let queued = SLEEP_QUEUE
+            .send((duration.as_micros() as u64, signal.clone()))
+            .is_ok();
+        alloc::boxed::Box::pin(async move {
+            match queued {
+                true => signal.wait().await,
+                false => warn!("sleep queue full; resolving immediately"),
+            }
+        })
+    })
+    .unwrap_or_else(|_| warn!("a sleep source was already installed"));
+}
+
+/// Embassy side of [`install_beet_sleep`]: give each queued sleep its own timer
+/// task, so concurrent sleeps never serialize behind one another.
+async fn sleep_driver() {
+    // SAFETY: `sleep_driver` is spawned on the embassy executor (see
+    // `bring_up`), so the current-executor lookup runs within a task as the
+    // contract requires.
+    let spawner =
+        unsafe { embassy_executor::Spawner::for_current_executor() }.await;
+    loop {
+        let (micros, signal) = SLEEP_QUEUE.recv().await;
+        spawn_driver(spawner, async move {
+            Timer::after(Duration::from_micros(micros)).await;
+            signal.signal(());
+        });
+    }
 }
 
 /// How long the schedule sleeps between ticks.

@@ -5,6 +5,6 @@
      absolute so it resolves the same wherever the entry is invoked from. -->
 <Command
 	exe="bash"
-	args={["-c", ". $HOME/export-esp.sh && cargo build --release --features alvik,sockets"]}
+	args={["-c", ". $HOME/export-esp.sh && cargo build --release --all-features"]}
 	cwd="/home/pete/me/beet_esp"
 />

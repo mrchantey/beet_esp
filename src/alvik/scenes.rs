@@ -52,6 +52,7 @@ fn reset_robot(
     mut drive: Single<&mut DifferentialDrive, With<AlvikRobot>>,
     mut wheels: Query<&mut WheelTarget>,
 ) {
+    info!("reset: stopping motors and wheels");
     drive.linear = LinearVelocity::default();
     drive.angular = AngularVelocity::default();
     for mut target in &mut wheels {

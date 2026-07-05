@@ -205,7 +205,12 @@ impl<Out> Reply<Out> {
 /// and a per-driver task would need a fixed-size pool slot big enough for its
 /// largest future. Here each slot is just a box pointer, so even the big
 /// `App`-holding tick future lives on the heap.
-#[embassy_executor::task(pool_size = 8)]
+///
+/// Slots are cheap (a box pointer + task header), and beside the long-lived
+/// drivers the pool now also carries short-lived tasks — one per live socket
+/// connection and one per in-flight `sleep_driver` timer — so 16 leaves
+/// comfortable headroom.
+#[embassy_executor::task(pool_size = 16)]
 async fn run_boxed(fut: Pin<Box<dyn Future<Output = ()> + 'static>>) {
     fut.await;
 }

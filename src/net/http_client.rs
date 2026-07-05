@@ -19,7 +19,8 @@ use embassy_net::Stack;
 use embassy_net::dns::DnsQueryType;
 use embassy_net::tcp::TcpSocket;
 use embassy_time::Duration;
-use embedded_io_async::Write as _;
+use embedded_io_async::Read;
+use embedded_io_async::Write;
 
 /// Pending client requests handed from [`esp_send`] to [`client_driver`], each
 /// awaiting the [`Response`] the driver produces (or the [`BevyError`] it hit).
@@ -32,6 +33,8 @@ struct ClientJob {
     host: String,
     /// TCP port to connect to.
     port: u16,
+    /// Whether to wrap the transport in the pinned-cert TLS session (`https://`).
+    secure: bool,
     /// The full HTTP/1.1 request, ready to write to the socket.
     bytes: Vec<u8>,
 }
@@ -45,14 +48,15 @@ pub(crate) fn esp_send(
     request: Request,
 ) -> MaybeSendBoxedFuture<'static, Result<Response>> {
     Box::pin(async move {
-        if request.scheme().is_secure() {
-            bevybail!("the esp32 Wi-Fi transport only supports plain http, not https/tls");
+        let secure = request.scheme().is_secure();
+        if secure && !cfg!(feature = "secure") {
+            bevybail!("https requires this firmware to be built with the `secure` feature");
         }
         let authority = request.authority().to_string();
         if authority.is_empty() {
             bevybail!("request URL has no host: {}", request.uri());
         }
-        let (host, port) = split_authority(&authority, 80);
+        let (host, port) = split_authority(&authority, if secure { 443 } else { 80 });
 
         // Collect any streamed body into memory so the wire encoder (which only
         // serialises `Body::Bytes`) can handle it, then encode to HTTP/1.1.
@@ -61,7 +65,7 @@ pub(crate) fn esp_send(
         let request = Request::from_parts(parts, body.into());
         let bytes = http_ext::encode_request(&request, Default::default())?;
 
-        let job = ClientJob { host, port, bytes };
+        let job = ClientJob { host, port, secure, bytes };
         // Outer `Err` is a full queue (no reply will arrive); the inner
         // `Result<Response, BevyError>` is the actual transport outcome.
         CLIENT_BRIDGE
@@ -117,9 +121,9 @@ async fn exchange(stack: Stack<'static>, job: ClientJob) -> Result<Response> {
     exchange_on(stack, remote, job).await
 }
 
-/// Open a TCP socket to `remote`, send the encoded request, and read the whole
-/// response into a beet [`Response`]. The transport tail shared by the unicast-DNS
-/// and `.local`/mDNS resolution paths.
+/// Open a TCP socket to `remote` (TLS-wrapped for an `https` job), send the
+/// encoded request, and read the whole response into a beet [`Response`]. The
+/// transport tail shared by the unicast-DNS and `.local`/mDNS resolution paths.
 async fn exchange_on(
     stack: Stack<'static>,
     remote: IpEndpoint,
@@ -134,10 +138,29 @@ async fn exchange_on(
         .connect(remote)
         .await
         .map_err(|e| bevyhow!("connect to {} failed: {:?}", job.host.as_str(), e))?;
+
+    #[cfg(feature = "secure")]
+    if job.secure {
+        let mut read_buf = super::tls_client::read_buf();
+        let mut write_buf = super::tls_client::write_buf();
+        let mut tls =
+            super::tls_client::connect(socket, &mut read_buf, &mut write_buf).await?;
+        return send_request(&mut tls, &job.bytes).await;
+    }
+    send_request(&mut socket, &job.bytes).await
+}
+
+/// Write the encoded request and read the response to end-of-stream, generic
+/// over the transport (plain `TcpSocket` or a TLS session).
+async fn send_request<S: Read + Write>(socket: &mut S, bytes: &[u8]) -> Result<Response> {
     socket
-        .write_all(&job.bytes)
+        .write_all(bytes)
         .await
         .map_err(|e| bevyhow!("write failed: {:?}", e))?;
+    socket
+        .flush()
+        .await
+        .map_err(|e| bevyhow!("flush failed: {:?}", e))?;
 
     let mut raw = Vec::new();
     let mut buf = [0u8; 512];
