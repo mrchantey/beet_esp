@@ -25,7 +25,7 @@
      push with `beet load templates/alvik/perceive-act-body.bsx` (BEET_REMOTE_URL set
      to the device). Set `url` to the agent's host; omitting it falls back to the
      firmware's BEET_SOCKET_SERVER build env. -->
-<AgentSocket url="wss://192.168.86.220:8338">
+<AgentSocket url="wss://192.168.86.221:8338">
 	<!-- the firmware must be built with these features; a leaner build fails
 	     loudly with the missing list instead of unresolved tags -->
 	<CrateCheck features="beet_esp/alvik,beet_esp/sockets,beet_esp/secure"/>

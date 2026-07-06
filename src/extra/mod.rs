@@ -11,7 +11,11 @@
 // `whoami`/`drive` capability routes) a scene wires to turn the Alvik into
 // the v3 socket body client.
 pub mod perceive_act_body;
+// The scene that travels with the firmware: embedded at build time and loaded once on
+// boot, so a freshly powered device is ready with no host `beet load`.
+pub mod default_scene;
 
 pub mod prelude {
+    pub use super::default_scene::*;
     pub use super::perceive_act_body::*;
 }

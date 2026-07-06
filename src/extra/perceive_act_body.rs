@@ -9,7 +9,7 @@
 //! `templates/alvik/perceive-act-body.bsx`):
 //!
 //! ```xml
-//! <AgentSocket url="ws://192.168.86.220:8338">
+//! <AgentSocket url="wss://192.168.86.221:8338">
 //!     <Route path="whoami" {WhoAmi}/>
 //!     <Route path="drive" {DriveForDurationAction}/>
 //! </AgentSocket>
@@ -84,7 +84,7 @@ impl Plugin for PerceiveActBodyPlugin {
 /// a `wss://` url needs the `secure` build.
 #[template]
 pub fn AgentSocket(
-    /// The agent's socket url, eg `wss://192.168.86.220:8338`; defaults to the
+    /// The agent's socket url, eg `wss://192.168.86.221:8338`; defaults to the
     /// `BEET_SOCKET_SERVER` build env.
     #[prop(into)]
     url: Option<String>,

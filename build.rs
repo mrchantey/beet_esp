@@ -3,6 +3,7 @@ fn main() {
     load_dotenv();
     link_quickjs_runtime();
     embed_dev_cert();
+    embed_default_scene();
     // The on-device test target is the lib itself (`[lib] harness = false`), and
     // it boots through `#[esp_hal::main]` like the firmware, so it just needs
     // `linkall.x` below — not the old `embedded-test.x` (that crate is gone).
@@ -67,6 +68,38 @@ fn link_quickjs_runtime() {
     ] {
         println!("cargo:rustc-link-arg={arg}");
     }
+}
+
+// The perceive-act body build (`alvik` + `sockets`) embeds a default `.bsx` scene the
+// firmware loads once on boot (see `extra::default_scene`), so a powered device is ready
+// with no host `beet load`. `BEET_DEFAULT_SCENE` selects the scene (crate-relative, or
+// absolute), defaulting to the same `perceive-act-body.bsx` a push would load. The
+// resolved absolute path is exposed as `BEET_DEFAULT_SCENE_FILE` for `include_str!`.
+fn embed_default_scene() {
+    if std::env::var_os("CARGO_FEATURE_ALVIK").is_none()
+        || std::env::var_os("CARGO_FEATURE_SOCKETS").is_none()
+    {
+        return;
+    }
+    println!("cargo:rerun-if-env-changed=BEET_DEFAULT_SCENE");
+    let rel = std::env::var("BEET_DEFAULT_SCENE")
+        .unwrap_or_else(|_| "templates/alvik/perceive-act-body.bsx".into());
+    // resolve relative to the crate root; an absolute override is used as-is.
+    let path = if std::path::Path::new(&rel).is_absolute() {
+        rel
+    } else {
+        format!(
+            "{}/{rel}",
+            std::env::var("CARGO_MANIFEST_DIR").unwrap()
+        )
+    };
+    assert!(
+        std::path::Path::new(&path).exists(),
+        "BEET_DEFAULT_SCENE not found: `{path}` (set BEET_DEFAULT_SCENE to a .bsx path)"
+    );
+    // editing the embedded scene re-runs the build so the new bytes are baked in.
+    println!("cargo:rerun-if-changed={path}");
+    println!("cargo:rustc-env=BEET_DEFAULT_SCENE_FILE={path}");
 }
 
 // The `secure` feature pins beet's dev certificate: the firmware trusts exactly

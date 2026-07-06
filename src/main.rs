@@ -76,6 +76,12 @@ fn main() {
     #[cfg(all(feature = "alvik", feature = "sockets"))]
     app.add_plugins(PerceiveActBodyPlugin);
 
+    // Load the firmware's embedded default scene (the perceive-act body) once on boot,
+    // so a freshly powered device serves its routes and dials the agent with no host
+    // `beet load`. A later `beet load` replaces it; `beet clear` clears it for good.
+    #[cfg(all(feature = "alvik", feature = "sockets"))]
+    app.add_plugins(DefaultScenePlugin);
+
     app.run();
 }
 
