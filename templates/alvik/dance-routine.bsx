@@ -6,9 +6,11 @@
 		<SetDrive linear={60.0} angular={0.0}/>
 		<EndInDuration duration="1s"/>
 		<SetDrive linear={0.0} angular={90.0}/>
-		<EndInDuration duration="1s"/>
+		<EndInDuration duration="4s"/>
 		<SetDrive linear={60.0} angular={0.0}/>
 		<EndInDuration duration="1s"/>
+		<SetDrive linear={0.0} angular={-90.0}/>
+		<EndInDuration duration="4s"/>
 		<SetDrive linear={0.0} angular={0.0}/>
 	</Sequence>
 </RouteAction>
