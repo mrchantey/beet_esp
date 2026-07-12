@@ -102,13 +102,14 @@ fn embed_default_scene() {
     println!("cargo:rustc-env=BEET_DEFAULT_SCENE_FILE={path}");
 }
 
-// The `secure` feature pins beet's dev certificate: the firmware trusts exactly
-// this cert (byte-equal leaf plus a CertificateVerify check against its P-256
-// key — see `net::tls_client`). Read `cert.pem` from `BEET_TLS_DIR` (default:
-// the sibling beet workspace's `target/tls`, where beet's `DevCert` caches it),
-// decode the PEM to DER, extract the uncompressed P-256 SPKI point, and emit
-// both to OUT_DIR for `include_bytes!`. `rerun-if-changed` on the cert means a
-// regenerated dev cert (eg a LAN IP change) re-pins on the next build.
+// The `secure` feature pins beet's dev public key: the firmware trusts any cert
+// carrying this key, checked by a CertificateVerify against it (see
+// `net::tls_client`). Read `cert.pem` from `BEET_TLS_DIR` (default: the sibling
+// beet workspace's `target/tls`, where beet's `DevCert` caches it), decode the
+// PEM to DER, extract the uncompressed P-256 SPKI point, and emit it to OUT_DIR
+// for `include_bytes!`. `rerun-if-changed` on the cert re-pins on the next build
+// if the key ever changes (eg `target/tls` wiped); a re-issue for new names
+// keeps the key, so the pin survives without a rebuild.
 fn embed_dev_cert() {
     if std::env::var_os("CARGO_FEATURE_SECURE").is_none() {
         return;
@@ -150,7 +151,6 @@ fn embed_dev_cert() {
     };
     let point = &der[hit + 3..hit + 3 + 65];
     let out_dir = std::env::var("OUT_DIR").unwrap();
-    std::fs::write(format!("{out_dir}/dev_cert.der"), &der).unwrap();
     std::fs::write(format!("{out_dir}/dev_cert_pubkey.sec1"), point).unwrap();
 }
 

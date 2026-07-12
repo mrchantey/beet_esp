@@ -1,0 +1,17 @@
+<!-- Plain-ws perceive-act body: the secure sibling `perceive-act-body.bsx` over
+     an insecure `ws://` link instead of `wss://`, so no TLS or cert pinning is
+     involved and the host's dev cert can regenerate freely without touching this
+     link. The agent's socket server serves both schemes on the same port, so the
+     browser head keeps its `wss` (its webcam needs a secure context) while this
+     body goes plaintext. Preferred when a demo just needs the drive link to be
+     rock-solid; the drive commands are unauthenticated on the LAN, which is fine
+     for a local robot.
+
+     Set `url` to the agent's host, then push with
+     `beet load templates/alvik/perceive-act-body-ws.bsx`. No `secure` firmware
+     feature is required (a `ws://` url skips the TLS path on any build). -->
+<AgentSocket url="ws://192.168.86.221:8338">
+	<CrateCheck features="beet_esp/alvik,beet_esp/sockets"/>
+	<Route path="whoami" {WhoAmi}/>
+	<Route path="drive" {DriveForDurationAction}/>
+</AgentSocket>

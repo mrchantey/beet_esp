@@ -1,13 +1,15 @@
-//! Pinned-certificate TLS 1.3 client for the Wi-Fi transports (`secure`).
+//! Pinned-public-key TLS 1.3 client for the Wi-Fi transports (`secure`).
 //!
 //! [`connect`] wraps an `embedded_io_async` transport (the embassy `TcpSocket`)
-//! in an [`embedded_tls`] session whose trust model is *pinning*: the peer must
-//! present byte-for-byte the beet dev certificate embedded at build time
-//! (`build.rs::embed_dev_cert`), and its `CertificateVerify` signature is
-//! checked against that certificate's P-256 key, proving the peer holds the
-//! private key. No chains, no CA set, no wall clock — strictly the one pinned
-//! cert. Regenerating the dev cert (eg after a LAN IP change) re-pins on the
-//! next firmware build via the build script's `rerun-if-changed`.
+//! in an [`embedded_tls`] session whose trust model is *public-key pinning*: the
+//! peer's certificate must carry the P-256 public key embedded at build time
+//! (`build.rs::embed_dev_cert`), and its `CertificateVerify` signature is checked
+//! against that key, proving the peer holds the private half. No chains, no CA
+//! set, no wall clock, and no check of the cert's other fields: the key is the
+//! identity. The host re-issues its dev cert (new subject-alt-names) on a LAN
+//! move but keeps the key, so the pin survives without a reflash; a genuinely
+//! new key (eg `target/tls` wiped) re-pins on the next firmware build via the
+//! build script's `rerun-if-changed`.
 
 use beet::prelude::*;
 use embedded_tls::Aes128GcmSha256;
@@ -25,10 +27,9 @@ use embedded_tls::TlsError;
 use embedded_tls::TlsVerifier;
 use sha2::Digest as _;
 
-/// The pinned dev certificate (DER), embedded by `build.rs`.
-static PINNED_CERT_DER: &[u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/dev_cert.der"));
-/// Its uncompressed P-256 public key (SEC1), pre-extracted by `build.rs`.
+/// The pinned dev certificate's uncompressed P-256 public key (SEC1),
+/// pre-extracted by `build.rs`. The trust anchor: a peer must present a cert
+/// carrying this key and prove possession of its private half.
 static PINNED_CERT_PUBKEY: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/dev_cert_pubkey.sec1"));
 
@@ -120,10 +121,12 @@ impl rand_core::RngCore for EspRng {
 }
 impl rand_core::CryptoRng for EspRng {}
 
-/// Trusts exactly the pinned certificate: the presented leaf must match
-/// byte-for-byte, and the `CertificateVerify` signature must verify against its
-/// P-256 key over the handshake transcript (RFC 8446 §4.4.3) — without that
-/// second check any peer could replay the public cert and MITM the session.
+/// Trusts any certificate carrying the pinned public key: the leaf must contain
+/// that P-256 key, and the `CertificateVerify` signature must verify against it
+/// over the handshake transcript (RFC 8446 §4.4.3), proving the peer holds the
+/// private half. Without that signature check a peer could replay the public
+/// cert and MITM the session; pinning the key rather than the whole cert lets
+/// the host re-issue for new names without breaking the pin.
 #[derive(Default)]
 struct PinnedVerifier {
     /// The transcript hash at the Certificate message, consumed by
@@ -136,7 +139,7 @@ impl TlsVerifier<Aes128GcmSha256> for PinnedVerifier {
         &mut self,
         _hostname: &str,
     ) -> Result<(), TlsError> {
-        // trust is the exact pinned cert; hostnames add nothing
+        // trust is the pinned public key; hostnames add nothing
         Ok(())
     }
 
@@ -148,10 +151,16 @@ impl TlsVerifier<Aes128GcmSha256> for PinnedVerifier {
         let Some(CertificateEntryRef::X509(leaf)) = cert.entries.first() else {
             return Err(TlsError::InvalidCertificate);
         };
-        if *leaf != PINNED_CERT_DER {
+        // pin the public key, not the whole cert: the host re-issues its dev
+        // cert with new names on a LAN move but keeps the key, so a byte-equal
+        // check would reject every re-issue and force a reflash. The cert's other
+        // fields are not verified anyway (no hostname, no clock), so the key is
+        // the only meaningful anchor; `verify_signature` proves the peer holds
+        // its private half.
+        if pinned_point(*leaf) != Some(PINNED_CERT_PUBKEY) {
             error!(
-                "peer certificate does not match the pinned beet dev cert \
-                 (regenerated since this firmware was built? rebuild to re-pin)"
+                "peer certificate public key does not match the pinned beet dev \
+                 key (a different server, or firmware built against another cert?)"
             );
             return Err(TlsError::InvalidCertificate);
         }
@@ -183,4 +192,14 @@ impl TlsVerifier<Aes128GcmSha256> for PinnedVerifier {
         key.verify(&message, &signature)
             .map_err(|_| TlsError::InvalidSignature)
     }
+}
+
+/// The uncompressed P-256 point in a DER certificate, located by the fixed SPKI
+/// prefix `build.rs` also scans for: BIT STRING (`0x03`), length `0x42`, no
+/// unused bits (`0x00`), then the point (`0x04` + 64-byte X||Y). Avoids pulling
+/// an ASN.1 parser into the firmware.
+fn pinned_point(der: &[u8]) -> Option<&[u8]> {
+    let marker = [0x03u8, 0x42, 0x00, 0x04];
+    let index = der.windows(marker.len()).position(|window| window == marker)?;
+    der.get(index + 3..index + 3 + 65)
 }

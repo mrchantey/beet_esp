@@ -28,6 +28,10 @@ default:
 install-cli:
     cd {{beet_dir}} && cargo install --path crates/beet-cli
 
+
+beet:
+	cargo run --manifest-path=/home/pete/me/beet/crates/beet-cli/Cargo.toml
+
 # On-device unit tests (beet's own harness over semihosting).
 test:
 	. $HOME/export-esp.sh && cargo test -p beet_esp --lib
