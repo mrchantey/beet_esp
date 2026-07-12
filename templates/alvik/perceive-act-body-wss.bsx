@@ -1,0 +1,19 @@
+<!-- Secure (wss) variant of the perceive-act body: the same body as the default
+     `perceive-act-body.bsx` (see it for the transport, drive and reconnect detail),
+     but dialling the agent over a `wss://` link. Use it when the robot's drive link
+     should be encrypted on the LAN; the plain-ws default is otherwise simpler and
+     cannot be affected by the host's dev cert at all.
+
+     The wss url matches the agent's Tls socket server; the `secure` firmware feature
+     pins beet's dev public key at build time (see build.rs `embed_dev_cert`), so the
+     host re-issuing its cert for a new address (a LAN move) still connects without a
+     reflash. It is not the baked default, so flash a `secure` firmware and push it:
+     `beet load templates/alvik/perceive-act-body-wss.bsx`. Set `url` to the agent's
+     host. -->
+<AgentSocket url="wss://192.168.86.221:8338">
+	<!-- the firmware must be built with these features; a leaner build fails
+	     loudly with the missing list instead of unresolved tags -->
+	<CrateCheck features="beet_esp/alvik,beet_esp/sockets,beet_esp/secure"/>
+	<Route path="whoami" {WhoAmi}/>
+	<Route path="drive" {DriveForDurationAction}/>
+</AgentSocket>

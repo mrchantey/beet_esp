@@ -1,11 +1,12 @@
-<!-- Alvik perceive-act body: the robot as the v3 socket body client. The composable
-     transport (<AgentSocket>, connecting back to the perceive-act agent's socket
-     server) wraps the individual capability routes it serves - `whoami` announces the
-     `body` role for the agent's handshake, `drive` runs the wheels at the commanded
-     differential velocity for a chosen duration. The transport and each capability are
-     distinct, visible pieces, not a monolithic body element. The agent forwards each
-     `drive` tool call over the socket; the same DriveForDuration command drives the
-     wgpu fox and this robot.
+<!-- Alvik perceive-act body: the robot as the v3 socket body client, over a plain
+     `ws://` link. This is the firmware's baked default scene (BEET_DEFAULT_SCENE), so
+     a powered device boots straight into it. The composable transport (<AgentSocket>,
+     connecting back to the perceive-act agent's socket server) wraps the individual
+     capability routes it serves - `whoami` announces the `body` role for the agent's
+     handshake, `drive` runs the wheels at the commanded differential velocity for a
+     chosen duration. The transport and each capability are distinct, visible pieces,
+     not a monolithic body element. The agent forwards each `drive` tool call over the
+     socket; the same DriveForDuration command drives the wgpu fox and this robot.
 
      drive replies with the command's settle duration and the agent waits it out, so the
      next photo is only taken once the robot has stopped moving. The velocity (linear
@@ -18,20 +19,21 @@
      ResetScene (motors, wheels and LEDs to rest) before the redial loop takes over, so
      the robot never keeps driving a stale command while its agent is gone.
 
-     The wss url matches the agent's Tls socket server; the `secure` firmware feature
-     pins beet's dev public key at build time (see build.rs `embed_dev_cert`), so the
-     host re-issuing its cert for a new address (a LAN move) still connects without a
-     reflash. For a link with no cert dependency at all, use the plain-ws sibling
-     `perceive-act-body-ws.bsx` (the browser head still needs wss for its webcam).
+     Plain `ws` means no TLS or cert pinning, so the host's dev cert can regenerate
+     freely without ever touching this link: the reliable default. The agent's socket
+     server serves both schemes on one port, so the browser head keeps its `wss` (its
+     webcam needs a secure context) while this body stays plaintext; drive commands are
+     unauthenticated on the LAN, which is fine for a local robot. For an encrypted link
+     (the robot pinning beet's dev public key) use the `perceive-act-body-wss.bsx`
+     sibling instead.
 
-     Start the perceive-act agent (`wss://<this-host>:8338`, bound to all interfaces),
-     push with `beet load templates/alvik/perceive-act-body.bsx` (BEET_REMOTE_URL set
-     to the device). Set `url` to the agent's host; omitting it falls back to the
-     firmware's BEET_SOCKET_SERVER build env. -->
-<AgentSocket url="wss://192.168.86.221:8338">
-	<!-- the firmware must be built with these features; a leaner build fails
-	     loudly with the missing list instead of unresolved tags -->
-	<CrateCheck features="beet_esp/alvik,beet_esp/sockets,beet_esp/secure"/>
+     Start the perceive-act agent (bound to all interfaces), push with
+     `beet load templates/alvik/perceive-act-body.bsx` (BEET_REMOTE_URL set to the
+     device). Set `url` to the agent's host; omitting it falls back to the firmware's
+     BEET_SOCKET_SERVER build env. -->
+<AgentSocket url="ws://192.168.86.221:8338">
+	<!-- a plain-ws body needs only these; no `secure` feature -->
+	<CrateCheck features="beet_esp/alvik,beet_esp/sockets"/>
 	<Route path="whoami" {WhoAmi}/>
 	<Route path="drive" {DriveForDurationAction}/>
 </AgentSocket>
