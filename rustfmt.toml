@@ -7,7 +7,10 @@ max_width = 80
 fn_call_width = 60
 format_generated_files = false
 imports_granularity = "Item"
+# group_imports = "One"
 imports_layout = "Vertical"
 overflow_delimited_expr = true
 use_field_init_shorthand = true
 match_arm_leading_pipes = "Preserve"
+# .gitignore rules
+ignore = ["**/codegen/**/*.rs"]
