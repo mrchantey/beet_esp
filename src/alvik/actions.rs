@@ -18,7 +18,7 @@ const LINE_BLACK_THRESHOLD: i16 = 500;
 /// Behaviour-tree leaf: one bang-bang line-following step. Forward while the
 /// left sensor sees white, steer right while it sees black. Loop it with
 /// [`Repeat`] for a continuous follower.
-#[action(handler_only)]
+#[action]
 #[derive(Default, Clone, Component, Reflect)]
 #[reflect(Component)]
 #[type_path = "alvik"]
@@ -44,7 +44,7 @@ const ROOMBA_NEAR_MM: f32 = 200.0;
 /// Behaviour-tree leaf: one roomba step. Drive forward until the centre ToF
 /// reads a wall closer than [`ROOMBA_NEAR_MM`], then spin right to clear it.
 /// Loop it with [`Repeat`].
-#[action(handler_only)]
+#[action]
 #[derive(Default, Clone, Component, Reflect)]
 #[reflect(Component)]
 #[type_path = "alvik"]

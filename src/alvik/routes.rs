@@ -18,7 +18,7 @@ const TURN_RATE_DEG_S: f32 = 90.0;
 /// `:dir` -> a continuous drive velocity. A scene binds this to a path, eg
 /// `<Route path="drive/:dir" {DriveHandler}/>`, and the robot keeps moving until
 /// `stop` (true RC semantics).
-#[action(route, handler_only)]
+#[action(route)]
 #[derive(Default, Clone, Component, Reflect)]
 #[reflect(Component)]
 #[type_path = "alvik"]
@@ -42,7 +42,7 @@ pub fn DriveHandler(
 
 /// `:side`/`:state` -> one UI LED white (on) or black (off). Bound with eg
 /// `<Route path="led/:side/:state" {LedHandler}/>`.
-#[action(route, handler_only)]
+#[action(route)]
 #[derive(Default, Clone, Component, Reflect)]
 #[reflect(Component)]
 #[type_path = "alvik"]

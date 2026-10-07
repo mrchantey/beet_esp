@@ -31,7 +31,7 @@ beet clear                                     # despawn it + reset the hardware
     feature and pins beet's dev public key. The agent accepts both on one port
     (see the file header). Needs the `sockets` firmware (default: `alvik,sockets`;
     `-wss`: `alvik,sockets,secure`).
-- `infra/` the firmware dev loop, each a `<Command>` run as a `{BehaviorSequence}`
+- `infra/` the firmware dev loop, each a `<Command>` run as an `{ExchangeSequence}`
   route by `../main.bsx`:
   - `build.bsx` compile the Alvik firmware (`cargo build --release --features alvik`).
   - `flash.bsx` build + flash over the USB-JTAG probe (probe-rs).
@@ -54,9 +54,7 @@ components stand in for them:
 The firmware adds a few domain widgets (see `src/scene.rs`, `src/alvik/scenes.rs`,
 `src/alvik/routes.rs`):
 
-- `<LedScript script="..." language="rhai">` / `<AlvikScript script="..." language="rhai">`
-  script leaves run each tick over the WS2812 / the robot. `language` selects the
-  backend (rhai or quickjs), falling back to the build default when absent.
+- `<LedScript script="...">` / `<AlvikScript script="...">` JavaScript leaves run each tick over the WS2812 / the robot by the embedded QuickJS engine.
 - `<Route path="drive/:dir" {DriveHandler}/>` / `<Route path="led/:side/:state" {LedHandler}/>`
   bind a direct route handler to a path.
 - `<RoombaStep/>`, `<LineFollowStep/>`, `<SetDrive linear={..} angular={..}/>` the
@@ -69,5 +67,5 @@ behaviour-tree leaf that shells out, streaming output live and failing on a
 non-zero exit): `exe` is required, `args` / `cwd` / `env` optional. `cwd` is an
 absolute path so the workflow resolves the same wherever it is invoked from (run
 from this repo via `../main.bsx`, or referenced from the talk demo via
-`<Template src>`). `../main.bsx` wires each as a `<Route path=".." {BehaviorSequence}>`,
+`<Template src>`). `../main.bsx` wires each as a `<Route path=".." {ExchangeSequence}>`,
 and runs `flash` followed by `monitor`.

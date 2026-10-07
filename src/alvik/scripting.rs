@@ -60,55 +60,59 @@ pub struct AlvikOutput {
 /// Behaviour-tree leaf: gather the sensor snapshot, run this entity's
 /// [`Script`], apply the drive + LED output. Loop it with [`Repeat`] for a live
 /// controller. The script reads `input.*` (depth, line, yaw, touch, elapsed)
-/// plus `input.state`, and returns `#{ linear, angular, led_left, led_right,
-/// state }`.
-#[action(handler_only)]
+/// plus `input.state`, and returns `({ linear, angular, led_left, led_right,
+/// state })`.
+#[action(local)]
 #[derive(Default, Clone, Component, Reflect)]
 #[reflect(Component)]
 #[type_path = "alvik"]
 #[require(Script<AlvikInput, AlvikOutput>, ScriptState)]
-pub fn AlvikScriptStep(
-    cx: In<ActionContext>,
-    time: Res<Time>,
-    mut scripts: Query<(&Script<AlvikInput, AlvikOutput>, &mut ScriptState)>,
-    sensors: Single<(&Tof, &LineSensors, &Orientation, &TouchValue), With<AlvikRobot>>,
-    mut drive: Single<&mut DifferentialDrive, With<AlvikRobot>>,
-    mut leds: Query<(&AlvikLed, &mut LedColor)>,
-) -> Outcome {
-    let Ok((script, mut state)) = scripts.get_mut(cx.id()) else {
-        return Outcome::PASS;
-    };
-    let (tof, line, orientation, touch) = *sensors;
-    let input = AlvikInput {
-        elapsed_ms: (time.elapsed_secs_f64() * 1000.0) as i64,
-        depth_mm: tof.center.as_millimeters() as i64,
-        line_left: line.left as i64,
-        line_center: line.center as i64,
-        line_right: line.right as i64,
-        yaw_deg: orientation.0.to_euler(EulerRot::XYZ).2 as f64 * 180.0
-            / core::f64::consts::PI,
-        touch: touch.0 as i64,
-        state: state.0.clone(),
-    };
-
-    match script.run(input) {
-        Ok(output) => {
-            drive.linear = LinearVelocity::from_mm_per_sec(output.linear);
-            drive.angular = AngularVelocity::from_deg_per_sec(output.angular);
-            for (led, mut color) in &mut leds {
-                let packed = match led.side {
-                    Side::Left => output.led_left,
-                    Side::Right => output.led_right,
-                };
-                color.0 = unpack_color(packed);
-            }
+pub async fn AlvikScriptStep(cx: ActionContext) -> Result<Outcome> {
+    ScriptState::step(
+        cx,
+        |world, state| {
+            world.with_state::<(
+                Res<Time>,
+                Query<(&Tof, &LineSensors, &Orientation, &TouchValue), With<AlvikRobot>>,
+            ), _>(|(time, sensors)| {
+                let (tof, line, orientation, touch) = sensors.single().ok()?;
+                AlvikInput {
+                    elapsed_ms: (time.elapsed_secs_f64() * 1000.0) as i64,
+                    depth_mm: tof.center.as_millimeters() as i64,
+                    line_left: line.left as i64,
+                    line_center: line.center as i64,
+                    line_right: line.right as i64,
+                    yaw_deg: orientation.0.to_euler(EulerRot::XYZ).2 as f64 * 180.0
+                        / core::f64::consts::PI,
+                    touch: touch.0 as i64,
+                    state,
+                }
+                .xsome()
+            })
+        },
+        |world, output: AlvikOutput| {
+            world.with_state::<(
+                Query<&mut DifferentialDrive, With<AlvikRobot>>,
+                Query<(&AlvikLed, &mut LedColor)>,
+            ), _>(|(mut drives, mut leds)| {
+                for mut drive in &mut drives {
+                    drive.linear = LinearVelocity::from_mm_per_sec(output.linear);
+                    drive.angular = AngularVelocity::from_deg_per_sec(output.angular);
+                }
+                for (led, mut color) in &mut leds {
+                    let packed = match led.side {
+                        Side::Left => output.led_left,
+                        Side::Right => output.led_right,
+                    };
+                    color.0 = unpack_color(packed);
+                }
+            });
             info!(
                 "scene: script -> ({} mm/s, {} deg/s) led {:#08x}/{:#08x}",
                 output.linear, output.angular, output.led_left, output.led_right
             );
-            state.0 = output.state;
-        }
-        Err(err) => warn!("scene: script error: {}", err),
-    }
-    Outcome::PASS
+            output.state
+        },
+    )
+    .await
 }

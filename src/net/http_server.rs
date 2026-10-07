@@ -1,95 +1,92 @@
 //! beet's [`HttpServer`] component on this no_std target, served over Wi-Fi.
 //!
-//! Spawning `(HttpServer, exchange_handler(..))` or `(HttpServer,
-//! default_router(), children![..])` is the standard beet pattern; here it is
-//! backed by the ESP32 embassy + `embedded-net` TCP stack instead of
-//! `async-io`/hyper.
+//! The standard beet pattern applies unchanged: spawn
+//! `(HttpServer::new(port), CallOnReady::on_spawn(), children![dispatch])`,
+//! where the dispatch host is the server's child (a bare
+//! [`exchange_ext::handler`] or a [`Router::with_defaults`] over its routes).
+//! Here the server is backed by the ESP32 embassy + `embassy-net` TCP stack
+//! instead of `async-io`/hyper.
 //!
-//! The backend is installed once via [`set_http_server`]. When an [`HttpServer`]
-//! is added, beet's `on_add` hook dispatches [`start_esp_server`] on the async
-//! layer with an [`AsyncEntity`]; that reads the port off the component, grabs
-//! the embassy [`Stack`]/[`Spawner`] published by
-//! [`start_wifi`](super::start_wifi), and spawns an embassy accept loop.
+//! The backend is installed once via [`HttpServer::set_backend`].
+//! [`CallOnReady::on_spawn`] calls the server entity's `RunningSet`, which starts
+//! the server's facet: it runs [`start_esp_server`] on the async layer with an
+//! [`AsyncEntity`], which reads the port off the component, grabs the embassy
+//! [`Stack`]/[`Spawner`] published by [`start_wifi`](super::start_wifi), spawns
+//! an embassy accept loop, then holds the facet open until its shutdown signal.
 //!
 //! ## The embassy↔ECS split
 //!
 //! TCP accept/read/write runs on **embassy** (where the net stack lives, for
-//! immediate wakeups). [`AsyncEntity::exchange`] needs **the bevy task pool**
-//! (it awaits `&mut World`, which only exists inside the `BeetAsyncSyncPoint`
-//! window). The two are bridged by a [`static`](SERVER_BRIDGE) [`AsyncBridge`]:
-//! the accept loop hands each parsed [`Request`] across, [`drain_server_requests`]
-//! dispatches it through `entity.exchange` in the sync window, and the
-//! [`Response`] comes back on the reply slot. Awaiting `exchange` directly on an
-//! embassy task would live-lock (see `async_utils`), hence the bridge.
+//! immediate wakeups). Dispatch needs **the bevy task pool** (it awaits
+//! `&mut World`, which only exists inside the `BeetAsyncSyncPoint` window). The
+//! two are bridged by a [`static`](SERVER_BRIDGE) [`AsyncBridge`]: the accept
+//! loop hands each parsed [`Request`] across, [`drain_server_requests`]
+//! dispatches it through `entity.exchange_child` in the sync window, and the
+//! [`Response`] comes back on the reply slot. Awaiting the dispatch directly on
+//! an embassy task would live-lock (see `async_utils`), hence the bridge.
 
 use crate::esp32_utils::async_bridge::AsyncBridge;
 use crate::esp32_utils::async_bridge::drain_to_async;
 use crate::esp32_utils::async_bridge::spawn_driver;
+use alloc::sync::Arc;
 use beet::prelude::*;
 use embassy_executor::Spawner;
+use embassy_futures::select::select;
 use embassy_net::Stack;
 use embassy_net::tcp::TcpSocket;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 use embassy_time::Duration;
 use embedded_io_async::Write as _;
 
 /// Accepted requests handed from a [`server_loop`] to the ECS, each carrying the
-/// server [`Entity`] it arrived on (which selects the dispatch action) and a
-/// reply slot. Drained by [`drain_server_requests`].
+/// server [`Entity`] it arrived on (whose dispatch child answers it) and a reply
+/// slot. Drained by [`drain_server_requests`].
 static SERVER_BRIDGE: AsyncBridge<(Entity, Request), Response, 4> = AsyncBridge::new();
 
 /// Plugin: install the ESP32 server backend and the drain system.
 ///
 /// A plain `fn(&mut App)` *is* a Bevy [`Plugin`], so this is added with
 /// `app.add_plugins(http_server_plugin)` (see [`WifiPlugin::build`](super::WifiPlugin),
-/// under the `action` feature). The install must precede any [`HttpServer`]
-/// spawn so the `on_add` hook finds a backend; a second install would already own
-/// it, so just warn.
+/// under the `action` feature). The install must precede any server start so
+/// the facet finds a backend; a second install would already own it, so just
+/// warn.
 pub(crate) fn http_server_plugin(app: &mut App) {
-    if set_http_server(start_esp_server).is_err() {
+    if HttpServer::set_backend(start_esp_server).is_err() {
         warn!("an HTTP server backend was already installed");
     }
-    app.add_systems(Update, (drain_server_requests, boot_added_servers));
+    app.add_systems(Update, drain_server_requests);
 }
 
-/// Fire [`LoadTemplate`] at every freshly-spawned [`HttpServer`] so its
-/// [`BootOnLoad`] verb boots it.
-///
-/// On a host, `LoadTemplate` fires as the app's template tree finishes building;
-/// bare-metal firmware spawns its server directly (there is no app template-load
-/// pipeline), so nothing fires it. This bridges that gap — the [`Added`] filter
-/// fires once per server, a frame after `BootOnLoad`'s `on_add` has registered its
-/// `LoadTemplate` observer, so the boot always lands. The boot itself (selecting
-/// the transport from the empty no_std `CliArgs`, then spawning the accept loop
-/// via the [`set_http_server`] backend) is upstream [`BootOnLoad`]; a server must
-/// carry it (see `setup` in `main.rs` and the server examples).
-fn boot_added_servers(
-    servers: Query<Entity, Added<HttpServer>>,
-    mut commands: Commands,
-) {
-    for server in &servers {
-        commands
-            .entity(server)
-            .trigger(|entity| LoadTemplate { entity, is_error: false });
+/// Stops a server's embassy accept loop, shared between the backend future (the
+/// beet side) and the loop's task. A [`Signal`] is executor-agnostic, so the beet
+/// side can raise it and the embassy task wakes on it.
+type StopSignal = Arc<Signal<CriticalSectionRawMutex, ()>>;
+
+/// Raises its [`StopSignal`] when dropped, so the accept loop ends however the
+/// facet does: returning on the shutdown signal, or a despawn dropping the
+/// backend future outright.
+struct StopOnDrop(StopSignal);
+
+impl Drop for StopOnDrop {
+    fn drop(&mut self) {
+        self.0.signal(());
     }
 }
 
-/// beet's server backend hook (see [`set_http_server`]): run on the async layer
-/// with an [`AsyncEntity`], mirroring `start_hyper_server` / `start_mini_http_server`.
+/// beet's server backend hook (see [`HttpServer::set_backend`]): run on the async
+/// layer with an [`AsyncEntity`], mirroring `HttpServer::start_mini`.
 ///
 /// Reads the port off the [`HttpServer`] component, waits for the embassy
 /// [`Stack`]/[`Spawner`] (published by [`start_wifi`](super::start_wifi)) to
-/// exist — the hook can fire before Wi-Fi is up — then spawns the accept loop.
-///
-/// `_shutdown` is the [`StopServer`] teardown receiver beet hands every backend.
-/// The firmware spawns exactly one long-lived scene server and never triggers
-/// `StopServer` on it, so there is no teardown path to wire here; the embassy
-/// accept loop is detached for the life of the process. (Honoring it would mean
-/// racing `server_loop`'s accept against the receiver across the embassy task
-/// boundary — unused weight on this target.)
+/// exist, since the facet can start before Wi-Fi is up, then spawns the accept
+/// loop (plus the mDNS responder when the entity carries an `MDns`).
+/// The future then holds the server open until `shutdown` resolves; ending it
+/// stops the embassy task, closing the listening socket and the responder.
 fn start_esp_server(
     entity: AsyncEntity,
-    _shutdown: OnceValueRx<()>,
-) -> MaybeSendBoxedFuture<'static, Result> {
+    shutdown: OnceValueRx<()>,
+) -> LocalBoxedFuture<'static, Result> {
     Box::pin(async move {
         let id = entity.id();
         let port = entity
@@ -102,15 +99,19 @@ fn start_esp_server(
         // plain `HttpServer` (no mDNS) just yields `None`.
         #[cfg(feature = "mdns")]
         let mdns_hostname: Option<&'static str> = entity
-            .get::<super::mdns::MDns, &'static str>(|m| m.hostname)
+            .get::<super::mdns::MDns, &'static str>(|mdns| mdns.hostname)
             .await
             .ok();
 
-        // The hook may fire before `start_wifi` has published the Stack. Each
+        let stop: StopSignal = Arc::new(Signal::new());
+        let _stop_on_drop = StopOnDrop(stop.clone());
+
+        // The facet may start before `start_wifi` has published the Stack. Each
         // `world().with(..)` round-trips a full sync window, so this naturally
         // polls one frame at a time until the Stack appears, then spawns the
         // accept loop from inside the window (we are on the embassy thread there).
         loop {
+            let stop = stop.clone();
             let started = entity
                 .world()
                 .with(move |world: &mut World| {
@@ -120,13 +121,25 @@ fn start_esp_server(
                         return false;
                     };
                     let spawner = *world.non_send::<Spawner>();
-                    spawn_driver(spawner, server_loop(stack, port, id));
-                    // One mDNS task per server entity that asked for it; it owns
-                    // the multicast socket and serves both responder and resolver.
-                    #[cfg(feature = "mdns")]
-                    if let Some(hostname) = mdns_hostname {
-                        spawn_driver(spawner, super::mdns::mdns_task(stack, hostname));
-                    }
+                    let serve = async move {
+                        // One mDNS task per server entity that asked for it; it
+                        // owns the multicast socket and serves both responder and
+                        // resolver, living exactly as long as the accept loop.
+                        #[cfg(feature = "mdns")]
+                        if let Some(hostname) = mdns_hostname {
+                            embassy_futures::join::join(
+                                server_loop(stack, port, id),
+                                super::mdns::mdns_task(stack, hostname),
+                            )
+                            .await;
+                            return;
+                        }
+                        server_loop(stack, port, id).await
+                    };
+                    spawn_driver(spawner, async move {
+                        select(serve, stop.wait()).await;
+                        info!("HTTP server on :{} stopped", port);
+                    });
                     true
                 })
                 .await;
@@ -134,6 +147,7 @@ fn start_esp_server(
                 break;
             }
         }
+        shutdown.wait().await;
         Ok(())
     })
 }
@@ -204,23 +218,23 @@ async fn server_loop(stack: Stack<'static>, port: u16, entity: Entity) {
 }
 
 /// Drain queued requests from [`SERVER_BRIDGE`] and dispatch each through its
-/// server entity's [`AsyncEntity::exchange`] inside the bridge sync-point.
+/// server entity's dispatch child inside the bridge sync-point.
 ///
-/// One path for every request: whether the entity carries a single
-/// [`exchange_handler`] or a [`router`](beet) bundle, `exchange` runs its
-/// `Action<Request, Response>`. The dispatch spans the async action layer, so a
-/// request may take a few frames — the same `BeetAsyncSyncPoint` machinery the
-/// behavior-tree example drives.
+/// One path for every request: the server parks on its own `RunningSet` action,
+/// so `exchange_child` hands each request down to the first child serving
+/// `Request -> Response`, a bare [`exchange_ext::handler`] or a [`Router`]. The
+/// dispatch spans the async action layer, so a request may take a few frames,
+/// the same `BeetAsyncSyncPoint` machinery the behavior-tree example drives.
 ///
 /// The drain/dispatch/reply boilerplate is the request/reply toolkit's
 /// [`drain_to_async`] (the ECS-responder mirror of `run_worker`); this supplies
-/// only the `worker` — route the `(entity, request)` through `entity.exchange`.
+/// only the `worker`: route the `(entity, request)` through `exchange_child`.
 fn drain_server_requests(commands: AsyncCommands) {
     drain_to_async(
         &SERVER_BRIDGE,
         commands,
         |world: AsyncWorld, (target, request)| async move {
-            world.entity(target).exchange(request).await
+            world.entity(target).exchange_child(request).await
         },
     );
 }

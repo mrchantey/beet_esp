@@ -7,7 +7,7 @@
 
 use crate::prelude::*;
 // Only the `<AlvikScript>` template (gated on a scripting backend) names `String`.
-#[cfg(any(feature = "rhai", feature = "quickjs"))]
+#[cfg(feature = "quickjs")]
 use alloc::string::String;
 use beet::prelude::*;
 
@@ -26,15 +26,16 @@ impl Plugin for AlvikScenePlugin {
             .register_type::<LineFollowStep>()
             .register_type::<RoombaStep>()
             // The `<Alvik>` root element: assembles the robot's hardware bundle and
-            // slots its body (the `<Router>`). The firmware boots `<Alvik><Router>…`
-            // so the robot is the scene root and a loaded `<SetDrive>` leaf resolves its
-            // `DifferentialDrive` to the robot via root-ancestor (no marker needed).
+            // slots its body (the scene server). The firmware boots the server under
+            // the robot, so the robot is the scene root and a loaded `<SetDrive>` leaf
+            // resolves its `DifferentialDrive` to the robot via root-ancestor (no
+            // marker needed).
             .register_template::<Alvik>()
             .add_observer(reset_robot);
         // The script step plus its data: the typed `Script` and the `ScriptState`
         // it threads (registered once in `EspScenePlugin`), and the `<AlvikScript>`
         // authoring template over them.
-        #[cfg(any(feature = "rhai", feature = "quickjs"))]
+        #[cfg(feature = "quickjs")]
         app.register_type::<super::scripting::AlvikScriptStep>()
             .register_type::<Script<
                 super::scripting::AlvikInput,
@@ -71,13 +72,13 @@ fn reset_robot(
 /// The `<Alvik>` root element: the robot's full hardware bundle (the [`AlvikRobot`]
 /// marker, every state + sensor component including the commanded
 /// [`DifferentialDrive`], and the wheel / servo / RGB-LED children), with a
-/// `<Slot/>` hosting its body — the firmware slots the `<Router>` there, so the
-/// boot tree is `<Alvik><Router>…</Router></Alvik>`.
+/// `<Slot/>` hosting its body: the scene server goes there, so the boot tree is
+/// `<Alvik><HttpServer {CallOnReady}><Router>…</Router></HttpServer></Alvik>`.
 ///
 /// Because the robot is the *root* of that tree, a loaded behaviour's
 /// [`AgentQuery`] resolves its agent to this entity by root-ancestor fallback (a
-/// loaded `<RouteAction>` is reparented under the server, whose root ancestor is
-/// the robot). So a `<SetDrive>` leaf writes the robot's `DifferentialDrive` with no
+/// loaded `<RouteAction>` is parented under the server's router, whose root
+/// ancestor is the robot). So a `<SetDrive>` leaf writes the robot's `DifferentialDrive` with no
 /// marker, no `ActionOf` and no resource; a route whose agent lacks a
 /// `DifferentialDrive` errors loudly, the desired feedback.
 ///
@@ -153,26 +154,17 @@ pub fn Alvik() -> impl Bundle {
 // root resolved by `AgentQuery`'s root-ancestor fallback (the loaded route is a
 // descendant of the robot, which is the scene root). No firmware façade, no marker.
 
-/// `<AlvikScript script="..." language="rhai">` — a behaviour-tree leaf running a
+/// `<AlvikScript script="...">` — a behaviour-tree leaf running a
 /// script robot controller each tick (`input.depth_mm`/`input.line_*`/`input.state`
-/// -> `#{ linear, angular, led_left, led_right, state }`). The authoring template
+/// -> `{ linear, angular, led_left, led_right, state }`). The authoring template
 /// over `(AlvikScriptStep, Script<AlvikInput, AlvikOutput>)`.
 ///
-/// `language` selects the backend ([`ScriptLanguage::from_str`]), falling back to
-/// the build default when absent, so the same scene runs under rhai or quickjs.
-#[cfg(any(feature = "rhai", feature = "quickjs"))]
+/// The script is JavaScript, run by the embedded QuickJS engine.
+#[cfg(feature = "quickjs")]
 #[template]
-pub fn AlvikScript(
-    #[prop(into)] script: String,
-    language: Option<String>,
-) -> impl Bundle {
-    let language = language
-        .and_then(|name| name.parse::<ScriptLanguage>().ok())
-        .unwrap_or_default();
+pub fn AlvikScript(script: String) -> impl Bundle {
     (
         super::scripting::AlvikScriptStep,
-        Script::<super::scripting::AlvikInput, super::scripting::AlvikOutput>::new(
-            language, script,
-        ),
+        Script::<super::scripting::AlvikInput, super::scripting::AlvikOutput>::new(script),
     )
 }

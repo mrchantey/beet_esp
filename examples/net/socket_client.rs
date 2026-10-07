@@ -1,10 +1,10 @@
 //! Wi-Fi WebSocket client as a Bevy app, using beet's socket types.
 //!
-//! [`WifiPlugin`] joins the AP named by the `WIFI_SSID`/`WIFI_PASSWORD` env vars
-//! and installs the esp `Socket::connect` transport. On `Startup` a [`Socket`]
-//! connects to `SOCKET_SERVER` (from the local `.env`); on [`SocketReady`] it
-//! sends a text message and logs every message the server echoes back, then
-//! closes cleanly when the echo returns.
+//! [`WifiPlugin`] joins the AP named by the `BEET_WIFI_SSID`/`BEET_WIFI_PASSWORD`
+//! env vars and installs the esp `Socket::connect` transport. On `Startup` a
+//! [`Socket`] connects to `BEET_SOCKET_SERVER` (from the local `.env`); on
+//! [`SocketReady`] it sends a text message and logs every message the server
+//! echoes back, then closes cleanly when the echo returns.
 //!
 //! Start the host echo server first (`beet socket-server`), then:
 //! `cargo run --release --no-default-features --features wifi,action,sockets --example socket_client`
@@ -19,8 +19,9 @@ use beet::prelude::sockets::Message;
 use beet_esp::prelude::*;
 
 /// The `host:port` the device connects to, from the local `.env` (`build.rs`
-/// forwards it as a `cargo:rustc-env`).
-const SOCKET_SERVER: &str = env!("BEET_SOCKET_SERVER");
+/// forwards it as a `cargo:rustc-env`). Optional like every socket target, so
+/// the example builds without it and says what is missing when run.
+const SOCKET_SERVER: Option<&str> = option_env!("BEET_SOCKET_SERVER");
 
 #[beet_esp::main]
 fn main() {
@@ -30,12 +31,16 @@ fn main() {
         .run();
 }
 
-/// Spawn the socket entity, connecting to `SOCKET_SERVER`, with its ready/recv
-/// observers.
+/// Spawn the socket entity, connecting to [`SOCKET_SERVER`], with its
+/// ready/recv observers.
 fn connect_socket(mut commands: Commands) {
-    info!("connecting websocket to `{}`", SOCKET_SERVER);
+    let Some(server) = SOCKET_SERVER else {
+        error!("set BEET_SOCKET_SERVER in .env to the echo server's host:port");
+        return;
+    };
+    info!("connecting websocket to `{}`", server);
     commands.spawn((
-        Socket::insert_on_connect(SOCKET_SERVER),
+        Socket::insert_on_connect(server),
         OnSpawn::observe(on_ready),
         OnSpawn::observe(on_recv),
     ));

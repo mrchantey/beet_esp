@@ -2,11 +2,11 @@
 //!
 //! Embeds a `.bsx` scene at build time (the `BEET_DEFAULT_SCENE` build env, default
 //! `templates/alvik/perceive-act-body.bsx`) and loads it once on boot through the same
-//! [`set_scene`] path a pushed scene uses, so the device is ready the moment it powers
-//! on with no host `beet load`. A later `beet load` replaces it (set_scene despawns the
-//! prior [`BeetSceneRoot`] first) and `beet clear` clears it for good, so the default is
-//! a convenience, not a lock-in: a dead controller or a new host at a different address
-//! is still handled by pushing an updated scene, no reflash.
+//! [`BeetSceneRoot::load`] path a pushed scene uses, so the device is ready the moment
+//! it powers on with no host `beet load`. A later `beet load` replaces it (the load
+//! despawns the prior [`BeetSceneRoot`] first) and `beet clear` clears it for good, so
+//! the default is a convenience, not a lock-in: a dead controller or a new host at a
+//! different address is still handled by pushing an updated scene, no reflash.
 
 use beet::prelude::*;
 
@@ -31,7 +31,7 @@ impl Plugin for DefaultScenePlugin {
 #[derive(Resource)]
 struct DefaultSceneLoaded;
 
-/// Load [`DEFAULT_SCENE`] under the scene server's root once the server's [`RouteTree`]
+/// Load [`DEFAULT_SCENE`] under the scene server's router once its [`RouteTree`]
 /// exists (it has finished booting), marking it [`BeetSceneRoot`] so a pushed scene
 /// cleanly replaces it. Runs each frame until it fires, then inserts
 /// [`DefaultSceneLoaded`] so it never repeats.
@@ -39,24 +39,24 @@ fn load_default_scene(world: &mut World) {
     if world.contains_resource::<DefaultSceneLoaded>() {
         return;
     }
-    // the scene server's root ancestor, once its route tree is built. Until then the
-    // server template is still building, so wait and retry next frame.
-    let root = world.with_state::<(
-        Query<Entity, With<HttpServer>>,
-        Query<&ChildOf>,
-        Query<(), With<RouteTree>>,
-    ), _>(|(servers, ancestors, trees)| {
-        let server = servers.iter().next()?;
-        let root = ancestors.root_ancestor(server);
-        trees.contains(root).then_some(root)
+    // the router a server dispatches through, once its route tree is built. Until
+    // then the server is still booting, so wait and retry next frame.
+    let router = world.with_state::<(
+        Query<(Entity, &ChildOf), (With<Router>, With<RouteTree>)>,
+        Query<(), With<HttpServer>>,
+    ), _>(|(routers, servers)| {
+        routers
+            .iter()
+            .find(|(_, parent)| servers.contains(parent.parent()))
+            .map(|(router, _)| router)
     });
-    let Some(root) = root else {
+    let Some(router) = router else {
         return;
     };
     // same path a `beet load` takes: despawn any prior scene, spawn this one under the
-    // server root, rebuild the route tree. Reparenting under the root also lets the body
-    // resolve the robot by root-ancestor fallback, exactly like a pushed scene.
-    match set_scene(world, &MediaBytes::new_bsx(DEFAULT_SCENE), Some(root)) {
+    // router, rebuild the route tree. The router's root ancestor is the robot, so the
+    // body resolves it by root-ancestor fallback, exactly like a pushed scene.
+    match BeetSceneRoot::load(world, &MediaBytes::new_bsx(DEFAULT_SCENE), Some(router)) {
         Ok(roots) => info!("loaded default scene: {} root(s)", roots.len()),
         Err(err) => error!("failed to load default scene: {err}"),
     }

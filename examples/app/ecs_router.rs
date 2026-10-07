@@ -1,9 +1,9 @@
 //! beet_router on the ESP32: route incoming HTTP requests to per-path actions.
 //!
 //! [`RouterPlugin`] builds a [`RouteTree`] from the spawned route hierarchy;
-//! spawning an [`HttpServer`] with [`default_router()`] and the routes as
-//! `children![..]` starts the accept loop and dispatches each [`Request`] to the
-//! matching action. Once it logs its IP, hit it from the same LAN:
+//! spawning an [`HttpServer`] booted by [`CallOnReady::on_spawn`], with a
+//! [`Router::with_defaults`] child over the routes, starts the accept loop and
+//! dispatches each [`Request`] to the matching action. Once it logs its IP, hit it from the same LAN:
 //!
 //! ```sh
 //! curl http://<device-ip>:8080/            # Home
@@ -35,14 +35,16 @@ fn main() {
         .init_resource::<Visits>()
         .spawn((
             HttpServer::new(8080),
-            BootOnLoad,
-            default_router(),
-            children![
-                exchange_route("", Home),
-                exchange_route("about", About),
-                exchange_route("hello/:name", Greet),
-                exchange_route("count", Visit),
-            ],
+            CallOnReady::on_spawn(),
+            children![(
+                Router::with_defaults(),
+                children![
+                    route::exchange("", Home),
+                    route::exchange("about", About),
+                    route::exchange("hello/:name", Greet),
+                    route::exchange("count", Visit),
+                ],
+            )],
         ))
         .run();
 }
@@ -52,7 +54,7 @@ fn main() {
 struct Visits(u32);
 
 /// `GET /` — the landing page, listing the available routes.
-#[action(handler_only)]
+#[action]
 #[derive(Default, Clone, Component)]
 async fn Home(_cx: ActionContext<RequestParts>) -> Response {
     info!("route: /");
@@ -62,7 +64,7 @@ async fn Home(_cx: ActionContext<RequestParts>) -> Response {
 }
 
 /// `GET /about` — a static text route.
-#[action(handler_only)]
+#[action]
 #[derive(Default, Clone, Component)]
 async fn About(_cx: ActionContext<RequestParts>) -> Response {
     info!("route: /about");
@@ -70,7 +72,7 @@ async fn About(_cx: ActionContext<RequestParts>) -> Response {
 }
 
 /// `GET /hello/:name` — reads the dynamic `:name` path segment.
-#[action(handler_only)]
+#[action]
 #[derive(Default, Clone, Component)]
 async fn Greet(cx: ActionContext<RequestParts>) -> Response {
     let name = cx.input.get_param("name").unwrap_or("world");
@@ -79,7 +81,7 @@ async fn Greet(cx: ActionContext<RequestParts>) -> Response {
 }
 
 /// `GET /count` — mutates ECS state, proving routes are full Bevy systems.
-#[action(handler_only)]
+#[action]
 #[derive(Default, Clone, Component)]
 fn Visit(_cx: In<ActionContext<RequestParts>>, mut visits: ResMut<Visits>) -> Response {
     visits.0 += 1;

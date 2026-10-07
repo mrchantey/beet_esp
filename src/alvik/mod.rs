@@ -71,7 +71,7 @@ pub mod types;
 pub mod ucpack;
 // The UART driver, the per-frame transport systems, the pin map and the bring-up
 // plugin all touch esp-hal/embassy — device-only. The scene-carried
-// markers/components/actions above compile on the host for the `scenes/` generator.
+// markers/components/actions above compile on the host.
 #[cfg(feature = "device")]
 pub mod driver;
 #[cfg(feature = "device")]
@@ -91,7 +91,7 @@ pub mod routes;
 pub mod scenes;
 // Control scripts wire into the scene routes, so they also need `router`; the
 // step runs a beet `Script`, so it needs a scripting backend.
-#[cfg(all(feature = "router", any(feature = "rhai", feature = "quickjs")))]
+#[cfg(all(feature = "router", feature = "quickjs"))]
 pub mod scripting;
 
 pub mod prelude {
@@ -116,6 +116,6 @@ pub mod prelude {
     pub use super::routes::*;
     #[cfg(feature = "router")]
     pub use super::scenes::*;
-    #[cfg(all(feature = "router", any(feature = "rhai", feature = "quickjs")))]
+    #[cfg(all(feature = "router", feature = "quickjs"))]
     pub use super::scripting::*;
 }

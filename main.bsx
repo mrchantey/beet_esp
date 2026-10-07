@@ -16,7 +16,7 @@ Two kinds of verb:
         beet reset                                    # return the hardware to rest
 
   - firmware lifecycle (build/flash/monitor): run the reusable `<Command>`
-    workflows in `templates/infra/` as `{BehaviorSequence}` routes. `flash` is
+    workflows in `templates/infra/` as `{ExchangeSequence}` routes. `flash` is
     followed by `monitor`, so a flash drops straight into the RTT log stream.
 
         beet build      # compile the Alvik firmware
@@ -29,23 +29,25 @@ Two kinds of verb:
 
         beet socket-server   # run the host echo server (Ctrl-C to stop)
 -->
-<Router {(CliServer, BootOnLoad)}>
+<CliServer {CallOnReady}>
+<Router {HelpHandler}>
 	<SceneLoad/>
 	<SceneRun/>
 	<SceneDump/>
 	<SceneClear/>
 	<SceneReset/>
-	<Route path="build" {BehaviorSequence}>
+	<Route path="build" {ExchangeSequence}>
 		<Template src="templates/infra/build.bsx"/>
 	</Route>
-	<Route path="flash" {BehaviorSequence}>
+	<Route path="flash" {ExchangeSequence}>
 		<Template src="templates/infra/flash.bsx"/>
 		<Template src="templates/infra/monitor.bsx"/>
 	</Route>
-	<Route path="monitor" {BehaviorSequence}>
+	<Route path="monitor" {ExchangeSequence}>
 		<Template src="templates/infra/monitor.bsx"/>
 	</Route>
-	<Route path="socket-server" {BehaviorSequence}>
+	<Route path="socket-server" {ExchangeSequence}>
 		<Template src="templates/infra/socket-server.bsx"/>
 	</Route>
 </Router>
+</CliServer>

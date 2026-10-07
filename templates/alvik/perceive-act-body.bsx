@@ -33,7 +33,7 @@
      BEET_SOCKET_SERVER build env. -->
 <AgentSocket url="ws://192.168.86.221:8338">
 	<!-- a plain-ws body needs only these; no `secure` feature -->
-	<CrateCheck features="beet_esp/alvik,beet_esp/sockets"/>
+	<RequireCfg cfg="feature:beet_esp/alvik && feature:beet_esp/sockets"/>
 	<Route path="whoami" {WhoAmi}/>
 	<Route path="drive" {DriveForDurationAction}/>
 </AgentSocket>

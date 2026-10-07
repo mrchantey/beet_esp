@@ -4,18 +4,18 @@
      with `beet run script`. -->
 <RouteAction path="script">
 	<Repeat><Sequence>
-		<AlvikScript language="rhai" script='
-			let t = if "t" in input.state { input.state.t } else { 0 };
-			let near = input.depth_mm > 0 && input.depth_mm < 200;
-			let bright = if t % 6 < 3 { 255 } else { 20 };
-			#{
-				linear: if near { -40.0 } else { 50.0 },
-				angular: if near { 90.0 } else { 0.0 },
+		<AlvikScript script='{
+			const t = "t" in input.state ? input.state.t : 0;
+			const near = input.depth_mm > 0 && input.depth_mm < 200;
+			const bright = t % 6 < 3 ? 255 : 20;
+			return {
+				linear: near ? -40.0 : 50.0,
+				angular: near ? 90.0 : 0.0,
 				led_left: bright * 256,
 				led_right: bright,
-				state: #{ t: t + 1 },
-			}
-		'/>
+				state: { t: t + 1 },
+			};
+		}'/>
 		<EndInDuration duration="100ms"/>
 	</Sequence></Repeat>
 </RouteAction>

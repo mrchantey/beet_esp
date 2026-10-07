@@ -18,7 +18,7 @@
 //! ```sh
 //! curl http://192.168.86.222:8337/                 # this help + current routes
 //! curl http://192.168.86.222:8337/dump             # current scene as JSON
-//! curl --data-binary @scenes/led-script.bsx \
+//! curl --data-binary @templates/esp32/led-script.bsx \
 //!      -H 'content-type: application/x-bsx' \
 //!      http://192.168.86.222:8337/load             # load a scene
 //! curl http://192.168.86.222:8337/clear            # despawn scene + reset
@@ -29,9 +29,10 @@
 //! [`beet_esp::scene`]'s authoring widgets) or a reflection-serialized JSON scene;
 //! the [`TemplateLoader`] dispatches on the `content-type`.
 //!
-//! Or drive it from the host with the `beet` CLI: `beet load scenes/led-script.bsx`
-//! (with `BEET_REMOTE_URL` set to the device). The canonical example scenes are
-//! the hand-authored `.bsx` files in `scenes/`, pushed to the device as needed.
+//! Or drive it from the host with the `beet` CLI:
+//! `beet load templates/esp32/led-script.bsx` (with `BEET_REMOTE_URL` set to the
+//! device). The canonical example scenes are the hand-authored `.bsx` files in
+//! `templates/`, pushed to the device as needed.
 //!
 //! Run with (bare ESP32, the default): `cargo run --release`
 //!
@@ -92,34 +93,33 @@ fn setup_builtin_led(mut commands: Commands) {
     commands.spawn((LedColor::default(), Ws2812Led));
 }
 
-// The bootstrap server: only the meta-routes. The real routes arrive via
-// `/load`. `BeetSceneRoot`s get reparented under the server's root ancestor and
-// picked up by the router. The router's default not-found middleware serves a
-// route listing at `/`.
+// The bootstrap server: only the meta-routes, mounted on a `Router` that is the
+// server's dispatch child. The real routes arrive via `/load`, which parents a
+// pushed scene's roots under that router so it serves them. The router's default
+// not-found middleware serves a route listing at `/`.
 //
-// `BootOnLoad` is the upstream boot verb: on the server's `LoadTemplate` it boots
-// the transport (the accept loop). `WifiPlugin`'s `boot_added_servers` fires that
-// `LoadTemplate` for a freshly-spawned server (bare metal has no app template-load
-// pipeline to fire it), so spawning this bundle is enough to serve — it finds the
-// `HttpServer` by `Added<HttpServer>` wherever it sits in the tree.
+// `CallOnReady::on_spawn()` is the code boot: it calls the server's `RunningSet`,
+// starting its HTTP facet (the esp accept loop) and parking for the life of the
+// process, exactly as a loaded `<HttpServer {CallOnReady}>` document would.
 //
 // Under `alvik` the server is *nested under the robot*: the boot tree is the
 // `AlvikRobot` root (carrying `DifferentialDrive` + every sensor/state component,
 // with the wheel/servo/LED hardware as children) and the scene server as one more
 // child. So a loaded behaviour's `AgentQuery` resolves its agent to the robot by
-// root-ancestor fallback (the loaded `<RouteAction>` is reparented under the
-// server, whose root ancestor is the robot) — no `{Alvik}` marker needed. The
-// `RouteTree` is built on that same root ancestor, so the nested router's dispatch
-// (which walks ancestors for the tree) still resolves every route.
+// root-ancestor fallback (the loaded `<RouteAction>` lands under the router, whose
+// root ancestor is the robot), no `{Alvik}` marker needed.
 //
-// Spawned imperatively rather than through the `<Alvik>` template: a Rust `rsx!`
-// wraps every child of a capitalized tag in a `SlotChild`, but `Router` is a plain
-// component with no `<Slot>`, so `rsx!{ <Router><SceneServer/></Router> }` would
-// leave unconsumed slot content and fail the build at boot. The declarative
-// `<Alvik>` element (in `alvik::scenes`) stays available for a `.bsx` scene, where
-// the parser routes a component's children as real children.
-//
-// The bare (non-alvik) build has no robot, so the server stays a plain root.
+// Spawned imperatively rather than through the `<Alvik>` template, which stays
+// available for a `.bsx` scene. The bare (non-alvik) build has no robot, so the
+// server stays a plain root.
+fn scene_server() -> impl Bundle {
+    (
+        HttpServer::new(DEFAULT_HTTP_PORT),
+        CallOnReady::on_spawn(),
+        children![(Router::with_defaults(), SceneServer::routes())],
+    )
+}
+
 #[cfg(feature = "alvik")]
 fn setup(mut commands: Commands) {
     commands.spawn((
@@ -171,32 +171,12 @@ fn setup(mut commands: Commands) {
             (AlvikLed { side: Side::Left }, LedColor::default()),
             (AlvikLed { side: Side::Right }, LedColor::default()),
             // --- the scene server: a child of the robot root ---
-            (
-                HttpServer::new(DEFAULT_HTTP_PORT),
-                BootOnLoad,
-                default_router(),
-                children![
-                    exchange_route("load", LoadScene),
-                    exchange_route("clear", ClearScene),
-                    exchange_route("reset", Reset),
-                    exchange_route("dump", DumpScene),
-                ],
-            ),
+            scene_server(),
         ],
     ));
 }
 
 #[cfg(not(feature = "alvik"))]
 fn setup(mut commands: Commands) {
-    commands.spawn((
-        HttpServer::new(DEFAULT_HTTP_PORT),
-        BootOnLoad,
-        default_router(),
-        children![
-            exchange_route("load", LoadScene),
-            exchange_route("clear", ClearScene),
-            exchange_route("reset", Reset),
-            exchange_route("dump", DumpScene),
-        ],
-    ));
+    commands.spawn(scene_server());
 }

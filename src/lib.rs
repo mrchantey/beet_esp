@@ -61,9 +61,9 @@ pub mod esp32_plugin;
 // ESP32 runtime plumbing: heap/PSRAM, health, the async bridge, the SNTP clock.
 #[cfg(feature = "device")]
 pub mod esp32_utils;
-// Scene-carried control scripting (rhai + quickjs backends).
+// Scene-carried control scripting (the QuickJS backend).
 pub mod scripting;
-// Cross-cutting utilities: typed quantities, the WS2812 LED, the RNG backend.
+// Cross-cutting utilities: the WS2812 LED and the RNG backend.
 pub mod utils;
 // ESP-specific scene wiring on top of the upstream scene server (which loads the
 // device's real routes over the wire). Needs beet's no_std router, so gated on
@@ -95,6 +95,8 @@ pub mod prelude {
 	// Empty unless the scripting layer is enabled; gate to avoid an unused glob.
 	#[cfg(feature = "scripting")]
 	pub use crate::scripting::prelude::*;
+	// Empty unless the LED is enabled; gate to avoid an unused glob.
+	#[cfg(feature = "led")]
 	pub use crate::utils::prelude::*;
 	#[cfg(feature = "wifi")]
 	pub use crate::net::*;

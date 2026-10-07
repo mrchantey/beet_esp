@@ -1,7 +1,7 @@
 //! beet's `Socket::connect(url).await` WebSocket client transport, over Wi-Fi.
 //!
 //! The socket analogue of [`http_client`](super::http_client): registered with
-//! beet via [`set_socket_client`] (by [`start_wifi`](super::start_wifi)), so
+//! beet via [`Socket::set_client`] (by [`start_wifi`](super::start_wifi)), so
 //! [`Socket::connect`] anywhere routes through [`esp_connect`].
 //!
 //! One call is one connection, matching the tungstenite transport's semantics:
@@ -63,6 +63,9 @@ struct ConnectJob {
 	/// TCP port to connect to.
 	port: u16,
 	/// Whether to wrap the transport in the pinned-cert TLS session (`wss://`).
+	/// Only a `secure` build carries it: without one a `wss://` url is refused
+	/// before it is queued.
+	#[cfg(feature = "secure")]
 	secure: bool,
 	inbound: InboundSender,
 	outbound: Arc<OutboundChannel>,
@@ -73,7 +76,7 @@ struct ConnectJob {
 static CONNECT_BRIDGE: AsyncBridge<ConnectJob, Result<()>, 2> =
 	AsyncBridge::new();
 
-/// beet's socket transport hook (see [`set_socket_client`]): parse the target,
+/// beet's socket transport hook (see [`Socket::set_client`]): parse the target,
 /// create the connection channels, queue the job for [`socket_driver`], and
 /// await the dial + handshake before returning the [`Socket`] — a failed
 /// connect is this call's `Err`, and the redial policy lives with the caller
@@ -102,12 +105,13 @@ pub(crate) fn esp_connect(
 			false => 80,
 		});
 		let (inbound_send, inbound_recv) =
-			writer_channel::unbounded::<Result<Message>>();
+			writer_channel::Sender::<Result<Message>>::unbounded();
 		let outbound = Arc::new(OutboundChannel::new());
 		let job = ConnectJob {
 			authority,
 			host,
 			port,
+			#[cfg(feature = "secure")]
 			secure,
 			inbound: inbound_send,
 			outbound: outbound.clone(),
@@ -159,7 +163,7 @@ fn resolve_url(url: Url) -> Result<Url> {
 			.xmap(|target| match target.contains("://") {
 				true => Url::parse(target),
 				false => Url::parse(format!("ws://{target}")),
-			}),
+			})?,
 	};
 	if url.scheme().is_secure() && !cfg!(feature = "secure") {
 		bevybail!(

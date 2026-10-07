@@ -1,11 +1,11 @@
 //! Wi-Fi HTTP server, as a Bevy app, using beet's networking types.
 //!
 //! Mirrors beet's `examples/net/http_server.rs` on the ESP32: spawn beet's
-//! standard [`HttpServer`] component alongside an [`exchange_handler`]-style
-//! action, and every request is dispatched through it. [`WifiPlugin`] brings the
-//! station up and installs the ESP32 server backend; spawning `(HttpServer,
-//! BootOnLoad, Handler)` boots the accept loop (`BootOnLoad` is the upstream boot
-//! verb the firmware's `boot_added_servers` fires on a fresh server).
+//! standard [`HttpServer`] component with a single handler action as its
+//! dispatch child, and every request is dispatched through it. [`WifiPlugin`]
+//! brings the station up and installs the ESP32 server backend; spawning
+//! `(HttpServer, CallOnReady::on_spawn(), children![Handler])` boots the accept
+//! loop, exactly as a loaded `<HttpServer {CallOnReady}>` document would.
 //!
 //! Each request runs [`Handler`] on the ECS — a full Bevy system with access to
 //! resources — and returns a beet [`Response`]. Hit it from the same LAN once it
@@ -33,7 +33,11 @@ fn main() {
     App::new()
         .add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::from_env()))
         .init_resource::<Visits>()
-        .spawn((HttpServer::new(8080), BootOnLoad, Handler))
+        .spawn((
+            HttpServer::new(8080),
+            CallOnReady::on_spawn(),
+            children![Handler],
+        ))
         .run();
 }
 
@@ -41,9 +45,9 @@ fn main() {
 #[derive(Resource, Default)]
 struct Visits(u32);
 
-/// The sole request handler: a beet `Action<Request, Response>` on the server
-/// entity.
-#[action(handler_only)]
+/// The sole request handler: a beet `Action<Request, Response>`, the server's
+/// dispatch child.
+#[action]
 #[derive(Default, Clone, Component)]
 fn Handler(cx: In<ActionContext<Request>>, mut visits: ResMut<Visits>) -> Response {
     visits.0 += 1;

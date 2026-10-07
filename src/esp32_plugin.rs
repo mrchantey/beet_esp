@@ -77,15 +77,15 @@ impl Plugin for Esp32Plugin {
             // `install_bevy_clock` above). Gives systems a `Res<Time>` instead of
             // a hand-rolled `Instant` compare.
             .add_plugins(beet::exports::bevy::time::TimePlugin)
-            // the crate-check machinery + this firmware's compiled surface, so a
-            // pushed scene's `<CrateCheck features="beet_esp/alvik"/>` verifies
-            // against this build and fails loudly with the missing list.
+            // the cfg-requirement machinery + this firmware's compiled surface, so
+            // a pushed scene's `<RequireCfg cfg="feature:beet_esp/alvik"/>`
+            // verifies against this build and fails loudly with the missing list.
             .add_plugins(CrateCheckPlugin)
             .set_runner(esp_runner);
         app.world_mut().spawn(crate_registration!({
             features: [
                 "action", "alvik", "ble", "clock", "coex", "device", "led",
-                "mdns", "quickjs", "random", "rhai", "router", "scripting",
+                "mdns", "quickjs", "random", "router", "scripting",
                 "secure", "sockets", "wifi",
             ]
         }));

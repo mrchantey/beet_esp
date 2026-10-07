@@ -13,7 +13,7 @@
 <AgentSocket url="wss://192.168.86.221:8338">
 	<!-- the firmware must be built with these features; a leaner build fails
 	     loudly with the missing list instead of unresolved tags -->
-	<CrateCheck features="beet_esp/alvik,beet_esp/sockets,beet_esp/secure"/>
+	<RequireCfg cfg="feature:beet_esp/alvik && feature:beet_esp/sockets && feature:beet_esp/secure"/>
 	<Route path="whoami" {WhoAmi}/>
 	<Route path="drive" {DriveForDurationAction}/>
 </AgentSocket>

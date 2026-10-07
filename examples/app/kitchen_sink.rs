@@ -36,7 +36,11 @@ fn main() {
     app.add_plugins((Esp32Plugin, HealthPlugin, LedPlugin, WifiPlugin::from_env()));
     app.init_resource::<AppTypeRegistry>();
     app.register_type::<HelloWorld>();
-    app.spawn((HttpServer::new(8080), BootOnLoad, Handler));
+    app.spawn((
+        HttpServer::new(8080),
+        CallOnReady::on_spawn(),
+        children![Handler],
+    ));
     app.add_systems(
         Startup,
         (setup_led, ping, dump_canonical, load_scene, greet).chain(),
@@ -64,7 +68,7 @@ fn ping(world: &mut World) {
 }
 
 /// The server's request handler.
-#[action(handler_only)]
+#[action]
 #[derive(Default, Clone, Component)]
 fn Handler(cx: In<ActionContext<Request>>) -> Response {
     info!("server request on `{}`", cx.input.path_string().as_str());

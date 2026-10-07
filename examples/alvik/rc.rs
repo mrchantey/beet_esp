@@ -53,19 +53,21 @@ fn main() {
         ))
         .spawn((
             HttpServer::new(8080),
-            BootOnLoad,
-            default_router(),
-            children![
-                exchange_route("", Home),
-                exchange_route("drive/:dir", Drive),
-                exchange_route("led/:side/:state", Led),
-            ],
+            CallOnReady::on_spawn(),
+            children![(
+                Router::with_defaults(),
+                children![
+                    route::exchange("", Home),
+                    route::exchange("drive/:dir", Drive),
+                    route::exchange("led/:side/:state", Led),
+                ],
+            )],
         ))
         .run();
 }
 
 /// `GET /` — list the control routes.
-#[action(handler_only)]
+#[action]
 #[derive(Default, Clone, Component)]
 async fn Home(_cx: ActionContext<RequestParts>) -> Response {
     Response::ok_text(
@@ -76,7 +78,7 @@ async fn Home(_cx: ActionContext<RequestParts>) -> Response {
 /// `GET /drive/:dir` — set a continuous drive velocity from the direction
 /// segment. The velocity holds until changed, so `forward` keeps the robot
 /// moving until `stop`.
-#[action(handler_only)]
+#[action]
 #[derive(Default, Clone, Component)]
 fn Drive(
     cx: In<ActionContext<RequestParts>>,
@@ -97,7 +99,7 @@ fn Drive(
 }
 
 /// `GET /led/:side/:state` — set one UI LED to white (on) or black (off).
-#[action(handler_only)]
+#[action]
 #[derive(Default, Clone, Component)]
 fn Led(
     cx: In<ActionContext<RequestParts>>,

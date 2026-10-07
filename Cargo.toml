@@ -42,14 +42,16 @@ test              = false
 
 [features]
 # The default `cargo run` target: the scene-server firmware on a bare ESP32
-# breakout (on-board WS2812 driven by a rhai `Script`). `router` pulls in `wifi`;
+# breakout (on-board WS2812 driven by a JavaScript `Script`). `router` pulls in `wifi`;
 # `device` pulls in the esp-hal hardware stack so the firmware actually flashes.
-default = ["device", "led", "router", "wifi", "rhai"]
+default = ["device", "led", "router", "wifi", "quickjs"]
 # The ESP32 hardware stack: esp-hal + esp-rtos + the embassy runtime, plus the
-# bootloader/panic/RTT plumbing the `#[beet_esp::main]` entry needs. On without
-# this the crate compiles for the host (the scene-definition types only), which
-# the `scenes/` generator relies on. Always on for any firmware build; the
-# `wifi`/`ble`/`alvik` hardware features imply it.
+# bootloader/panic/RTT plumbing the `#[beet_esp::main]` entry needs. Without it
+# the crate compiles for the host, the scene-definition types only. Check that
+# with std built in, since `.cargo/config.toml` builds only `core`/`alloc`:
+# `cargo check --target x86_64-unknown-linux-gnu -Zbuild-std=std,panic_abort
+# --no-default-features --features led,alvik,router`. Always on for any firmware
+# build; the `wifi`/`ble`/`quickjs` hardware features imply it.
 device = [
   "dep:esp-hal",
   "dep:esp-rtos",
@@ -73,8 +75,9 @@ led = []
 # Arduino Alvik robot driven over UART1 (the `alvik` module). The scene-carried
 # markers/components/actions compile on the host; the UART driver + transport
 # systems compile only under `device`. Turns on `led` for the universal
-# `LedColor` component the Alvik RGB UI LEDs reuse.
-alvik = ["led"]
+# `LedColor` component the Alvik RGB UI LEDs reuse, and `action` for beet's
+# `DifferentialDrive`, the commanded motion the driver maps onto the wheels.
+alvik = ["led", "action"]
 # Wi-Fi station + embassy-net TCP/HTTP stack (the `wifi` module). Hardware, so
 # implies `device`.
 wifi = [
@@ -103,10 +106,9 @@ random = ["device", "dep:getrandom", "beet/rand"]
 action = ["beet/action"]
 # beet_router on this no_std target: the route types/actions and their reflect
 # registrations. Pulls beet's no_std router (`router_embedded`) plus the `action`
-# async layer it dispatches on. Deliberately does NOT pull `wifi` — the route
-# *types* are host-compilable (so the `scenes/` generator can register and
-# serialize them), while *serving* them needs the `wifi` HTTP server, which the
-# firmware enables on top. See `examples/ecs_router.rs`.
+# async layer it dispatches on. Deliberately does NOT pull `wifi`: the route
+# *types* are host-compilable, while *serving* them needs the `wifi` HTTP server,
+# which the firmware enables on top. See `examples/ecs_router.rs`.
 router = ["action", "beet/router_embedded"]
 mdns = ["wifi", "action", "embassy-net/multicast", "beet/mdns"]
 # beet's no_std WebSocket socket core + this crate's esp `Socket::connect`
@@ -116,21 +118,17 @@ mdns = ["wifi", "action", "embassy-net/multicast", "beet/mdns"]
 # for the perceive-act body wire types (`src/extra`), whose JSON exchange must stay
 # byte-compatible with the agent.
 sockets = ["wifi", "action", "beet/sockets", "dep:futures-core", "dep:serde"]
-# Engine-agnostic scripting layer; mirrors beet's `scripting`. Pulls `serde` for
-# the typed script input/output structs (marshalled through beet's `Value`); a
-# backend (`rhai` or `quickjs`) builds on it to actually run a `Script`.
-scripting = ["action", "dep:serde"]
-# The rhai engine on no_std, reached through `beet::exports::rhai`. Pulls the
-# agnostic `scripting` layer (the backend builds on it, not the reverse).
-# `beet/rhai` turns on the re-export (beet's serde `Script` runtime stays off
-# without std); `dep:rhai` selects rhai's `no_std` mode for this target.
-rhai = ["scripting", "beet/rhai", "dep:rhai"]
-# The QuickJS engine on no_std, reached through `beet::exports::rquickjs`. Like
-# `rhai`, builds on the agnostic `scripting` layer. `beet/quickjs` turns on the
-# re-export (beet's serde `Script` runtime stays std-only); `dep:rquickjs` with
-# `rust-alloc` (and no `std`) selects the bare-metal allocator mode, routing the
-# C engine's allocations through esp-alloc's global allocator.
-quickjs = ["scripting", "beet/quickjs", "dep:rquickjs"]
+# Engine-agnostic scripting layer over beet's no_std `scripting`. Pulls `serde`
+# for the typed script input/output structs (marshalled through beet's `Value`);
+# `quickjs` builds on it to actually run a `Script`.
+scripting = ["action", "beet/scripting", "dep:serde"]
+# The QuickJS engine on no_std, reached through `beet::exports::rquickjs`, built
+# on the agnostic `scripting` layer. `beet/quickjs` runs a `Script` on it;
+# `dep:rquickjs` with `rust-alloc` (and no `std`) selects the bare-metal
+# allocator mode, routing the C engine's allocations through esp-alloc's global
+# allocator. Hardware, so implies `device`: the engine's glue (the newlib shim,
+# the clock and console hooks) is bare-metal only.
+quickjs = ["device", "scripting", "beet/quickjs", "dep:rquickjs"]
 # Wi-Fi + BLE coexistence — both radios at once. Enable for builds that need BLE
 # alongside Wi-Fi; the default scene-server bin uses Wi-Fi only.
 coex = ["wifi", "ble", "esp-radio/coex"]
@@ -267,33 +265,24 @@ name             = "alvik-rc"
 path             = "examples/alvik/rc.rs"
 required-features = ["device", "alvik", "router", "wifi"]
 
-# Engine-agnostic smoke test: builds against whichever backend is enabled
-# (quickjs or rhai), selected by cfg the same way `ScriptLanguage::default()` picks.
+# The QuickJS smoke test: does the engine build and run on device.
 [[example]]
 name             = "scripting"
 path             = "examples/scripting/scripting.rs"
-required-features = ["device", "scripting"]
+required-features = ["device", "quickjs"]
 
 [[example]]
 name             = "scripting_watchdog"
 path             = "examples/scripting/scripting_watchdog.rs"
 required-features = ["device", "quickjs"]
 
-# Engine-agnostic: builds against whichever backend is enabled (quickjs or rhai),
-# selected by cfg the same way `ScriptLanguage::default()` picks.
+# The QuickJS heap and per-eval cost on device.
 [[example]]
 name             = "scripting_bench"
 path             = "examples/scripting/scripting_bench.rs"
-required-features = ["device", "scripting"]
+required-features = ["device", "quickjs"]
 
 [dependencies]
-# rhai's no_std build. The engine itself is reached through `beet::exports::rhai`
-# (re-exported by `beet_action`); this edge exists only to select rhai's `no_std`
-# mode for the xtensa target, which beet's std-oriented workspace cannot. Pulled
-# in by the `scripting` feature, unified with the rhai `beet_action` re-exports.
-rhai = { version = "1", default-features = false, features = [
-  "no_std",
-], optional = true }
 # rquickjs's bare-metal build, reached through `beet::exports::rquickjs`. This
 # edge selects the no_std allocator mode (`rust-alloc`, no `std`) for the xtensa
 # target, unified with the `beet_action` re-export. The bundled C engine is

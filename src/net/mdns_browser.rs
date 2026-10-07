@@ -65,6 +65,10 @@
 use crate::esp32_utils::async_bridge::Queue;
 use crate::esp32_utils::async_bridge::drain_to_observers;
 use crate::esp32_utils::async_bridge::spawn_driver;
+use beet::prelude::wire::MDNS_ENDPOINT;
+use beet::prelude::wire::MDNS_MULTICAST_V4;
+use beet::prelude::wire::MDNS_PORT;
+use beet::prelude::wire::build_ptr_query;
 use beet::prelude::*;
 use core::net::Ipv4Addr;
 use core::net::SocketAddr;

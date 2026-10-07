@@ -4,12 +4,12 @@
      `beet run led-script`. -->
 <RouteAction path="led-script">
 	<Repeat><Sequence>
-		<LedScript language="rhai" script='
-			let count = if "count" in input.state { input.state.count } else { 0 };
-			let phase = (input.elapsed_ms / 500) % 3;
-			let led = if phase == 0 { 0xff0000 } else if phase == 1 { 0x00ff00 } else { 0x0000ff };
-			#{ led: led, state: #{ count: count + 1 } }
-		'/>
+		<LedScript script='{
+			const count = "count" in input.state ? input.state.count : 0;
+			const phase = Math.floor(input.elapsed_ms / 500) % 3;
+			const led = phase == 0 ? 0xff0000 : phase == 1 ? 0x00ff00 : 0x0000ff;
+			return { led, state: { count: count + 1 } };
+		}'/>
 		<EndInDuration duration="100ms"/>
 	</Sequence></Repeat>
 </RouteAction>

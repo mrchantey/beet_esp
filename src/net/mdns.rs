@@ -41,6 +41,8 @@
 //! record (see the module note below for the rationale). IPv4 multicast only.
 
 use crate::esp32_utils::async_bridge::AsyncBridge;
+use beet::prelude::wire::MDNS_MULTICAST_V4;
+use beet::prelude::wire::MDNS_PORT;
 use beet::prelude::*;
 use embassy_net::IpAddress;
 use embassy_net::IpEndpoint;
@@ -51,10 +53,6 @@ use embassy_net::udp::UdpSocket;
 use embassy_time::Duration;
 use embassy_time::with_timeout;
 
-/// The IPv4 mDNS multicast group, `224.0.0.251`.
-const MDNS_GROUP: Ipv4Address = Ipv4Address::new(224, 0, 0, 251);
-/// The mDNS UDP port, `5353`.
-const MDNS_PORT: u16 = 5353;
 /// `.local` suffix every mDNS name carries.
 const LOCAL_SUFFIX: &str = ".local";
 /// How long the resolver waits for an `A` answer before giving up.
@@ -113,7 +111,7 @@ pub(crate) async fn resolve(host: &str) -> Option<Ipv4Address> {
 pub(crate) async fn mdns_task(stack: Stack<'static>, hostname: &'static str) {
     stack.wait_config_up().await;
 
-    if let Err(e) = stack.join_multicast_group(IpAddress::Ipv4(MDNS_GROUP)) {
+    if let Err(e) = stack.join_multicast_group(IpAddress::Ipv4(MDNS_MULTICAST_V4)) {
         warn!("mDNS: join_multicast_group failed: {:?}", e);
         return;
     }
@@ -144,7 +142,7 @@ pub(crate) async fn mdns_task(stack: Stack<'static>, hostname: &'static str) {
         ip.map(|a| a.octets())
     );
 
-    let group = IpEndpoint::new(IpAddress::Ipv4(MDNS_GROUP), MDNS_PORT);
+    let group = IpEndpoint::new(IpAddress::Ipv4(MDNS_MULTICAST_V4), MDNS_PORT);
     let mut recv = [0u8; 1536];
 
     loop {

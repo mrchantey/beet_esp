@@ -33,11 +33,16 @@ CFLAGS_xtensa_esp32s3_none_elf = "-mlongcalls -D__STDC_NO_ATOMICS__ -fno-stack-p
 # at the xtensa target + the espup GCC sysroot so it finds newlib's headers. The
 # version-pinned path mirrors export-esp.sh; bump both together on a toolchain
 # upgrade. Only consumed when a crate runs bindgen for this target.
-BINDGEN_EXTRA_CLANG_ARGS_xtensa_esp32s3_none_elf = "--target=xtensa-esp-elf --sysroot=/home/pete/.rustup/toolchains/esp/xtensa-esp-elf/esp-15.2.0_20250920/xtensa-esp-elf/xtensa-esp-elf"
+BINDGEN_EXTRA_CLANG_ARGS_xtensa_esp32s3_none_elf = "--target=xtensa-esp-elf --sysroot=/home/pete/.rustup/toolchains/esp/xtensa-esp-elf/esp-16.2.0_20260914/xtensa-esp-elf/xtensa-esp-elf"
 
 [build]
 rustflags = [
   "-C", "link-arg=-nostartfiles",
+  # The esp-hal memory layout maps IRAM as one writable + executable region by
+  # design, which binutils ld flags as an RWX LOAD segment on every link (and
+  # rustc surfaces as a `linker_messages` warning). Expected here, so opt out of
+  # that one check rather than allowing every linker message.
+  "-C", "link-arg=-Wl,--no-warn-rwx-segments",
   # getrandom 0.3 has no built-in backend for bare no_std targets, so select its
   # `custom` backend. The `random` feature's `src/random.rs` provides the
   # `__getrandom_v03_custom` entropy symbol (backed by the esp-hal hardware RNG)

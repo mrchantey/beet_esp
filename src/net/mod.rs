@@ -6,12 +6,13 @@
 //!
 //! - a **client** speaking beet's `Request::get(url).send().await` shape (see
 //!   [`http_client`]). The ESP32 transport is registered with beet via
-//!   [`set_http_client`], so calling [`Request::send`] anywhere routes through
+//!   [`Request::set_http_client`], so calling [`Request::send`] anywhere routes through
 //!   the Wi-Fi stack.
 //! - a **server** as beet's standard [`HttpServer`] component (see
 //!   [`http_server`], gated on the `action` feature). Spawn `(HttpServer,
-//!   exchange_handler(..))` or `(HttpServer, default_router(children![..]))` and
-//!   each request is dispatched through beet's async action layer.
+//!   CallOnReady::on_spawn(), children![dispatch])`, the dispatch child being an
+//!   `exchange_ext::handler(..)` or a `Router::with_defaults()` over its routes,
+//!   and each request is dispatched through beet's async action layer.
 //!
 //! [`WifiPlugin`] brings the station up, runs DHCP, and shares the [`Stack`] so
 //! both the client driver and any [`HttpServer`] accept loop can open sockets.
@@ -127,9 +128,9 @@ impl Plugin for WifiPlugin {
         .add_systems(Startup, start_wifi);
 
         // The server backend (beet's `HttpServer` component) needs the async
-        // action layer to dispatch through `entity.exchange`, so it is gated on
-        // `action`. Installs the backend + the request-drain system; spawning an
-        // `HttpServer` then drives everything via beet's `on_add` hook.
+        // action layer to dispatch through `exchange_child`, so it is gated on
+        // `action`. Installs the backend + the request-drain system; calling an
+        // `HttpServer` entity (ie `CallOnReady::on_spawn()`) then starts its facet.
         //
         // Both the server drain and the client `run_local` path go through
         // beet's async bridge, which needs `AsyncPlugin` (it inserts the
@@ -224,7 +225,7 @@ fn start_wifi(world: &mut World) {
     // Register the ESP32 transport so beet's `Request::send` routes here. It is
     // a one-time install; a second `WifiPlugin` (or a transport feature compiled
     // into beet_net) would already own it, so just warn rather than panic.
-    if set_http_client(http_client::esp_send).is_err() {
+    if Request::set_http_client(http_client::esp_send).is_err() {
         warn!("an HTTP transport was already installed; Request::send will not use Wi-Fi");
     }
 
@@ -233,7 +234,7 @@ fn start_wifi(world: &mut World) {
     #[cfg(feature = "sockets")]
     {
         spawn_driver(spawner, socket_client::socket_driver(stack));
-        if sockets::set_socket_client(socket_client::esp_connect).is_err() {
+        if sockets::Socket::set_client(socket_client::esp_connect).is_err() {
             warn!(
                 "a WebSocket transport was already installed; Socket::connect will not use Wi-Fi"
             );
@@ -241,7 +242,7 @@ fn start_wifi(world: &mut World) {
     }
 
     // Stack is Copy and !Send; keep it as a non-send resource so each server
-    // accept loop (spawned by the `on_add` hook) can hand a copy to its loop.
+    // accept loop (spawned by the server's backend) can hand a copy to its loop.
     world.insert_non_send(stack);
 }
 

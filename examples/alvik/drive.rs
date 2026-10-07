@@ -77,8 +77,8 @@ fn log_pose(
     *elapsed = 0.0;
     info!(
         "pose x={}mm y={}mm theta={}rad",
-        pose.0.position.x,
-        pose.0.position.y,
-        pose.0.yaw()
+        pose.translation.x,
+        pose.translation.y,
+        pose.rotation.as_radians()
     );
 }

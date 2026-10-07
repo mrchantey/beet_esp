@@ -71,7 +71,7 @@ impl Plugin for PerceiveActBodyPlugin {
 ///
 /// Keeps a [`Socket`] connected to the agent ([`PersistentSocket`]: dial with
 /// backoff, redial on close, for the life of the scene), enables the duplex
-/// Request/Response [`ExchangeSocket`], and adds a [`default_router`] whose
+/// Request/Response [`ExchangeSocket`], and adds a [`Router::with_defaults`] whose
 /// route tree (built from the child `<Route>`s) serves the requests the agent
 /// originates. [`ResetOnDisconnect`] rides along: a dropped connection triggers
 /// [`ResetScene`], halting the robot instead of letting the last drive command
@@ -86,7 +86,6 @@ impl Plugin for PerceiveActBodyPlugin {
 pub fn AgentSocket(
     /// The agent's socket url, eg `wss://192.168.86.221:8338`; defaults to the
     /// `BEET_SOCKET_SERVER` build env.
-    #[prop(into)]
     url: Option<String>,
 ) -> impl Bundle {
     let url = url
@@ -101,7 +100,7 @@ pub fn AgentSocket(
             PersistentSocket::new(url),
             ResetOnDisconnect,
             ExchangeSocket::json(),
-            default_router(),
+            Router::with_defaults(),
         )}>
             <Slot/>
         </span>
@@ -112,7 +111,7 @@ pub fn AgentSocket(
 /// quoting, so a plain-text `body` is read as the role token.
 ///
 /// Bound with `<Route path="whoami" {WhoAmi}/>`.
-#[action(route, handler_only)]
+#[action(route)]
 #[derive(Default, Clone, Component, Reflect)]
 #[reflect(Component)]
 #[type_path = "perceive_act"]
@@ -136,7 +135,7 @@ async fn WhoAmi(_cx: ActionContext<RequestParts>) -> Response {
 /// Bound with `<Route path="drive" {DriveForDurationAction}/>`. The robot is found
 /// by a global `With<AlvikRobot>` query, so the socket client need not be nested
 /// under the robot.
-#[action(route, handler_only)]
+#[action(route)]
 #[derive(Default, Clone, Component, Reflect)]
 #[reflect(Component)]
 #[type_path = "perceive_act"]

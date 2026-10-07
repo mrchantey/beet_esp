@@ -19,8 +19,8 @@ targeting the **ESP32-S3** (Xtensa).
 - **Async runtime:** embassy (`esp-rtos`)
 - **Connectivity:** `esp-radio` — Wi-Fi (`embassy-net`/`smoltcp`) and BLE (`trouble-host`), with COEX
 - **Heap:** `esp-alloc`
-- **Logging:** `defmt` over RTT
-- **Panic handler:** `panic-rtt-target`
+- **Logging:** `log`/`tracing` over RTT
+- **Panic handler:** the crate's own RTT handler (the on-device test build swaps in a semihosting exit)
 - **Flash/debug:** `probe-rs` (ESP32-S3 native USB JTAG — no external probe needed)
 
 ## Prerequisites
@@ -42,7 +42,7 @@ The pinned toolchain is recorded in `rust-toolchain.toml`.
 ```shell
 cargo build --release          # compile
 cargo run   --release          # flash + monitor (probe-rs runner)
-cargo test                     # on-hardware tests (embedded-test)
+cargo test -p beet_esp --lib   # on-hardware tests (beet's own harness, see src/device_test.rs)
 ```
 
 The target (`xtensa-esp32s3-none-elf`), runner and `build-std` are configured in

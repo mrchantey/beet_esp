@@ -178,9 +178,10 @@ pub struct Imu {
 #[derive(Component, Default, Clone, Copy, Deref)]
 pub struct Orientation(pub Quat);
 
-/// Robot pose from the `z` status (x, y in mm, theta about Z).
-#[derive(Component, Default, Deref)]
-pub struct RobotPose(pub Pose);
+/// Robot pose from the `z` status: the planar position (x, y in mm) and heading
+/// (theta about Z) as a 2D rigid transform.
+#[derive(Component, Default, Clone, Copy, Deref)]
+pub struct RobotPose(pub Isometry2d);
 
 /// Touch button bitmask (`t` status). See
 /// [`TouchButton`](super::types::TouchButton).

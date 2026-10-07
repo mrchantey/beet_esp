@@ -1,6 +1,6 @@
 //! beet's `Request::get(url).send().await` client transport, over Wi-Fi.
 //!
-//! The ESP32 transport is registered with beet via [`set_http_client`] (by
+//! The ESP32 transport is registered with beet via [`Request::set_http_client`] (by
 //! [`start_wifi`](super::start_wifi)), so calling [`Request::send`] anywhere
 //! routes through [`esp_send`]: the request is encoded to HTTP/1.1, handed over
 //! a [`static`](CLIENT_BRIDGE) [`AsyncBridge`] to [`client_driver`], and the
@@ -34,12 +34,15 @@ struct ClientJob {
     /// TCP port to connect to.
     port: u16,
     /// Whether to wrap the transport in the pinned-cert TLS session (`https://`).
+    /// Only a `secure` build carries it: without one an `https://` request is
+    /// refused before it is queued.
+    #[cfg(feature = "secure")]
     secure: bool,
     /// The full HTTP/1.1 request, ready to write to the socket.
     bytes: Vec<u8>,
 }
 
-/// beet's transport hook (see [`set_http_client`]): encode the [`Request`], queue
+/// beet's transport hook (see [`Request::set_http_client`]): encode the [`Request`], queue
 /// it for [`client_driver`], and await the [`Response`].
 ///
 /// Installed once by [`start_wifi`](super::start_wifi); thereafter any
@@ -65,7 +68,13 @@ pub(crate) fn esp_send(
         let request = Request::from_parts(parts, body.into());
         let bytes = http_ext::encode_request(&request, Default::default())?;
 
-        let job = ClientJob { host, port, secure, bytes };
+        let job = ClientJob {
+            host,
+            port,
+            #[cfg(feature = "secure")]
+            secure,
+            bytes,
+        };
         // Outer `Err` is a full queue (no reply will arrive); the inner
         // `Result<Response, BevyError>` is the actual transport outcome.
         CLIENT_BRIDGE

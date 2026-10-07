@@ -1,12 +1,8 @@
-//! Keeps a scripting engine resident and evaluates a small script in a loop,
-//! reporting heap cost and per-eval time so rhai and QuickJS can be compared on
-//! device. The engine is chosen by the enabled feature, matching
-//! `ScriptLanguage::default()`'s precedence (QuickJS preferred, then rhai), so
-//! the same example builds either way:
+//! Keeps the QuickJS engine resident and evaluates a small script in a loop,
+//! reporting heap cost and per-eval time on device.
 //!
 //! ```sh
 //! cargo run --release --no-default-features --features quickjs --example scripting_bench
-//! cargo run --release --no-default-features --features rhai    --example scripting_bench
 //! ```
 
 #![no_std]
@@ -33,7 +29,7 @@ fn main() {
     let engine_resident = after_engine.heap_used.saturating_sub(baseline.heap_used);
     let peak = after_run.heap_max_used.saturating_sub(baseline.heap_used);
 
-    info!("── scripting benchmark: {} ──", ENGINE);
+    info!("── scripting benchmark: quickjs ──");
     info!("iterations:      {}", ITERATIONS);
     info!("checksum:        {} (guards against dead-code elimination)", checksum);
     info!("engine resident: {} B heap (held while idle)", engine_resident);
@@ -49,14 +45,7 @@ fn now_us() -> u64 {
     Instant::now().duration_since_epoch().as_micros()
 }
 
-// ---------------------------------------------------------------------------
-// QuickJS backend (preferred, matching `ScriptLanguage::default()`).
-// ---------------------------------------------------------------------------
-#[cfg(feature = "quickjs")]
-const ENGINE: &str = "quickjs";
-
 /// Returns `(after_engine, after_run, elapsed_us, checksum)`.
-#[cfg(feature = "quickjs")]
 fn run_benchmark() -> (health::MemSnapshot, health::MemSnapshot, u64, i64) {
     use beet::exports::rquickjs::Context;
     use beet::exports::rquickjs::Runtime;
@@ -79,30 +68,3 @@ fn run_benchmark() -> (health::MemSnapshot, health::MemSnapshot, u64, i64) {
     });
     (after_engine, health::snapshot(), now_us() - start, checksum)
 }
-
-// ---------------------------------------------------------------------------
-// rhai backend (when QuickJS is not enabled).
-// ---------------------------------------------------------------------------
-#[cfg(all(feature = "rhai", not(feature = "quickjs")))]
-const ENGINE: &str = "rhai";
-
-/// Returns `(after_engine, after_run, elapsed_us, checksum)`.
-#[cfg(all(feature = "rhai", not(feature = "quickjs")))]
-fn run_benchmark() -> (health::MemSnapshot, health::MemSnapshot, u64, i64) {
-    use beet::exports::rhai::Engine;
-
-    const SCRIPT: &str = "let s = 0; for i in 0..50 { s += i * 2; } s";
-
-    let engine = Engine::new();
-    let after_engine = health::snapshot();
-
-    let mut checksum = 0i64;
-    let start = now_us();
-    for _ in 0..ITERATIONS {
-        checksum = checksum.wrapping_add(engine.eval::<i64>(SCRIPT).unwrap());
-    }
-    (after_engine, health::snapshot(), now_us() - start, checksum)
-}
-
-#[cfg(not(any(feature = "quickjs", feature = "rhai")))]
-compile_error!("scripting_bench needs a backend: enable `quickjs` or `rhai`");

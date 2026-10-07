@@ -120,10 +120,12 @@ pub fn apply_status(
             connected.0 = true;
         }
         if let Some(pose) = robot.pose.as_mut() {
-            pose.0 = Pose::from_xy_theta(
-                snapshot.pose.0.as_millimeters(),
-                snapshot.pose.1.as_millimeters(),
-                snapshot.pose.2.as_radians(),
+            pose.0 = Isometry2d::new(
+                Vec2::new(
+                    snapshot.pose.0.as_millimeters(),
+                    snapshot.pose.1.as_millimeters(),
+                ),
+                Rot2::radians(snapshot.pose.2.as_radians()),
             );
         }
         if let Some(imu) = robot.imu.as_mut() {

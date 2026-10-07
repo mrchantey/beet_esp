@@ -22,7 +22,7 @@ use core::sync::atomic::Ordering;
 pub mod prelude {
     pub use super::EspScenePlugin;
     pub use super::RouteAction;
-    #[cfg(all(feature = "led", any(feature = "rhai", feature = "quickjs")))]
+    #[cfg(all(feature = "led", feature = "quickjs"))]
     pub use super::LedScript;
     #[cfg(feature = "led")]
     pub use super::reset_leds;
@@ -62,7 +62,7 @@ impl Plugin for EspScenePlugin {
         app.register_type::<crate::scripting::ScriptState>();
         // The LED script step plus its typed `Script` data, and the `<LedScript>`
         // authoring template over them.
-        #[cfg(all(feature = "led", any(feature = "rhai", feature = "quickjs")))]
+        #[cfg(all(feature = "led", feature = "quickjs"))]
         app.register_type::<crate::scripting::LedScriptStep>()
             .register_type::<Script<
                 crate::scripting::LedInput,
@@ -144,28 +144,19 @@ fn route_action_on_add(mut world: DeferredWorld, cx: HookContext) {
         .insert((PathPartial::new(&path), SpawnAction));
 }
 
-/// `<LedScript script="..." language="rhai">` — a behaviour-tree leaf running a
+/// `<LedScript script="...">` — a behaviour-tree leaf running a
 /// script LED program each tick (`input.elapsed_ms`/`input.led`/`input.state` ->
-/// `#{ led, state }`). The non-generic authoring template over `(LedScriptStep,
+/// `({ led, state })`). The non-generic authoring template over `(LedScriptStep,
 /// Script<LedInput, LedOutput>)`, so the on-board WS2812 is programmable from a
 /// pushed `.bsx`.
 ///
-/// `language` selects the backend ([`ScriptLanguage::from_str`]), falling back to
-/// the build default when absent — so the same scene runs under rhai or quickjs.
-/// Mirrors upstream's [`ScriptRoute`] template (see `beet::router`).
-#[cfg(all(feature = "led", any(feature = "rhai", feature = "quickjs")))]
+/// The script is JavaScript, run by the embedded QuickJS engine. Mirrors
+/// upstream's `ScriptRoute` template (see `beet::router`).
+#[cfg(all(feature = "led", feature = "quickjs"))]
 #[template]
-pub fn LedScript(
-    #[prop(into)] script: String,
-    language: Option<String>,
-) -> impl Bundle {
-    let language = language
-        .and_then(|name| name.parse::<ScriptLanguage>().ok())
-        .unwrap_or_default();
+pub fn LedScript(script: String) -> impl Bundle {
     (
         crate::scripting::LedScriptStep,
-        Script::<crate::scripting::LedInput, crate::scripting::LedOutput>::new(
-            language, script,
-        ),
+        Script::<crate::scripting::LedInput, crate::scripting::LedOutput>::new(script),
     )
 }

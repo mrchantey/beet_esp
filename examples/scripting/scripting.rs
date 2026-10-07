@@ -1,19 +1,13 @@
-//! Smoke test: does a scripting engine build and run `no_std` on the ESP32-S3?
-//!
-//! The engine is chosen by the enabled feature, matching
-//! `ScriptLanguage::default()`'s precedence (QuickJS preferred, then rhai), so
-//! the same example builds either way:
+//! Smoke test: does the QuickJS engine build and run `no_std` on the ESP32-S3?
 //!
 //! ```sh
-//! cargo run --release --no-default-features --features rhai    --example scripting
 //! cargo run --release --no-default-features --features quickjs --example scripting
 //! ```
 //!
-//! beet's own `scripting` feature pulls each engine with `std`, which can't
-//! target `xtensa-esp32s3-none-elf`. Both ship a bare-metal build re-exported
-//! through `beet::exports` (rhai `no_std`; rquickjs `rust-alloc`), so this
-//! evaluates a couple of trivial scripts to prove the engine links and runs on
-//! device before it is wired into a real controller (see `src/alvik/scripting.rs`).
+//! The engine's bare-metal build (rquickjs `rust-alloc`, routing the C engine's
+//! allocations through esp-alloc) is re-exported through `beet::exports`, so this
+//! evaluates a couple of trivial scripts to prove it links and runs on device
+//! before it is wired into a real controller (see `src/alvik/scripting.rs`).
 
 #![no_std]
 #![no_main]
@@ -27,10 +21,6 @@ fn main() {
     App::new().add_plugins((Esp32Plugin, HealthPlugin)).run();
 }
 
-// ---------------------------------------------------------------------------
-// QuickJS backend (preferred, matching `ScriptLanguage::default()`).
-// ---------------------------------------------------------------------------
-#[cfg(feature = "quickjs")]
 fn smoke_test() {
     use beet::exports::rquickjs::Context;
     use beet::exports::rquickjs::Runtime;
@@ -70,22 +60,3 @@ fn smoke_test() {
     });
 }
 
-// ---------------------------------------------------------------------------
-// rhai backend (when QuickJS is not enabled).
-// ---------------------------------------------------------------------------
-#[cfg(all(feature = "rhai", not(feature = "quickjs")))]
-fn smoke_test() {
-    use beet::exports::rhai;
-
-    extern crate alloc;
-    use alloc::string::String;
-
-    let engine = rhai::Engine::new();
-    let sum = engine.eval::<i64>("40 + 2").unwrap_or(-1);
-    info!("rhai eval 40+2 = {}", sum);
-    let text = engine.eval::<String>(r#""hello " + "rhai""#).unwrap_or_default();
-    info!("rhai eval string = {}", text.as_str());
-}
-
-#[cfg(not(any(feature = "quickjs", feature = "rhai")))]
-compile_error!("scripting needs a backend: enable `quickjs` or `rhai`");
