@@ -18,29 +18,35 @@ extern crate alloc;
 
 #[beet_esp::main]
 fn main() {
-    App::new()
-        .add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::from_env()))
-        .add_observer(on_discovered)
-        .add_observer(on_removed)
-        .spawn(MdnsBrowser::http())
-        .run();
+	App::new()
+		.add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::from_env()))
+		.add_observer(on_discovered)
+		.add_observer(on_removed)
+		.spawn(MdnsBrowser::http())
+		.run();
 }
 
 /// Log a service as its `MDnsService` entity is spawned.
-fn on_discovered(ev: On<Add<MDnsService>>, services: Query<&MDnsService>) -> Result {
-    let service = services.get(ev.entity)?;
-    info!(
-        "discovered: {} at {}:{}",
-        service.instance.as_str(),
-        service.host.as_str(),
-        service.port
-    );
-    Ok(())
+fn on_discovered(
+	ev: On<Add<MDnsService>>,
+	services: Query<&MDnsService>,
+) -> Result {
+	let service = services.get(ev.entity)?;
+	info!(
+		"discovered: {} at {}:{}",
+		service.instance.as_str(),
+		service.host.as_str(),
+		service.port
+	);
+	Ok(())
 }
 
 /// Log a service as its `MDnsService` entity is despawned.
-fn on_removed(ev: On<Remove<MDnsService>>, services: Query<&MDnsService>) -> Result {
-    let service = services.get(ev.entity)?;
-    info!("removed: {}", service.instance.as_str());
-    Ok(())
+fn on_removed(
+	ev: On<Remove<MDnsService>>,
+	services: Query<&MDnsService>,
+) -> Result {
+	let service = services.get(ev.entity)?;
+	info!("removed: {}", service.instance.as_str());
+	Ok(())
 }

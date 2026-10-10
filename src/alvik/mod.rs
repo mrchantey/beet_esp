@@ -95,27 +95,27 @@ pub mod scenes;
 pub mod scripting;
 
 pub mod prelude {
-    pub use super::components::*;
-    #[cfg(feature = "device")]
-    pub use super::driver::ALVIK_EVENTS;
-    #[cfg(feature = "device")]
-    pub use super::driver::ALVIK_OUT;
-    #[cfg(feature = "device")]
-    pub use super::driver::ALVIK_STATE;
-    pub use super::events::*;
-    #[cfg(feature = "device")]
-    pub use super::plugin::AlvikPlugin;
-    pub use super::protocol::Command;
-    pub use super::protocol::Status;
-    pub use super::types::Side;
-    pub use super::types::TiltAxis;
-    pub use super::types::TouchButton;
-    #[cfg(feature = "router")]
-    pub use super::actions::*;
-    #[cfg(feature = "router")]
-    pub use super::routes::*;
-    #[cfg(feature = "router")]
-    pub use super::scenes::*;
-    #[cfg(all(feature = "router", feature = "quickjs"))]
-    pub use super::scripting::*;
+	#[cfg(feature = "router")]
+	pub use super::actions::*;
+	pub use super::components::*;
+	#[cfg(feature = "device")]
+	pub use super::driver::ALVIK_EVENTS;
+	#[cfg(feature = "device")]
+	pub use super::driver::ALVIK_OUT;
+	#[cfg(feature = "device")]
+	pub use super::driver::ALVIK_STATE;
+	pub use super::events::*;
+	#[cfg(feature = "device")]
+	pub use super::plugin::AlvikPlugin;
+	pub use super::protocol::Command;
+	pub use super::protocol::Status;
+	#[cfg(feature = "router")]
+	pub use super::routes::*;
+	#[cfg(feature = "router")]
+	pub use super::scenes::*;
+	#[cfg(all(feature = "router", feature = "quickjs"))]
+	pub use super::scripting::*;
+	pub use super::types::Side;
+	pub use super::types::TiltAxis;
+	pub use super::types::TouchButton;
 }

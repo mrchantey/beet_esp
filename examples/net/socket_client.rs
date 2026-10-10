@@ -12,8 +12,8 @@
 #![no_std]
 #![no_main]
 
-use beet::prelude::*;
 use beet::prelude::sockets::*;
+use beet::prelude::*;
 // disambiguate the socket `Message` enum from bevy's `Message` trait.
 use beet::prelude::sockets::Message;
 use beet_esp::prelude::*;
@@ -25,45 +25,45 @@ const SOCKET_SERVER: Option<&str> = option_env!("BEET_SOCKET_SERVER");
 
 #[beet_esp::main]
 fn main() {
-    App::new()
-        .add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::from_env()))
-        .add_systems(Startup, connect_socket)
-        .run();
+	App::new()
+		.add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::from_env()))
+		.add_systems(Startup, connect_socket)
+		.run();
 }
 
 /// Spawn the socket entity, connecting to [`SOCKET_SERVER`], with its
 /// ready/recv observers.
 fn connect_socket(mut commands: Commands) {
-    let Some(server) = SOCKET_SERVER else {
-        error!("set BEET_SOCKET_SERVER in .env to the echo server's host:port");
-        return;
-    };
-    info!("connecting websocket to `{}`", server);
-    commands.spawn((
-        Socket::insert_on_connect(server),
-        OnSpawn::observe(on_ready),
-        OnSpawn::observe(on_recv),
-    ));
+	let Some(server) = SOCKET_SERVER else {
+		error!("set BEET_SOCKET_SERVER in .env to the echo server's host:port");
+		return;
+	};
+	info!("connecting websocket to `{}`", server);
+	commands.spawn((
+		Socket::insert_on_connect(server),
+		OnSpawn::observe(on_ready),
+		OnSpawn::observe(on_recv),
+	));
 }
 
 /// On connect, greet the server.
 fn on_ready(ev: On<SocketReady>, mut commands: Commands) {
-    info!("socket ready; sending greeting");
-    commands
-        .entity(ev.target())
-        .trigger_target(MessageSend(Message::text("gday from esp32")));
+	info!("socket ready; sending greeting");
+	commands
+		.entity(ev.target())
+		.trigger_target(MessageSend(Message::text("gday from esp32")));
 }
 
 /// Log each echoed message; close once our greeting returns.
 fn on_recv(ev: On<MessageRecv>, mut commands: Commands) {
-    match ev.event().inner() {
-        Message::Text(text) => {
-            info!("echo received: {}", text);
-            commands
-                .entity(ev.target())
-                .trigger_target(MessageSend(Message::Close(None)));
-        }
-        Message::Close(_) => info!("socket closed cleanly"),
-        other => info!("recv: {:?}", other),
-    }
+	match ev.event().inner() {
+		Message::Text(text) => {
+			info!("echo received: {}", text);
+			commands
+				.entity(ev.target())
+				.trigger_target(MessageSend(Message::Close(None)));
+		}
+		Message::Close(_) => info!("socket closed cleanly"),
+		other => info!("recv: {:?}", other),
+	}
 }

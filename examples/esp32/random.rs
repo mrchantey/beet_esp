@@ -27,37 +27,37 @@ use beet_esp::prelude::*;
 
 #[beet_esp::main]
 fn main() {
-    let mut app = App::new();
-    app.add_plugins((Esp32Plugin, HealthPlugin));
-    // Runs in `Startup`, after `Esp32Plugin`'s `PreStartup` bring-up has
-    // initialised the chip — the hardware RNG (and so getrandom) is only ready
-    // then, which is why we don't build a `RandomSource::default()` in `main`.
-    app.add_systems(Startup, random_demo);
-    app.run();
+	let mut app = App::new();
+	app.add_plugins((Esp32Plugin, HealthPlugin));
+	// Runs in `Startup`, after `Esp32Plugin`'s `PreStartup` bring-up has
+	// initialised the chip — the hardware RNG (and so getrandom) is only ready
+	// then, which is why we don't build a `RandomSource::default()` in `main`.
+	app.add_systems(Startup, random_demo);
+	app.run();
 }
 
 /// Exercises both halves of [`RandomSource`]: the deterministic seeded core and
 /// the entropy-seeded `default()` (which routes through the getrandom custom
 /// backend in [`beet_esp::utils::random`] to the esp-hal hardware RNG).
 fn random_demo() {
-    // -- seeded: same seed, same sequence (no entropy needed) --
-    let mut a = RandomSource::from_seed(7);
-    let mut b = RandomSource::from_seed(7);
-    for _ in 0..4 {
-        let x = a.random::<u32>();
-        let y = b.random::<u32>();
-        assert_eq!(x, y, "from_seed must be deterministic");
-    }
-    info!("from_seed(7) is reproducible");
-    let v = RandomSource::from_seed(7).random_range(10u32..100);
-    info!("from_seed(7).random_range(10..100) = {} (expect 22)", v);
+	// -- seeded: same seed, same sequence (no entropy needed) --
+	let mut a = RandomSource::from_seed(7);
+	let mut b = RandomSource::from_seed(7);
+	for _ in 0..4 {
+		let x = a.random::<u32>();
+		let y = b.random::<u32>();
+		assert_eq!(x, y, "from_seed must be deterministic");
+	}
+	info!("from_seed(7) is reproducible");
+	let v = RandomSource::from_seed(7).random_range(10u32..100);
+	info!("from_seed(7).random_range(10..100) = {} (expect 22)", v);
 
-    // -- entropy: default() seeds via getrandom -> custom backend -> HW RNG --
-    let mut source = RandomSource::default();
-    info!("entropy draws (getrandom custom backend -> esp-hal RNG):");
-    for _ in 0..5 {
-        info!("  d6 roll: {}", source.random_range(1u32..=6));
-    }
-    let bytes: [u8; 8] = core::array::from_fn(|_| source.random::<u8>());
-    info!("  8 random bytes: {:?}", bytes);
+	// -- entropy: default() seeds via getrandom -> custom backend -> HW RNG --
+	let mut source = RandomSource::default();
+	info!("entropy draws (getrandom custom backend -> esp-hal RNG):");
+	for _ in 0..5 {
+		info!("  d6 roll: {}", source.random_range(1u32..=6));
+	}
+	let bytes: [u8; 8] = core::array::from_fn(|_| source.random::<u8>());
+	info!("  8 random bytes: {:?}", bytes);
 }

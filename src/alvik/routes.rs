@@ -23,21 +23,21 @@ const TURN_RATE_DEG_S: f32 = 90.0;
 #[reflect(Component)]
 #[type_path = "alvik"]
 pub fn DriveHandler(
-    cx: In<ActionContext<RequestParts>>,
-    mut drive: Single<&mut DifferentialDrive, With<AlvikRobot>>,
+	cx: In<ActionContext<RequestParts>>,
+	mut drive: Single<&mut DifferentialDrive, With<AlvikRobot>>,
 ) -> Response {
-    let dir = cx.input.get_param("dir").unwrap_or("stop");
-    let (linear, angular) = match dir {
-        "forward" => (DRIVE_SPEED_MM_S, 0.0),
-        "back" => (-DRIVE_SPEED_MM_S, 0.0),
-        "left" => (0.0, TURN_RATE_DEG_S),
-        "right" => (0.0, -TURN_RATE_DEG_S),
-        _ => (0.0, 0.0),
-    };
-    drive.linear = LinearVelocity::from_mm_per_sec(linear);
-    drive.angular = AngularVelocity::from_deg_per_sec(angular);
-    info!("scene: drive {} ({} mm/s, {} deg/s)", dir, linear, angular);
-    Response::ok_text(format!("drive {dir}\n"))
+	let dir = cx.input.get_param("dir").unwrap_or("stop");
+	let (linear, angular) = match dir {
+		"forward" => (DRIVE_SPEED_MM_S, 0.0),
+		"back" => (-DRIVE_SPEED_MM_S, 0.0),
+		"left" => (0.0, TURN_RATE_DEG_S),
+		"right" => (0.0, -TURN_RATE_DEG_S),
+		_ => (0.0, 0.0),
+	};
+	drive.linear = LinearVelocity::from_mm_per_sec(linear);
+	drive.angular = AngularVelocity::from_deg_per_sec(angular);
+	info!("scene: drive {} ({} mm/s, {} deg/s)", dir, linear, angular);
+	Response::ok_text(format!("drive {dir}\n"))
 }
 
 /// `:side`/`:state` -> one UI LED white (on) or black (off). Bound with eg
@@ -47,19 +47,25 @@ pub fn DriveHandler(
 #[reflect(Component)]
 #[type_path = "alvik"]
 pub fn LedHandler(
-    cx: In<ActionContext<RequestParts>>,
-    mut leds: Query<(&AlvikLed, &mut LedColor)>,
+	cx: In<ActionContext<RequestParts>>,
+	mut leds: Query<(&AlvikLed, &mut LedColor)>,
 ) -> Response {
-    let side = cx.input.get_param("side").unwrap_or("");
-    let state = cx.input.get_param("state").unwrap_or("off");
-    let want = match side {
-        "left" => Side::Left,
-        _ => Side::Right,
-    };
-    let color = if state == "on" { Color::WHITE } else { Color::BLACK };
-    for (_, mut led_color) in leds.iter_mut().filter(|(led, _)| led.side == want) {
-        led_color.0 = color;
-    }
-    info!("scene: led {} {}", side, state);
-    Response::ok_text(format!("led {side} {state}\n"))
+	let side = cx.input.get_param("side").unwrap_or("");
+	let state = cx.input.get_param("state").unwrap_or("off");
+	let want = match side {
+		"left" => Side::Left,
+		_ => Side::Right,
+	};
+	let color = if state == "on" {
+		Color::WHITE
+	} else {
+		Color::BLACK
+	};
+	for (_, mut led_color) in
+		leds.iter_mut().filter(|(led, _)| led.side == want)
+	{
+		led_color.0 = color;
+	}
+	info!("scene: led {} {}", side, state);
+	Response::ok_text(format!("led {side} {state}\n"))
 }

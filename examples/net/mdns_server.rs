@@ -41,17 +41,17 @@ const PROBE_SECS: u64 = 4;
 
 #[beet_esp::main]
 fn main() {
-    App::new()
-        .add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::from_env()))
-        .init_resource::<Visits>()
-        .spawn((
-            HttpServer::new(8080),
-            CallOnReady::on_spawn(),
-            MDns::new(HOSTNAME),
-            children![Handler],
-        ))
-        .add_systems(Update, probe_peer)
-        .run();
+	App::new()
+		.add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::from_env()))
+		.init_resource::<Visits>()
+		.spawn((
+			HttpServer::new(8080),
+			CallOnReady::on_spawn(),
+			MDns::new(HOSTNAME),
+			children![Handler],
+		))
+		.add_systems(Update, probe_peer)
+		.run();
 }
 
 /// Visitor counter mutated by the [`Handler`].
@@ -61,39 +61,38 @@ struct Visits(u32);
 /// The sole request handler.
 #[action]
 #[derive(Default, Clone, Component)]
-fn Handler(cx: In<ActionContext<Request>>, mut visits: ResMut<Visits>) -> Response {
-    visits.0 += 1;
-    info!(
-        "server request #{} -> {}",
-        visits.0,
-        cx.input.path_string().as_str()
-    );
-    Response::ok_text(alloc::format!(
-        "hello from beet-esp.local\nyou are visitor #{}\n",
-        visits.0
-    ))
+fn Handler(
+	cx: In<ActionContext<Request>>,
+	mut visits: ResMut<Visits>,
+) -> Response {
+	visits.0 += 1;
+	info!(
+		"server request #{} -> {}",
+		visits.0,
+		cx.input.path_string().as_str()
+	);
+	Response::ok_text(alloc::format!(
+		"hello from beet-esp.local\nyou are visitor #{}\n",
+		visits.0
+	))
 }
 
 /// Exercise the `.local` resolver, throttled to [`PROBE_SECS`].
 fn probe_peer(commands: AsyncCommands, mut last_tick: Local<Option<Instant>>) {
-    let now = Instant::now();
-    let due = last_tick.is_none_or(|t| (now - t).as_secs() >= PROBE_SECS);
-    if !due {
-        return;
-    }
-    *last_tick = Some(now);
-    commands.run_local(async move |_world: AsyncWorld| {
-        match Request::get(PEER_LOCAL).send().await {
-            Ok(response) => info!(
-                "resolver probe {} -> status {}",
-                PEER_LOCAL,
-                response.status().as_u16()
-            ),
-            Err(e) => warn!(
-                "resolver probe {} failed: {:?}",
-                PEER_LOCAL,
-                e
-            ),
-        }
-    });
+	let now = Instant::now();
+	let due = last_tick.is_none_or(|t| (now - t).as_secs() >= PROBE_SECS);
+	if !due {
+		return;
+	}
+	*last_tick = Some(now);
+	commands.run_local(async move |_world: AsyncWorld| {
+		match Request::get(PEER_LOCAL).send().await {
+			Ok(response) => info!(
+				"resolver probe {} -> status {}",
+				PEER_LOCAL,
+				response.status().as_u16()
+			),
+			Err(e) => warn!("resolver probe {} failed: {:?}", PEER_LOCAL, e),
+		}
+	});
 }

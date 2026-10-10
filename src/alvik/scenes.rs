@@ -20,29 +20,29 @@ use beet::prelude::*;
 pub struct AlvikScenePlugin;
 
 impl Plugin for AlvikScenePlugin {
-    fn build(&self, app: &mut App) {
-        app.register_type::<DriveHandler>()
-            .register_type::<LedHandler>()
-            .register_type::<LineFollowStep>()
-            .register_type::<RoombaStep>()
-            // The `<Alvik>` root element: assembles the robot's hardware bundle and
-            // slots its body (the scene server). The firmware boots the server under
-            // the robot, so the robot is the scene root and a loaded `<SetDrive>` leaf
-            // resolves its `DifferentialDrive` to the robot via root-ancestor (no
-            // marker needed).
-            .register_template::<Alvik>()
-            .add_observer(reset_robot);
-        // The script step plus its data: the typed `Script` and the `ScriptState`
-        // it threads (registered once in `EspScenePlugin`), and the `<AlvikScript>`
-        // authoring template over them.
-        #[cfg(feature = "quickjs")]
+	fn build(&self, app: &mut App) {
+		app.register_type::<DriveHandler>()
+			.register_type::<LedHandler>()
+			.register_type::<LineFollowStep>()
+			.register_type::<RoombaStep>()
+			// The `<Alvik>` root element: assembles the robot's hardware bundle and
+			// slots its body (the scene server). The firmware boots the server under
+			// the robot, so the robot is the scene root and a loaded `<SetDrive>` leaf
+			// resolves its `DifferentialDrive` to the robot via root-ancestor (no
+			// marker needed).
+			.register_template::<Alvik>()
+			.add_observer(reset_robot);
+		// The script step plus its data: the typed `Script` and the `ScriptState`
+		// it threads (registered once in `EspScenePlugin`), and the `<AlvikScript>`
+		// authoring template over them.
+		#[cfg(feature = "quickjs")]
         app.register_type::<super::scripting::AlvikScriptStep>()
             .register_type::<Script<
                 super::scripting::AlvikInput,
                 super::scripting::AlvikOutput,
             >>()
             .register_template::<AlvikScript>();
-    }
+	}
 }
 
 /// Alvik [`ResetScene`] handler: stop the motors and wheels — the safe resting
@@ -55,18 +55,18 @@ impl Plugin for AlvikScenePlugin {
 /// also the error-recovery path (see `scene::trigger_reset_on_error`), so it has
 /// to be infallible.
 fn reset_robot(
-    _ev: On<ResetScene>,
-    mut drives: Query<&mut DifferentialDrive, With<AlvikRobot>>,
-    mut wheels: Query<&mut WheelTarget>,
+	_ev: On<ResetScene>,
+	mut drives: Query<&mut DifferentialDrive, With<AlvikRobot>>,
+	mut wheels: Query<&mut WheelTarget>,
 ) {
-    info!("reset: stopping motors and wheels");
-    for mut drive in &mut drives {
-        drive.linear = LinearVelocity::default();
-        drive.angular = AngularVelocity::default();
-    }
-    for mut target in &mut wheels {
-        *target = WheelTarget::Speed(AngularVelocity::from_rpm(0.0));
-    }
+	info!("reset: stopping motors and wheels");
+	for mut drive in &mut drives {
+		drive.linear = LinearVelocity::default();
+		drive.angular = AngularVelocity::default();
+	}
+	for mut target in &mut wheels {
+		*target = WheelTarget::Speed(AngularVelocity::from_rpm(0.0));
+	}
 }
 
 /// The `<Alvik>` root element: the robot's full hardware bundle (the [`AlvikRobot`]
@@ -89,59 +89,59 @@ fn reset_robot(
 /// regardless.
 #[template]
 pub fn Alvik() -> impl Bundle {
-    rsx! {
-        <span {(
-            AlvikRobot,
-            // Grouped into sub-bundles: a flat tuple would exceed the 15-element
-            // `Bundle` impl. State, then sensors.
-            (
-                Connected::default(),
-                FirmwareVersion::default(),
-                BehaviorCode::default(),
-                BatterState::default(),
-                Illuminator(true),
-                BuiltinLed(false),
-            ),
-            (
-                LineSensors::default(),
-                ColorSensor::default(),
-                Tof::default(),
-                Imu::default(),
-                Orientation::default(),
-                RobotPose::default(),
-                // Commanded velocity: the upstream `SetDrive` leaf writes this on the
-                // robot (its agent, resolved as the root ancestor), and `flush_drive`
-                // sends it to the wire.
-                DifferentialDrive::default(),
-                TouchValue::default(),
-                MotionValue::default(),
-            ),
-            children![
-                (
-                    Wheel { side: Side::Left },
-                    WheelState::default(),
-                    WheelTarget::Speed(AngularVelocity::default()),
-                ),
-                (
-                    Wheel { side: Side::Right },
-                    WheelState::default(),
-                    WheelTarget::Speed(AngularVelocity::default()),
-                ),
-                (Servo {
-                    id: ServoId::A,
-                    position: Angle::from_degrees(90.0),
-                }),
-                (Servo {
-                    id: ServoId::B,
-                    position: Angle::from_degrees(90.0),
-                }),
-                (AlvikLed { side: Side::Left }, LedColor::default()),
-                (AlvikLed { side: Side::Right }, LedColor::default()),
-            ],
-        )}>
-            <Slot/>
-        </span>
-    }
+	rsx! {
+		<span {(
+			AlvikRobot,
+			// Grouped into sub-bundles: a flat tuple would exceed the 15-element
+			// `Bundle` impl. State, then sensors.
+			(
+				Connected::default(),
+				FirmwareVersion::default(),
+				BehaviorCode::default(),
+				BatterState::default(),
+				Illuminator(true),
+				BuiltinLed(false),
+			),
+			(
+				LineSensors::default(),
+				ColorSensor::default(),
+				Tof::default(),
+				Imu::default(),
+				Orientation::default(),
+				RobotPose::default(),
+				// Commanded velocity: the upstream `SetDrive` leaf writes this on the
+				// robot (its agent, resolved as the root ancestor), and `flush_drive`
+				// sends it to the wire.
+				DifferentialDrive::default(),
+				TouchValue::default(),
+				MotionValue::default(),
+			),
+			children![
+				(
+					Wheel { side: Side::Left },
+					WheelState::default(),
+					WheelTarget::Speed(AngularVelocity::default()),
+				),
+				(
+					Wheel { side: Side::Right },
+					WheelState::default(),
+					WheelTarget::Speed(AngularVelocity::default()),
+				),
+				(Servo {
+					id: ServoId::A,
+					position: Angle::from_degrees(90.0),
+				}),
+				(Servo {
+					id: ServoId::B,
+					position: Angle::from_degrees(90.0),
+				}),
+				(AlvikLed { side: Side::Left }, LedColor::default()),
+				(AlvikLed { side: Side::Right }, LedColor::default()),
+			],
+		)}>
+			<Slot/>
+		</span>
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -163,7 +163,7 @@ pub fn Alvik() -> impl Bundle {
 #[cfg(feature = "quickjs")]
 #[template]
 pub fn AlvikScript(script: String) -> impl Bundle {
-    (
+	(
         super::scripting::AlvikScriptStep,
         Script::<super::scripting::AlvikInput, super::scripting::AlvikOutput>::new(script),
     )

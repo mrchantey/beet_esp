@@ -108,8 +108,8 @@ static PACKETS: Queue<UdpPacket, 8> = Queue::new();
 /// that starts an embassy [`browser_task`] for each [`MdnsBrowser`] entity once
 /// Wi-Fi is up.
 pub(crate) fn mdns_browser_plugin(app: &mut App) {
-    app.add_plugins(MdnsBrowserPlugin)
-        .add_systems(Update, (start_pending_browsers, drain_browser_packets));
+	app.add_plugins(MdnsBrowserPlugin)
+		.add_systems(Update, (start_pending_browsers, drain_browser_packets));
 }
 
 /// Drain every queued [`UdpPacket`] into the world so beet_net's
@@ -117,7 +117,7 @@ pub(crate) fn mdns_browser_plugin(app: &mut App) {
 /// [`DiscoveredServices`]. The shape-2 toolkit drain — the producer is
 /// [`browser_task`].
 fn drain_browser_packets(commands: Commands) {
-    drain_to_observers(&PACKETS, commands);
+	drain_to_observers(&PACKETS, commands);
 }
 
 /// Marker added to an [`MdnsBrowser`] entity once its [`browser_task`] has been
@@ -135,31 +135,28 @@ struct BrowserStarted;
 /// frame. Exclusive so it can read the non-send [`Stack`]/[`Spawner`] (the same
 /// access as [`start_wifi`](super::start_wifi) and [`spawn_clock`](crate::esp32_utils::clock)).
 fn start_pending_browsers(world: &mut World) {
-    // Collect the (entity, service_type) of every browser not yet started. Cheap
-    // early-out in the steady state once all are marked.
-    let mut pending: Vec<(Entity, SmolStr)> = Vec::new();
-    let mut query =
-        world.query_filtered::<(Entity, &MdnsBrowser), Without<BrowserStarted>>();
-    for (entity, browser) in query.iter(world) {
-        pending.push((entity, browser.service_type.clone()));
-    }
-    if pending.is_empty() {
-        return;
-    }
+	// Collect the (entity, service_type) of every browser not yet started. Cheap
+	// early-out in the steady state once all are marked.
+	let mut pending: Vec<(Entity, SmolStr)> = Vec::new();
+	let mut query = world
+		.query_filtered::<(Entity, &MdnsBrowser), Without<BrowserStarted>>();
+	for (entity, browser) in query.iter(world) {
+		pending.push((entity, browser.service_type.clone()));
+	}
+	if pending.is_empty() {
+		return;
+	}
 
-    // The Stack arrives in `start_wifi` (Startup); until then, leave them pending.
-    let Some(stack) = world.get_non_send::<Stack<'static>>().copied() else {
-        return;
-    };
-    let spawner = *world.non_send::<Spawner>();
-    for (entity, service_type) in pending {
-        info!(
-            "mDNS browser starting for {}",
-            service_type
-        );
-        spawn_driver(spawner, browser_task(stack, service_type));
-        world.entity_mut(entity).insert(BrowserStarted);
-    }
+	// The Stack arrives in `start_wifi` (Startup); until then, leave them pending.
+	let Some(stack) = world.get_non_send::<Stack<'static>>().copied() else {
+		return;
+	};
+	let spawner = *world.non_send::<Spawner>();
+	for (entity, service_type) in pending {
+		info!("mDNS browser starting for {}", service_type);
+		spawn_driver(spawner, browser_task(stack, service_type));
+		world.entity_mut(entity).insert(BrowserStarted);
+	}
 }
 
 /// The embassy mDNS browser task: own the multicast socket, join the group,
@@ -174,80 +171,87 @@ fn start_pending_browsers(world: &mut World) {
 /// inbound packet re-multicasts the query — the simplest place for the periodic
 /// send (decision: keep the timer in the task, next to the socket).
 async fn browser_task(stack: Stack<'static>, service_type: SmolStr) {
-    stack.wait_config_up().await;
+	stack.wait_config_up().await;
 
-    if let Err(e) = stack.join_multicast_group(IpAddress::Ipv4(MDNS_MULTICAST_V4)) {
-        warn!("mDNS browser: join_multicast_group failed: {:?}", e);
-        return;
-    }
+	if let Err(e) =
+		stack.join_multicast_group(IpAddress::Ipv4(MDNS_MULTICAST_V4))
+	{
+		warn!("mDNS browser: join_multicast_group failed: {:?}", e);
+		return;
+	}
 
-    // Buffers for the embassy socket. mDNS is small but bursty; match the
-    // phase-1 responder's generous pools. These land in PSRAM (the task future
-    // is heap-boxed by `spawn_driver`).
-    let mut rx_meta = [PacketMetadata::EMPTY; 8];
-    let mut rx_buf = [0u8; 1536];
-    let mut tx_meta = [PacketMetadata::EMPTY; 8];
-    let mut tx_buf = [0u8; 1536];
+	// Buffers for the embassy socket. mDNS is small but bursty; match the
+	// phase-1 responder's generous pools. These land in PSRAM (the task future
+	// is heap-boxed by `spawn_driver`).
+	let mut rx_meta = [PacketMetadata::EMPTY; 8];
+	let mut rx_buf = [0u8; 1536];
+	let mut tx_meta = [PacketMetadata::EMPTY; 8];
+	let mut tx_buf = [0u8; 1536];
 
-    // The trait-honest binder: owns the four buffers, hands them to
-    // `UdpSocket::new` on `bind`. Bind 0.0.0.0:5353 to receive multicast.
-    let endpoint =
-        EmbassyUdpEndpoint::new(stack, &mut rx_meta, &mut rx_buf, &mut tx_meta, &mut tx_buf);
-    let bind = SocketAddr::from((Ipv4Addr::UNSPECIFIED, MDNS_PORT));
-    let socket = match endpoint.bind(bind).await {
-        Ok(socket) => socket,
-        Err(e) => {
-            warn!("mDNS browser: bind :{} failed: {:?}", MDNS_PORT, e);
-            return;
-        }
-    };
+	// The trait-honest binder: owns the four buffers, hands them to
+	// `UdpSocket::new` on `bind`. Bind 0.0.0.0:5353 to receive multicast.
+	let endpoint = EmbassyUdpEndpoint::new(
+		stack,
+		&mut rx_meta,
+		&mut rx_buf,
+		&mut tx_meta,
+		&mut tx_buf,
+	);
+	let bind = SocketAddr::from((Ipv4Addr::UNSPECIFIED, MDNS_PORT));
+	let socket = match endpoint.bind(bind).await {
+		Ok(socket) => socket,
+		Err(e) => {
+			warn!("mDNS browser: bind :{} failed: {:?}", MDNS_PORT, e);
+			return;
+		}
+	};
 
-    // Build the `PTR` query once (it never changes for a service type), using
-    // beet_net's pure wire helper — the same builder the std driver uses.
-    let mut query = [0u8; 256];
-    let query_len = match build_ptr_query(&mut query, &service_type) {
-        Some(len) => len,
-        None => {
-            warn!("mDNS browser: service type too long to query");
-            return;
-        }
-    };
-    let query = &query[..query_len];
+	// Build the `PTR` query once (it never changes for a service type), using
+	// beet_net's pure wire helper — the same builder the std driver uses.
+	let mut query = [0u8; 256];
+	let query_len = match build_ptr_query(&mut query, &service_type) {
+		Some(len) => len,
+		None => {
+			warn!("mDNS browser: service type too long to query");
+			return;
+		}
+	};
+	let query = &query[..query_len];
 
-    if let Err(e) = socket.send_to(query, MDNS_ENDPOINT).await {
-        warn!("mDNS browser: initial query send failed: {:?}", e);
-    }
-    info!(
-        "mDNS browser up: querying {} on 224.0.0.251:5353",
-        service_type
-    );
+	if let Err(e) = socket.send_to(query, MDNS_ENDPOINT).await {
+		warn!("mDNS browser: initial query send failed: {:?}", e);
+	}
+	info!(
+		"mDNS browser up: querying {} on 224.0.0.251:5353",
+		service_type
+	);
 
-    let mut recv = [0u8; 1536];
-    loop {
-        // Race a receive against the query timer. `with_timeout` returns `Err`
-        // when the interval elapses with no packet — that's our cue to re-query.
-        match with_timeout(QUERY_INTERVAL, socket.recv_from(&mut recv)).await {
-            Ok(Ok((n, from))) => {
-                let packet = UdpPacket {
-                    from,
-                    bytes: recv[..n].to_vec(),
-                };
-                // Drop-newest on a full queue; the next re-query recovers it.
-                if PACKETS.send(packet).is_err() {
-                    warn!("mDNS browser: packet queue full, dropping datagram");
-                }
-            }
-            Ok(Err(e)) => {
-                warn!("mDNS browser: recv failed: {:?}", e);
-            }
-            Err(_) => {
-                // Interval elapsed: re-multicast the query.
-                if let Err(e) = socket.send_to(query, MDNS_ENDPOINT).await {
-                    warn!("mDNS browser: re-query send failed: {:?}", e);
-                }
-            }
-        }
-    }
+	let mut recv = [0u8; 1536];
+	loop {
+		// Race a receive against the query timer. `with_timeout` returns `Err`
+		// when the interval elapses with no packet — that's our cue to re-query.
+		match with_timeout(QUERY_INTERVAL, socket.recv_from(&mut recv)).await {
+			Ok(Ok((n, from))) => {
+				let packet = UdpPacket {
+					from,
+					bytes: recv[..n].to_vec(),
+				};
+				// Drop-newest on a full queue; the next re-query recovers it.
+				if PACKETS.send(packet).is_err() {
+					warn!("mDNS browser: packet queue full, dropping datagram");
+				}
+			}
+			Ok(Err(e)) => {
+				warn!("mDNS browser: recv failed: {:?}", e);
+			}
+			Err(_) => {
+				// Interval elapsed: re-multicast the query.
+				if let Err(e) = socket.send_to(query, MDNS_ENDPOINT).await {
+					warn!("mDNS browser: re-query send failed: {:?}", e);
+				}
+			}
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -266,8 +270,8 @@ async fn browser_task(stack: Stack<'static>, service_type: SmolStr) {
 /// `Stack` is kept alongside so [`join_multicast_v4`](UdpSocket::join_multicast_v4)
 /// (an iface operation, not a socket one on embassy-net) can be served.
 pub struct EmbassyUdpSocket<'a> {
-    socket: embassy_net::udp::UdpSocket<'a>,
-    stack: Stack<'a>,
+	socket: embassy_net::udp::UdpSocket<'a>,
+	stack: Stack<'a>,
 }
 
 /// Convert a [`core::net::SocketAddr`] to an embassy/smoltcp [`IpEndpoint`].
@@ -279,53 +283,55 @@ pub struct EmbassyUdpSocket<'a> {
 /// also keeps a v6 address from silently mis-binding. A v6 address can't reach
 /// this path (the browser only ever uses IPv4 mDNS endpoints).
 fn to_endpoint(addr: SocketAddr) -> IpEndpoint {
-    match addr {
-        SocketAddr::V4(v4) => IpEndpoint::new(IpAddress::Ipv4(*v4.ip()), v4.port()),
-        // IPv6 can't reach this IPv4-only mDNS path; fold any v4-mapped suffix
-        // into a v4 endpoint so the type still converts. In practice every
-        // endpoint here is V4 (the browser only uses `224.0.0.251`).
-        SocketAddr::V6(v6) => {
-            let o = v6.ip().octets();
-            IpEndpoint::new(
-                IpAddress::Ipv4(Ipv4Addr::new(o[12], o[13], o[14], o[15])),
-                v6.port(),
-            )
-        }
-    }
+	match addr {
+		SocketAddr::V4(v4) => {
+			IpEndpoint::new(IpAddress::Ipv4(*v4.ip()), v4.port())
+		}
+		// IPv6 can't reach this IPv4-only mDNS path; fold any v4-mapped suffix
+		// into a v4 endpoint so the type still converts. In practice every
+		// endpoint here is V4 (the browser only uses `224.0.0.251`).
+		SocketAddr::V6(v6) => {
+			let o = v6.ip().octets();
+			IpEndpoint::new(
+				IpAddress::Ipv4(Ipv4Addr::new(o[12], o[13], o[14], o[15])),
+				v6.port(),
+			)
+		}
+	}
 }
 
 impl<'a> UdpSocket for EmbassyUdpSocket<'a> {
-    async fn send_to(&self, bytes: &[u8], remote: SocketAddr) -> Result<()> {
-        self.socket
-            .send_to(bytes, to_endpoint(remote))
-            .await
-            .map_err(|e| bevyhow!("udp send_to failed: {:?}", e))
-    }
+	async fn send_to(&self, bytes: &[u8], remote: SocketAddr) -> Result<()> {
+		self.socket
+			.send_to(bytes, to_endpoint(remote))
+			.await
+			.map_err(|e| bevyhow!("udp send_to failed: {:?}", e))
+	}
 
-    async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
-        let (n, meta) = self
-            .socket
-            .recv_from(buf)
-            .await
-            .map_err(|e| bevyhow!("udp recv_from failed: {:?}", e))?;
-        Ok((n, meta.endpoint.into()))
-    }
+	async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+		let (n, meta) = self
+			.socket
+			.recv_from(buf)
+			.await
+			.map_err(|e| bevyhow!("udp recv_from failed: {:?}", e))?;
+		Ok((n, meta.endpoint.into()))
+	}
 
-    async fn join_multicast_v4(&self, group: Ipv4Addr) -> Result<()> {
-        self.stack
-            .join_multicast_group(IpAddress::Ipv4(group))
-            .map_err(|e| bevyhow!("join_multicast_v4 failed: {:?}", e))
-    }
+	async fn join_multicast_v4(&self, group: Ipv4Addr) -> Result<()> {
+		self.stack
+			.join_multicast_group(IpAddress::Ipv4(group))
+			.map_err(|e| bevyhow!("join_multicast_v4 failed: {:?}", e))
+	}
 }
 
 /// The four caller-owned buffers `embassy_net::udp::UdpSocket::new` consumes.
 /// Held in the endpoint until [`bind`](EmbassyUdpEndpoint::bind) moves them into
 /// the socket.
 struct UdpBuffers<'a> {
-    rx_meta: &'a mut [PacketMetadata],
-    rx_buf: &'a mut [u8],
-    tx_meta: &'a mut [PacketMetadata],
-    tx_buf: &'a mut [u8],
+	rx_meta: &'a mut [PacketMetadata],
+	rx_buf: &'a mut [u8],
+	tx_meta: &'a mut [PacketMetadata],
+	tx_buf: &'a mut [u8],
 }
 
 /// A binder for [`EmbassyUdpSocket`]s implementing beet's [`UdpEndpoint`] trait.
@@ -341,74 +347,72 @@ struct UdpBuffers<'a> {
 /// embassy-net's external-buffer ownership (see the module note); it is the one
 /// deviation from the std endpoint's repeatedly-bindable behaviour.
 pub struct EmbassyUdpEndpoint<'a> {
-    stack: Stack<'a>,
-    buffers: core::cell::RefCell<Option<UdpBuffers<'a>>>,
+	stack: Stack<'a>,
+	buffers: core::cell::RefCell<Option<UdpBuffers<'a>>>,
 }
 
 impl<'a> EmbassyUdpEndpoint<'a> {
-    /// Build an endpoint over `stack` borrowing the four caller-owned buffers.
-    pub fn new(
-        stack: Stack<'a>,
-        rx_meta: &'a mut [PacketMetadata],
-        rx_buf: &'a mut [u8],
-        tx_meta: &'a mut [PacketMetadata],
-        tx_buf: &'a mut [u8],
-    ) -> Self {
-        Self {
-            stack,
-            buffers: core::cell::RefCell::new(Some(UdpBuffers {
-                rx_meta,
-                rx_buf,
-                tx_meta,
-                tx_buf,
-            })),
-        }
-    }
+	/// Build an endpoint over `stack` borrowing the four caller-owned buffers.
+	pub fn new(
+		stack: Stack<'a>,
+		rx_meta: &'a mut [PacketMetadata],
+		rx_buf: &'a mut [u8],
+		tx_meta: &'a mut [PacketMetadata],
+		tx_buf: &'a mut [u8],
+	) -> Self {
+		Self {
+			stack,
+			buffers: core::cell::RefCell::new(Some(UdpBuffers {
+				rx_meta,
+				rx_buf,
+				tx_meta,
+				tx_buf,
+			})),
+		}
+	}
 }
 
 impl<'a> UdpEndpoint for EmbassyUdpEndpoint<'a> {
-    type Socket<'s>
-        = EmbassyUdpSocket<'a>
-    where
-        Self: 's;
+	type Socket<'s>
+		= EmbassyUdpSocket<'a>
+	where
+		Self: 's;
 
-    async fn bind(&self, local: SocketAddr) -> Result<Self::Socket<'_>> {
-        // Take the buffers (single-use binder). A second bind finds `None`.
-        let UdpBuffers {
-            rx_meta,
-            rx_buf,
-            tx_meta,
-            tx_buf,
-        } = self
-            .buffers
-            .borrow_mut()
-            .take()
-            .ok_or_else(|| bevyhow!("EmbassyUdpEndpoint already bound (single-use)"))?;
+	async fn bind(&self, local: SocketAddr) -> Result<Self::Socket<'_>> {
+		// Take the buffers (single-use binder). A second bind finds `None`.
+		let UdpBuffers {
+			rx_meta,
+			rx_buf,
+			tx_meta,
+			tx_buf,
+		} = self.buffers.borrow_mut().take().ok_or_else(|| {
+			bevyhow!("EmbassyUdpEndpoint already bound (single-use)")
+		})?;
 
-        let mut socket = embassy_net::udp::UdpSocket::new(
-            self.stack, rx_meta, rx_buf, tx_meta, tx_buf,
-        );
-        // Build the listen endpoint. An unspecified local IP (`0.0.0.0`) must map
-        // to `addr: None` ("listen on any address"), NOT `addr: Some(0.0.0.0)`:
-        // smoltcp only delivers multicast (e.g. `224.0.0.251`) to an `addr: None`
-        // UDP listener. `From<SocketAddr> for IpListenEndpoint` would set
-        // `Some(0.0.0.0)` and silently swallow every multicast datagram (the bug
-        // that made the browser receive nothing). This matches phase-1's working
-        // `socket.bind(MDNS_PORT)`, which also yields `addr: None`.
-        let listen = if local.ip().is_unspecified() {
-            embassy_net::IpListenEndpoint {
-                addr: None,
-                port: local.port(),
-            }
-        } else {
-            to_endpoint(local).into()
-        };
-        socket
-            .bind(listen)
-            .map_err(|e| bevyhow!("udp bind failed: {:?}", e))?;
-        Ok(EmbassyUdpSocket {
-            socket,
-            stack: self.stack,
-        })
-    }
+		let mut socket = embassy_net::udp::UdpSocket::new(
+			self.stack, rx_meta, rx_buf, tx_meta, tx_buf,
+		);
+		// Build the listen endpoint. An unspecified local IP (`0.0.0.0`) must map
+		// to `addr: None` ("listen on any address"), NOT `addr: Some(0.0.0.0)`:
+		// smoltcp only delivers multicast (e.g. `224.0.0.251`) to an `addr: None`
+		// UDP listener. `From<SocketAddr> for IpListenEndpoint` would set
+		// `Some(0.0.0.0)` and silently swallow every multicast datagram (the bug
+		// that made the browser receive nothing). This matches phase-1's working
+		// `socket.bind(MDNS_PORT)`, which also yields `addr: None`.
+		let listen = if local.ip().is_unspecified() {
+			embassy_net::IpListenEndpoint {
+				addr: None,
+				port: local.port(),
+			}
+		} else {
+			to_endpoint(local).into()
+		};
+		socket
+			.bind(listen)
+			.map_err(|e| bevyhow!("udp bind failed: {:?}", e))?;
+		Ok(EmbassyUdpSocket {
+			socket,
+			stack: self.stack,
+		})
+	}
 }

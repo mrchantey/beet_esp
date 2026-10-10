@@ -20,22 +20,22 @@ use beet::prelude::*;
 pub struct AlvikPlugin;
 
 impl Plugin for AlvikPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(Startup, driver::spawn_alvik_driver)
-            // Read sensors, then detect touch/move edges off the fresh state.
-            .add_systems(
-                PreUpdate,
-                (systems::apply_status, events::detect_events).chain(),
-            )
-            // Write any changed command components after app logic.
-            .add_systems(
-                PostUpdate,
-                (
-                    systems::flush_wheels,
-                    systems::flush_drive,
-                    systems::flush_servos,
-                    systems::flush_alvik_leds,
-                ),
-            );
-    }
+	fn build(&self, app: &mut App) {
+		app.add_systems(Startup, driver::spawn_alvik_driver)
+			// Read sensors, then detect touch/move edges off the fresh state.
+			.add_systems(
+				PreUpdate,
+				(systems::apply_status, events::detect_events).chain(),
+			)
+			// Write any changed command components after app logic.
+			.add_systems(
+				PostUpdate,
+				(
+					systems::flush_wheels,
+					systems::flush_drive,
+					systems::flush_servos,
+					systems::flush_alvik_leds,
+				),
+			);
+	}
 }

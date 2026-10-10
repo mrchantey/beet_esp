@@ -29,10 +29,10 @@ mod main_attr;
 /// ```
 #[proc_macro_attribute]
 pub fn main(
-    attr: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
+	attr: proc_macro::TokenStream,
+	input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    main_attr::impl_main_attr(attr, input)
-        .unwrap_or_else(syn::Error::into_compile_error)
-        .into()
+	main_attr::impl_main_attr(attr, input)
+		.unwrap_or_else(syn::Error::into_compile_error)
+		.into()
 }

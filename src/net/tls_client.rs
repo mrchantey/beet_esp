@@ -18,8 +18,8 @@ use embedded_tls::CertificateRef;
 use embedded_tls::CertificateVerifyRef;
 use embedded_tls::CryptoProvider;
 use embedded_tls::CryptoRngCore;
-use embedded_tls::SignatureScheme;
 use embedded_tls::Sha256;
+use embedded_tls::SignatureScheme;
 use embedded_tls::TlsConfig;
 use embedded_tls::TlsConnection;
 use embedded_tls::TlsContext;
@@ -31,7 +31,7 @@ use sha2::Digest as _;
 /// pre-extracted by `build.rs`. The trust anchor: a peer must present a cert
 /// carrying this key and prove possession of its private half.
 static PINNED_CERT_PUBKEY: &[u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/dev_cert_pubkey.sec1"));
+	include_bytes!(concat!(env!("OUT_DIR"), "/dev_cert_pubkey.sec1"));
 
 /// TLS record read buffer size: must fit the largest encrypted record a peer
 /// may send (embedded-tls documents 16640 as the safe value).
@@ -49,42 +49,42 @@ pub(crate) fn write_buf() -> Vec<u8> { alloc::vec![0; WRITE_BUF_LEN] }
 /// The caller owns the record buffers ([`read_buf`]/[`write_buf`]); they must
 /// outlive the returned session.
 pub(crate) async fn connect<'buf, S>(
-    transport: S,
-    read_buf: &'buf mut [u8],
-    write_buf: &'buf mut [u8],
+	transport: S,
+	read_buf: &'buf mut [u8],
+	write_buf: &'buf mut [u8],
 ) -> Result<TlsConnection<'buf, S, Aes128GcmSha256>>
 where
-    S: embedded_io_async::Read + embedded_io_async::Write + 'buf,
+	S: embedded_io_async::Read + embedded_io_async::Write + 'buf,
 {
-    let mut tls = TlsConnection::new(transport, read_buf, write_buf);
-    // No server name: the agent is dialled by LAN IP and trust is the pinned
-    // cert itself, so SNI/hostname checks add nothing.
-    let config = TlsConfig::new();
-    let mut provider = PinnedProvider::default();
-    tls.open(TlsContext::new(&config, &mut provider))
-        .await
-        .map_err(|err| bevyhow!("TLS handshake failed: {:?}", err))?;
-    Ok(tls)
+	let mut tls = TlsConnection::new(transport, read_buf, write_buf);
+	// No server name: the agent is dialled by LAN IP and trust is the pinned
+	// cert itself, so SNI/hostname checks add nothing.
+	let config = TlsConfig::new();
+	let mut provider = PinnedProvider::default();
+	tls.open(TlsContext::new(&config, &mut provider))
+		.await
+		.map_err(|err| bevyhow!("TLS handshake failed: {:?}", err))?;
+	Ok(tls)
 }
 
 /// The pinned-trust crypto provider: the hardware RNG plus [`PinnedVerifier`].
 #[derive(Default)]
 struct PinnedProvider {
-    rng: EspRng,
-    verifier: PinnedVerifier,
+	rng: EspRng,
+	verifier: PinnedVerifier,
 }
 
 impl CryptoProvider for PinnedProvider {
-    type CipherSuite = Aes128GcmSha256;
-    type Signature = p256::ecdsa::DerSignature;
+	type CipherSuite = Aes128GcmSha256;
+	type Signature = p256::ecdsa::DerSignature;
 
-    fn rng(&mut self) -> impl CryptoRngCore { &mut self.rng }
+	fn rng(&mut self) -> impl CryptoRngCore { &mut self.rng }
 
-    fn verifier(
-        &mut self,
-    ) -> Result<&mut impl TlsVerifier<Self::CipherSuite>, TlsError> {
-        Ok(&mut self.verifier)
-    }
+	fn verifier(
+		&mut self,
+	) -> Result<&mut impl TlsVerifier<Self::CipherSuite>, TlsError> {
+		Ok(&mut self.verifier)
+	}
 }
 
 /// The esp-hal hardware RNG as a rand_core 0.6 `CryptoRngCore`.
@@ -96,28 +96,28 @@ impl CryptoProvider for PinnedProvider {
 struct EspRng;
 
 impl rand_core::RngCore for EspRng {
-    fn next_u32(&mut self) -> u32 { esp_hal::rng::Rng::new().random() }
+	fn next_u32(&mut self) -> u32 { esp_hal::rng::Rng::new().random() }
 
-    fn next_u64(&mut self) -> u64 {
-        let rng = esp_hal::rng::Rng::new();
-        ((rng.random() as u64) << 32) | rng.random() as u64
-    }
+	fn next_u64(&mut self) -> u64 {
+		let rng = esp_hal::rng::Rng::new();
+		((rng.random() as u64) << 32) | rng.random() as u64
+	}
 
-    fn fill_bytes(&mut self, dest: &mut [u8]) {
-        let rng = esp_hal::rng::Rng::new();
-        for chunk in dest.chunks_mut(4) {
-            let word = rng.random().to_le_bytes();
-            chunk.copy_from_slice(&word[..chunk.len()]);
-        }
-    }
+	fn fill_bytes(&mut self, dest: &mut [u8]) {
+		let rng = esp_hal::rng::Rng::new();
+		for chunk in dest.chunks_mut(4) {
+			let word = rng.random().to_le_bytes();
+			chunk.copy_from_slice(&word[..chunk.len()]);
+		}
+	}
 
-    fn try_fill_bytes(
-        &mut self,
-        dest: &mut [u8],
-    ) -> Result<(), rand_core::Error> {
-        self.fill_bytes(dest);
-        Ok(())
-    }
+	fn try_fill_bytes(
+		&mut self,
+		dest: &mut [u8],
+	) -> Result<(), rand_core::Error> {
+		self.fill_bytes(dest);
+		Ok(())
+	}
 }
 impl rand_core::CryptoRng for EspRng {}
 
@@ -129,69 +129,70 @@ impl rand_core::CryptoRng for EspRng {}
 /// the host re-issue for new names without breaking the pin.
 #[derive(Default)]
 struct PinnedVerifier {
-    /// The transcript hash at the Certificate message, consumed by
-    /// [`TlsVerifier::verify_signature`].
-    transcript: Option<Sha256>,
+	/// The transcript hash at the Certificate message, consumed by
+	/// [`TlsVerifier::verify_signature`].
+	transcript: Option<Sha256>,
 }
 
 impl TlsVerifier<Aes128GcmSha256> for PinnedVerifier {
-    fn set_hostname_verification(
-        &mut self,
-        _hostname: &str,
-    ) -> Result<(), TlsError> {
-        // trust is the pinned public key; hostnames add nothing
-        Ok(())
-    }
+	fn set_hostname_verification(
+		&mut self,
+		_hostname: &str,
+	) -> Result<(), TlsError> {
+		// trust is the pinned public key; hostnames add nothing
+		Ok(())
+	}
 
-    fn verify_certificate(
-        &mut self,
-        transcript: &Sha256,
-        cert: CertificateRef,
-    ) -> Result<(), TlsError> {
-        let Some(CertificateEntryRef::X509(leaf)) = cert.entries.first() else {
-            return Err(TlsError::InvalidCertificate);
-        };
-        // pin the public key, not the whole cert: the host re-issues its dev
-        // cert with new names on a LAN move but keeps the key, so a byte-equal
-        // check would reject every re-issue and force a reflash. The cert's other
-        // fields are not verified anyway (no hostname, no clock), so the key is
-        // the only meaningful anchor; `verify_signature` proves the peer holds
-        // its private half.
-        if pinned_point(*leaf) != Some(PINNED_CERT_PUBKEY) {
-            error!(
-                "peer certificate public key does not match the pinned beet dev \
+	fn verify_certificate(
+		&mut self,
+		transcript: &Sha256,
+		cert: CertificateRef,
+	) -> Result<(), TlsError> {
+		let Some(CertificateEntryRef::X509(leaf)) = cert.entries.first() else {
+			return Err(TlsError::InvalidCertificate);
+		};
+		// pin the public key, not the whole cert: the host re-issues its dev
+		// cert with new names on a LAN move but keeps the key, so a byte-equal
+		// check would reject every re-issue and force a reflash. The cert's other
+		// fields are not verified anyway (no hostname, no clock), so the key is
+		// the only meaningful anchor; `verify_signature` proves the peer holds
+		// its private half.
+		if pinned_point(*leaf) != Some(PINNED_CERT_PUBKEY) {
+			error!(
+				"peer certificate public key does not match the pinned beet dev \
                  key (a different server, or firmware built against another cert?)"
-            );
-            return Err(TlsError::InvalidCertificate);
-        }
-        self.transcript = Some(transcript.clone());
-        Ok(())
-    }
+			);
+			return Err(TlsError::InvalidCertificate);
+		}
+		self.transcript = Some(transcript.clone());
+		Ok(())
+	}
 
-    fn verify_signature(
-        &mut self,
-        verify: CertificateVerifyRef,
-    ) -> Result<(), TlsError> {
-        use p256::ecdsa::signature::Verifier as _;
-        let transcript =
-            self.transcript.take().ok_or(TlsError::InvalidCertificate)?;
-        // the dev cert is ECDSA P-256, so that is the only scheme pinned
-        if verify.signature_scheme != SignatureScheme::EcdsaSecp256r1Sha256 {
-            return Err(TlsError::InvalidSignatureScheme);
-        }
-        // RFC 8446 §4.4.3: 64 spaces, the context string, a NUL, then the
-        // transcript hash up to the Certificate message.
-        let mut message = Vec::with_capacity(130);
-        message.resize(64, 0x20);
-        message.extend_from_slice(b"TLS 1.3, server CertificateVerify\0");
-        message.extend_from_slice(&transcript.finalize());
-        let key = p256::ecdsa::VerifyingKey::from_sec1_bytes(PINNED_CERT_PUBKEY)
-            .map_err(|_| TlsError::DecodeError)?;
-        let signature = p256::ecdsa::Signature::from_der(verify.signature)
-            .map_err(|_| TlsError::InvalidSignature)?;
-        key.verify(&message, &signature)
-            .map_err(|_| TlsError::InvalidSignature)
-    }
+	fn verify_signature(
+		&mut self,
+		verify: CertificateVerifyRef,
+	) -> Result<(), TlsError> {
+		use p256::ecdsa::signature::Verifier as _;
+		let transcript =
+			self.transcript.take().ok_or(TlsError::InvalidCertificate)?;
+		// the dev cert is ECDSA P-256, so that is the only scheme pinned
+		if verify.signature_scheme != SignatureScheme::EcdsaSecp256r1Sha256 {
+			return Err(TlsError::InvalidSignatureScheme);
+		}
+		// RFC 8446 §4.4.3: 64 spaces, the context string, a NUL, then the
+		// transcript hash up to the Certificate message.
+		let mut message = Vec::with_capacity(130);
+		message.resize(64, 0x20);
+		message.extend_from_slice(b"TLS 1.3, server CertificateVerify\0");
+		message.extend_from_slice(&transcript.finalize());
+		let key =
+			p256::ecdsa::VerifyingKey::from_sec1_bytes(PINNED_CERT_PUBKEY)
+				.map_err(|_| TlsError::DecodeError)?;
+		let signature = p256::ecdsa::Signature::from_der(verify.signature)
+			.map_err(|_| TlsError::InvalidSignature)?;
+		key.verify(&message, &signature)
+			.map_err(|_| TlsError::InvalidSignature)
+	}
 }
 
 /// The uncompressed P-256 point in a DER certificate, located by the fixed SPKI
@@ -199,7 +200,9 @@ impl TlsVerifier<Aes128GcmSha256> for PinnedVerifier {
 /// unused bits (`0x00`), then the point (`0x04` + 64-byte X||Y). Avoids pulling
 /// an ASN.1 parser into the firmware.
 fn pinned_point(der: &[u8]) -> Option<&[u8]> {
-    let marker = [0x03u8, 0x42, 0x00, 0x04];
-    let index = der.windows(marker.len()).position(|window| window == marker)?;
-    der.get(index + 3..index + 3 + 65)
+	let marker = [0x03u8, 0x42, 0x00, 0x04];
+	let index = der
+		.windows(marker.len())
+		.position(|window| window == marker)?;
+	der.get(index + 3..index + 3 + 65)
 }

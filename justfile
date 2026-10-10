@@ -17,6 +17,10 @@
 # scene-management + Command/ExchangeSequence capabilities (`just install-cli`).
 
 beet_dir := "/home/pete/me/beet"
+# The nightly `just fmt` runs `rustfmt.toml` (synced from beet) under, never the
+# esp toolchain. Pinned to match `../beet` so both trees format identically; bump
+# the two together.
+fmt-toolchain := 'nightly-2026-07-02'
 
 # List recipes.
 default:
@@ -28,9 +32,21 @@ default:
 install-cli:
     cd {{beet_dir}} && cargo install --path crates/beet-cli
 
-
 beet:
 	cargo run --manifest-path=/home/pete/me/beet/crates/beet-cli/Cargo.toml
+
+# Format this crate and its macros with the pinned nightly. Never `cargo fmt`.
+fmt *args:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	# bare `cargo fmt` runs the esp toolchain's rustfmt, whichever build the last
+	# espup install shipped, so the tree drifts from `../beet`'s formatting.
+	rustup toolchain list | grep -q '^{{ fmt-toolchain }}' \
+		|| rustup toolchain install {{ fmt-toolchain }} --profile minimal --component rustfmt
+	# `-p`, not `--all`: `--all` also formats path dependencies, ie `../beet` and
+	# `vendor/`. `macros` is not a workspace member, so `-p` cannot name it.
+	cargo +{{ fmt-toolchain }} fmt -p beet_esp {{ args }}
+	cargo +{{ fmt-toolchain }} fmt --manifest-path macros/Cargo.toml {{ args }}
 
 # On-device unit tests (beet's own harness over semihosting).
 test:

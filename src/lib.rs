@@ -68,10 +68,10 @@ pub mod utils;
 // ESP-specific scene wiring on top of the upstream scene server (which loads the
 // device's real routes over the wire). Needs beet's no_std router, so gated on
 // `router`.
-#[cfg(feature = "router")]
-pub mod scene;
 #[cfg(feature = "wifi")]
 pub mod net;
+#[cfg(feature = "router")]
+pub mod scene;
 // Composable capabilities a loaded scene wires on top of the hardware + transport
 // layers, eg the perceive-act body (Alvik + the socket exchange back to the agent).
 #[cfg(all(feature = "alvik", feature = "sockets"))]
@@ -80,14 +80,14 @@ pub mod extra;
 pub mod prelude {
 	#[cfg(feature = "alvik")]
 	pub use crate::alvik::prelude::*;
-	#[cfg(all(feature = "alvik", feature = "sockets"))]
-	pub use crate::extra::prelude::*;
+	#[cfg(feature = "device")]
+	pub use crate::esp_app_desc;
 	#[cfg(feature = "device")]
 	pub use crate::esp32_plugin::*;
 	#[cfg(feature = "device")]
 	pub use crate::esp32_utils::prelude::*;
-	#[cfg(feature = "device")]
-	pub use crate::esp_app_desc;
+	#[cfg(all(feature = "alvik", feature = "sockets"))]
+	pub use crate::extra::prelude::*;
 	#[cfg(feature = "device")]
 	pub use crate::main;
 	#[cfg(feature = "router")]
@@ -96,10 +96,10 @@ pub mod prelude {
 	#[cfg(feature = "scripting")]
 	pub use crate::scripting::prelude::*;
 	// Empty unless the LED is enabled; gate to avoid an unused glob.
-	#[cfg(feature = "led")]
-	pub use crate::utils::prelude::*;
 	#[cfg(feature = "wifi")]
 	pub use crate::net::*;
+	#[cfg(feature = "led")]
+	pub use crate::utils::prelude::*;
 }
 
 /// Emit the esp-idf bootloader application descriptor required to boot.

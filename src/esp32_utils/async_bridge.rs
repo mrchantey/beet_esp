@@ -41,30 +41,24 @@ use embassy_sync::signal::Signal;
 ///
 /// `const`-constructible so it can live in a `static`.
 pub struct Latest<T: Send> {
-    inner: Signal<CriticalSectionRawMutex, T>,
+	inner: Signal<CriticalSectionRawMutex, T>,
 }
 
 impl<T: Send> Latest<T> {
-    pub const fn new() -> Self {
-        Self {
-            inner: Signal::new(),
-        }
-    }
+	pub const fn new() -> Self {
+		Self {
+			inner: Signal::new(),
+		}
+	}
 
-    /// Publish the newest value, replacing any not-yet-received one.
-    pub fn send(&self, value: T) {
-        self.inner.signal(value);
-    }
+	/// Publish the newest value, replacing any not-yet-received one.
+	pub fn send(&self, value: T) { self.inner.signal(value); }
 
-    /// Await the next published value.
-    pub async fn recv(&self) -> T {
-        self.inner.wait().await
-    }
+	/// Await the next published value.
+	pub async fn recv(&self) -> T { self.inner.wait().await }
 
-    /// Take the pending value if one exists, without awaiting.
-    pub fn try_recv(&self) -> Option<T> {
-        self.inner.try_take()
-    }
+	/// Take the pending value if one exists, without awaiting.
+	pub fn try_recv(&self) -> Option<T> { self.inner.try_take() }
 }
 
 /// FIFO, bounded, lossless pipe for *discrete work* (e.g. Wi-Fi requests). When
@@ -73,33 +67,29 @@ impl<T: Send> Latest<T> {
 ///
 /// `const`-constructible so it can live in a `static`.
 pub struct Queue<T, const N: usize> {
-    inner: Channel<CriticalSectionRawMutex, T, N>,
+	inner: Channel<CriticalSectionRawMutex, T, N>,
 }
 
 impl<T, const N: usize> Queue<T, N> {
-    pub const fn new() -> Self {
-        Self {
-            inner: Channel::new(),
-        }
-    }
+	pub const fn new() -> Self {
+		Self {
+			inner: Channel::new(),
+		}
+	}
 
-    /// Enqueue without blocking. On a full queue the value is rejected and
-    /// returned in `Err` (drop-newest).
-    pub fn send(&self, value: T) -> Result<(), T> {
-        self.inner.try_send(value).map_err(|e| match e {
-            embassy_sync::channel::TrySendError::Full(v) => v,
-        })
-    }
+	/// Enqueue without blocking. On a full queue the value is rejected and
+	/// returned in `Err` (drop-newest).
+	pub fn send(&self, value: T) -> Result<(), T> {
+		self.inner.try_send(value).map_err(|e| match e {
+			embassy_sync::channel::TrySendError::Full(v) => v,
+		})
+	}
 
-    /// Await the next queued item.
-    pub async fn recv(&self) -> T {
-        self.inner.receive().await
-    }
+	/// Await the next queued item.
+	pub async fn recv(&self) -> T { self.inner.receive().await }
 
-    /// Take the next queued item if one is ready, without awaiting.
-    pub fn try_recv(&self) -> Option<T> {
-        self.inner.try_receive().ok()
-    }
+	/// Take the next queued item if one is ready, without awaiting.
+	pub fn try_recv(&self) -> Option<T> { self.inner.try_receive().ok() }
 }
 
 /// A request/reply pipe across the embassy↔ECS boundary, for the cases where a
@@ -116,13 +106,13 @@ impl<T, const N: usize> Queue<T, N> {
 /// Built on the existing [`Queue`] plus a one-shot [`Signal`] per in-flight
 /// call, and `const`-constructible so it can live in a `static`.
 pub struct AsyncBridge<In, Out, const N: usize> {
-    queue: Queue<Exchange<In, Out>, N>,
+	queue: Queue<Exchange<In, Out>, N>,
 }
 
 /// One in-flight [`AsyncBridge`] call: the input plus the slot to answer on.
 pub struct Exchange<In, Out> {
-    input: In,
-    reply: Reply<Out>,
+	input: In,
+	reply: Reply<Out>,
 }
 
 /// Movable, single-use handle that answers one [`AsyncBridge`] call.
@@ -131,71 +121,61 @@ pub struct Exchange<In, Out> {
 /// moved into a spawned task — e.g. the router's `run_local` bridge task — to be
 /// answered after the draining system has returned.
 pub struct Reply<Out> {
-    signal: alloc::sync::Arc<Signal<CriticalSectionRawMutex, Out>>,
+	signal: alloc::sync::Arc<Signal<CriticalSectionRawMutex, Out>>,
 }
 
 impl<In, Out: Send, const N: usize> AsyncBridge<In, Out, N> {
-    pub const fn new() -> Self {
-        Self {
-            queue: Queue::new(),
-        }
-    }
+	pub const fn new() -> Self {
+		Self {
+			queue: Queue::new(),
+		}
+	}
 
-    /// Initiator side: send `input` and await the response.
-    ///
-    /// On a full queue no reply is ever produced, so the rejected `input` is
-    /// handed back in `Err` for the caller to do its own fallback (the client
-    /// bails; the server writes a 503).
-    pub async fn call(&self, input: In) -> Result<Out, In> {
-        let signal = alloc::sync::Arc::new(Signal::new());
-        let reply = Reply {
-            signal: signal.clone(),
-        };
-        self.queue
-            .send(Exchange { input, reply })
-            .map_err(|ex| ex.input)?;
-        Ok(signal.wait().await)
-    }
+	/// Initiator side: send `input` and await the response.
+	///
+	/// On a full queue no reply is ever produced, so the rejected `input` is
+	/// handed back in `Err` for the caller to do its own fallback (the client
+	/// bails; the server writes a 503).
+	pub async fn call(&self, input: In) -> Result<Out, In> {
+		let signal = alloc::sync::Arc::new(Signal::new());
+		let reply = Reply {
+			signal: signal.clone(),
+		};
+		self.queue
+			.send(Exchange { input, reply })
+			.map_err(|ex| ex.input)?;
+		Ok(signal.wait().await)
+	}
 
-    /// Responder side: await the next call (for an embassy driver loop).
-    pub async fn recv(&self) -> Exchange<In, Out> {
-        self.queue.recv().await
-    }
+	/// Responder side: await the next call (for an embassy driver loop).
+	pub async fn recv(&self) -> Exchange<In, Out> { self.queue.recv().await }
 
-    /// Responder side: take the next call if one is ready, without awaiting (for
-    /// a per-frame Bevy drain system).
-    pub fn try_recv(&self) -> Option<Exchange<In, Out>> {
-        self.queue.try_recv()
-    }
+	/// Responder side: take the next call if one is ready, without awaiting (for
+	/// a per-frame Bevy drain system).
+	pub fn try_recv(&self) -> Option<Exchange<In, Out>> {
+		self.queue.try_recv()
+	}
 }
 
 impl<In, Out, const N: usize> Default for AsyncBridge<In, Out, N>
 where
-    Out: Send,
+	Out: Send,
 {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self { Self::new() }
 }
 
 impl<In, Out> Exchange<In, Out> {
-    /// Borrow the input without consuming the exchange.
-    pub fn input(&self) -> &In {
-        &self.input
-    }
+	/// Borrow the input without consuming the exchange.
+	pub fn input(&self) -> &In { &self.input }
 
-    /// Split into the owned input and its [`Reply`] handle, so an async ECS
-    /// dispatch can move the reply into a spawned task and answer it later.
-    pub fn split(self) -> (In, Reply<Out>) {
-        (self.input, self.reply)
-    }
+	/// Split into the owned input and its [`Reply`] handle, so an async ECS
+	/// dispatch can move the reply into a spawned task and answer it later.
+	pub fn split(self) -> (In, Reply<Out>) { (self.input, self.reply) }
 }
 
 impl<Out> Reply<Out> {
-    /// Answer the call. Consumes `self`, so a call is answered at most once.
-    pub fn send(self, out: Out) {
-        self.signal.signal(out);
-    }
+	/// Answer the call. Consumes `self`, so a call is answered at most once.
+	pub fn send(self, out: Out) { self.signal.signal(out); }
 }
 
 /// One pooled embassy task that drives any `'static` future to completion.
@@ -212,7 +192,7 @@ impl<Out> Reply<Out> {
 /// comfortable headroom.
 #[embassy_executor::task(pool_size = 16)]
 async fn run_boxed(fut: Pin<Box<dyn Future<Output = ()> + 'static>>) {
-    fut.await;
+	fut.await;
 }
 
 /// Spawn `fut` as a long-lived driver on the executor.
@@ -221,8 +201,8 @@ async fn run_boxed(fut: Pin<Box<dyn Future<Output = ()> + 'static>>) {
 /// executor's own thread) and lives on the heap, costing one allocation at
 /// startup — long-lived, so no fragmentation.
 pub fn spawn_driver(spawner: Spawner, fut: impl Future<Output = ()> + 'static) {
-    let token = run_boxed(Box::pin(fut)).expect("driver task pool exhausted");
-    spawner.spawn(token);
+	let token = run_boxed(Box::pin(fut)).expect("driver task pool exhausted");
+	spawner.spawn(token);
 }
 
 // ---------------------------------------------------------------------------
@@ -258,16 +238,16 @@ pub fn spawn_driver(spawner: Spawner, fut: impl Future<Output = ()> + 'static) {
 /// the returned future is `'static` and ready for [`spawn_driver`]. One job is
 /// serviced at a time, matching the existing single-socket drivers.
 pub async fn run_worker<In, Out, const N: usize, Fut>(
-    bridge: &'static AsyncBridge<In, Out, N>,
-    worker: impl Fn(In) -> Fut,
+	bridge: &'static AsyncBridge<In, Out, N>,
+	worker: impl Fn(In) -> Fut,
 ) where
-    Out: Send,
-    Fut: Future<Output = Out>,
+	Out: Send,
+	Fut: Future<Output = Out>,
 {
-    loop {
-        let (input, reply) = bridge.recv().await.split();
-        reply.send(worker(input).await);
-    }
+	loop {
+		let (input, reply) = bridge.recv().await.split();
+		reply.send(worker(input).await);
+	}
 }
 
 /// Spawn [`run_worker`] for `bridge` as a long-lived embassy driver.
@@ -276,15 +256,15 @@ pub async fn run_worker<In, Out, const N: usize, Fut>(
 /// request/reply capability's embassy side is one line: hand it the `static`
 /// bridge and an `async fn(In) -> Out`.
 pub fn spawn_worker<In, Out, const N: usize, Fut>(
-    spawner: Spawner,
-    bridge: &'static AsyncBridge<In, Out, N>,
-    worker: impl Fn(In) -> Fut + 'static,
+	spawner: Spawner,
+	bridge: &'static AsyncBridge<In, Out, N>,
+	worker: impl Fn(In) -> Fut + 'static,
 ) where
-    In: 'static,
-    Out: Send + 'static,
-    Fut: Future<Output = Out> + 'static,
+	In: 'static,
+	Out: Send + 'static,
+	Fut: Future<Output = Out> + 'static,
 {
-    spawn_driver(spawner, run_worker(bridge, worker));
+	spawn_driver(spawner, run_worker(bridge, worker));
 }
 
 /// Shape 2, ECS side: drain every pending item from `queue` and `trigger` it as
@@ -306,14 +286,14 @@ pub fn spawn_worker<In, Out, const N: usize, Fut>(
 /// bound; items the producer dropped on a full queue never arrive (drop-newest).
 #[cfg(feature = "action")]
 pub fn drain_to_observers<T, const N: usize>(
-    queue: &'static Queue<T, N>,
-    mut commands: beet::prelude::Commands,
+	queue: &'static Queue<T, N>,
+	mut commands: beet::prelude::Commands,
 ) where
-    for<'a> T: beet::prelude::Event<Trigger<'a>: Default> + 'static,
+	for<'a> T: beet::prelude::Event<Trigger<'a>: Default> + 'static,
 {
-    while let Some(item) = queue.try_recv() {
-        commands.trigger(item);
-    }
+	while let Some(item) = queue.try_recv() {
+		commands.trigger(item);
+	}
 }
 
 /// Shape 1, ECS side: drain every pending request from `bridge` and answer each
@@ -336,18 +316,18 @@ pub fn drain_to_observers<T, const N: usize>(
 /// ```
 #[cfg(feature = "action")]
 pub fn drain_to_async<In, Out, const N: usize, Fut>(
-    bridge: &'static AsyncBridge<In, Out, N>,
-    commands: beet::prelude::AsyncCommands,
-    worker: impl Fn(beet::prelude::AsyncWorld, In) -> Fut + Clone + 'static,
+	bridge: &'static AsyncBridge<In, Out, N>,
+	commands: beet::prelude::AsyncCommands,
+	worker: impl Fn(beet::prelude::AsyncWorld, In) -> Fut + Clone + 'static,
 ) where
-    In: 'static,
-    Out: Send + 'static,
-    Fut: Future<Output = Out> + 'static,
+	In: 'static,
+	Out: Send + 'static,
+	Fut: Future<Output = Out> + 'static,
 {
-    while let Some((input, reply)) = bridge.try_recv().map(Exchange::split) {
-        let worker = worker.clone();
-        commands.run_local(async move |world: beet::prelude::AsyncWorld| {
-            reply.send(worker(world, input).await);
-        });
-    }
+	while let Some((input, reply)) = bridge.try_recv().map(Exchange::split) {
+		let worker = worker.clone();
+		commands.run_local(async move |world: beet::prelude::AsyncWorld| {
+			reply.send(worker(world, input).await);
+		});
+	}
 }

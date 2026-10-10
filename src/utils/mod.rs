@@ -10,6 +10,6 @@ pub mod led;
 pub mod random;
 
 pub mod prelude {
-    #[cfg(feature = "led")]
-    pub use super::led::*;
+	#[cfg(feature = "led")]
+	pub use super::led::*;
 }

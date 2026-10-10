@@ -19,52 +19,57 @@ const ITERATIONS: u32 = 100;
 
 #[beet_esp::main]
 fn main() {
-    // Snapshot only at the boundaries: heap stats come from `esp_alloc`, which
-    // tracks the lifetime peak itself (`heap_max_used`), so there is no need to
-    // poll inside the hot loop (and `snapshot` walks the stack, which is not for
-    // a tight loop).
-    let baseline = health::snapshot();
-    let (after_engine, after_run, elapsed_us, checksum) = run_benchmark();
+	// Snapshot only at the boundaries: heap stats come from `esp_alloc`, which
+	// tracks the lifetime peak itself (`heap_max_used`), so there is no need to
+	// poll inside the hot loop (and `snapshot` walks the stack, which is not for
+	// a tight loop).
+	let baseline = health::snapshot();
+	let (after_engine, after_run, elapsed_us, checksum) = run_benchmark();
 
-    let engine_resident = after_engine.heap_used.saturating_sub(baseline.heap_used);
-    let peak = after_run.heap_max_used.saturating_sub(baseline.heap_used);
+	let engine_resident =
+		after_engine.heap_used.saturating_sub(baseline.heap_used);
+	let peak = after_run.heap_max_used.saturating_sub(baseline.heap_used);
 
-    info!("── scripting benchmark: quickjs ──");
-    info!("iterations:      {}", ITERATIONS);
-    info!("checksum:        {} (guards against dead-code elimination)", checksum);
-    info!("engine resident: {} B heap (held while idle)", engine_resident);
-    info!("peak heap:       {} B above baseline (lifetime max)", peak);
-    info!("total time:      {} us", elapsed_us);
-    info!("per eval:        {} us", elapsed_us / ITERATIONS as u64);
+	info!("── scripting benchmark: quickjs ──");
+	info!("iterations:      {}", ITERATIONS);
+	info!(
+		"checksum:        {} (guards against dead-code elimination)",
+		checksum
+	);
+	info!(
+		"engine resident: {} B heap (held while idle)",
+		engine_resident
+	);
+	info!("peak heap:       {} B above baseline (lifetime max)", peak);
+	info!("total time:      {} us", elapsed_us);
+	info!("per eval:        {} us", elapsed_us / ITERATIONS as u64);
 
-    App::new().add_plugins((Esp32Plugin, HealthPlugin)).run();
+	App::new().add_plugins((Esp32Plugin, HealthPlugin)).run();
 }
 
 /// Microseconds since boot, from the esp-hal system timer.
-fn now_us() -> u64 {
-    Instant::now().duration_since_epoch().as_micros()
-}
+fn now_us() -> u64 { Instant::now().duration_since_epoch().as_micros() }
 
 /// Returns `(after_engine, after_run, elapsed_us, checksum)`.
 fn run_benchmark() -> (health::MemSnapshot, health::MemSnapshot, u64, i64) {
-    use beet::exports::rquickjs::Context;
-    use beet::exports::rquickjs::Runtime;
+	use beet::exports::rquickjs::Context;
+	use beet::exports::rquickjs::Runtime;
 
-    // An IIFE so the script's completion value is the returned number.
-    const SCRIPT: &str =
-        "(() => { let s = 0; for (let i = 0; i < 50; i++) { s += i * 2; } return s; })()";
+	// An IIFE so the script's completion value is the returned number.
+	const SCRIPT: &str = "(() => { let s = 0; for (let i = 0; i < 50; i++) { s += i * 2; } return s; })()";
 
-    // `new_esp` caps the stack-overflow guard to fit the esp stack.
-    let runtime = Runtime::new_esp().unwrap();
-    let context = Context::full(&runtime).unwrap();
-    let after_engine = health::snapshot();
+	// `new_esp` caps the stack-overflow guard to fit the esp stack.
+	let runtime = Runtime::new_esp().unwrap();
+	let context = Context::full(&runtime).unwrap();
+	let after_engine = health::snapshot();
 
-    let mut checksum = 0i64;
-    let start = now_us();
-    context.with(|ctx| {
-        for _ in 0..ITERATIONS {
-            checksum = checksum.wrapping_add(ctx.eval::<i64, _>(SCRIPT).unwrap());
-        }
-    });
-    (after_engine, health::snapshot(), now_us() - start, checksum)
+	let mut checksum = 0i64;
+	let start = now_us();
+	context.with(|ctx| {
+		for _ in 0..ITERATIONS {
+			checksum =
+				checksum.wrapping_add(ctx.eval::<i64, _>(SCRIPT).unwrap());
+		}
+	});
+	(after_engine, health::snapshot(), now_us() - start, checksum)
 }

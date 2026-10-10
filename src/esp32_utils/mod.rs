@@ -13,14 +13,17 @@ pub mod async_utils;
 pub mod clock;
 
 pub mod prelude {
-    // Re-export the module, not its contents, so callers reach the primitives via
-    // the `async_bridge::` prefix (e.g. `async_bridge::spawn_worker`).
-    pub use super::async_bridge;
-    pub use super::health::*;
-    pub use super::mem::{External, Internal, PsramInfo, init_rtt_log};
+	// Re-export the module, not its contents, so callers reach the primitives via
+	// the `async_bridge::` prefix (e.g. `async_bridge::spawn_worker`).
+	pub use super::async_bridge;
+	pub use super::health::*;
+	pub use super::mem::External;
+	pub use super::mem::Internal;
+	pub use super::mem::PsramInfo;
+	pub use super::mem::init_rtt_log;
 
-    #[cfg(feature = "action")]
-    pub use super::async_utils::*;
-    #[cfg(feature = "clock")]
-    pub use super::clock::*;
+	#[cfg(feature = "action")]
+	pub use super::async_utils::*;
+	#[cfg(feature = "clock")]
+	pub use super::clock::*;
 }

@@ -25,28 +25,24 @@ extern crate alloc;
 
 #[beet_esp::main]
 fn main() {
-    App::new()
-        .add_plugins((
-            Esp32Plugin,
-            HealthPlugin,
-            WifiPlugin::from_env(),
-            RouterPlugin,
-        ))
-        .init_resource::<Visits>()
-        .spawn((
-            HttpServer::new(8080),
-            CallOnReady::on_spawn(),
-            children![(
-                Router::with_defaults(),
-                children![
-                    route::exchange("", Home),
-                    route::exchange("about", About),
-                    route::exchange("hello/:name", Greet),
-                    route::exchange("count", Visit),
-                ],
-            )],
-        ))
-        .run();
+	App::new()
+		.add_plugins((
+			Esp32Plugin,
+			HealthPlugin,
+			WifiPlugin::from_env(),
+			RouterPlugin,
+		))
+		.init_resource::<Visits>()
+		.spawn((HttpServer::new(8080), CallOnReady::on_spawn(), children![(
+			Router::with_defaults(),
+			children![
+				route::exchange("", Home),
+				route::exchange("about", About),
+				route::exchange("hello/:name", Greet),
+				route::exchange("count", Visit),
+			],
+		)]))
+		.run();
 }
 
 /// Visitor counter mutated by the [`Visit`] route.
@@ -57,34 +53,37 @@ struct Visits(u32);
 #[action]
 #[derive(Default, Clone, Component)]
 async fn Home(_cx: ActionContext<RequestParts>) -> Response {
-    info!("route: /");
-    Response::ok_text(
-        "beet_esp router\n\nroutes:\n  /            this page\n  /about       about\n  /hello/:name greet by name\n  /count       visit counter\n",
-    )
+	info!("route: /");
+	Response::ok_text(
+		"beet_esp router\n\nroutes:\n  /            this page\n  /about       about\n  /hello/:name greet by name\n  /count       visit counter\n",
+	)
 }
 
 /// `GET /about` — a static text route.
 #[action]
 #[derive(Default, Clone, Component)]
 async fn About(_cx: ActionContext<RequestParts>) -> Response {
-    info!("route: /about");
-    Response::ok_text("beet_router running no_std on an ESP32-S3.\n")
+	info!("route: /about");
+	Response::ok_text("beet_router running no_std on an ESP32-S3.\n")
 }
 
 /// `GET /hello/:name` — reads the dynamic `:name` path segment.
 #[action]
 #[derive(Default, Clone, Component)]
 async fn Greet(cx: ActionContext<RequestParts>) -> Response {
-    let name = cx.input.get_param("name").unwrap_or("world");
-    info!("route: /hello/{}", name);
-    Response::ok_text(alloc::format!("hello, {name}!\n"))
+	let name = cx.input.get_param("name").unwrap_or("world");
+	info!("route: /hello/{}", name);
+	Response::ok_text(alloc::format!("hello, {name}!\n"))
 }
 
 /// `GET /count` — mutates ECS state, proving routes are full Bevy systems.
 #[action]
 #[derive(Default, Clone, Component)]
-fn Visit(_cx: In<ActionContext<RequestParts>>, mut visits: ResMut<Visits>) -> Response {
-    visits.0 += 1;
-    info!("route: /count -> {}", visits.0);
-    Response::ok_text(alloc::format!("you are visitor #{}\n", visits.0))
+fn Visit(
+	_cx: In<ActionContext<RequestParts>>,
+	mut visits: ResMut<Visits>,
+) -> Response {
+	visits.0 += 1;
+	info!("route: /count -> {}", visits.0);
+	Response::ok_text(alloc::format!("you are visitor #{}\n", visits.0))
 }

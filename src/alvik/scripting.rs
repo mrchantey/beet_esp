@@ -18,43 +18,43 @@ use beet::prelude::*;
 /// register; the value itself is never reflected.
 #[derive(Serialize, Reflect)]
 pub struct AlvikInput {
-    /// Milliseconds since boot.
-    pub elapsed_ms: i64,
-    /// Forward time-of-flight distance, mm (`0` if unreadable).
-    pub depth_mm: i64,
-    /// Left line-follower reflectance.
-    pub line_left: i64,
-    /// Centre line-follower reflectance.
-    pub line_center: i64,
-    /// Right line-follower reflectance.
-    pub line_right: i64,
-    /// Heading about the vertical axis, degrees.
-    pub yaw_deg: f64,
-    /// Touch-button bitmask.
-    pub touch: i64,
-    /// The script's persistent state (see [`ScriptState`]).
-    pub state: HashMap<String, Value>,
+	/// Milliseconds since boot.
+	pub elapsed_ms: i64,
+	/// Forward time-of-flight distance, mm (`0` if unreadable).
+	pub depth_mm: i64,
+	/// Left line-follower reflectance.
+	pub line_left: i64,
+	/// Centre line-follower reflectance.
+	pub line_center: i64,
+	/// Right line-follower reflectance.
+	pub line_right: i64,
+	/// Heading about the vertical axis, degrees.
+	pub yaw_deg: f64,
+	/// Touch-button bitmask.
+	pub touch: i64,
+	/// The script's persistent state (see [`ScriptState`]).
+	pub state: HashMap<String, Value>,
 }
 
 /// The command map the Alvik [`Script`] returns each tick. Every field is
 /// optional, defaulting to "no change", so a script need only set what it drives.
 #[derive(Deserialize, Reflect)]
 pub struct AlvikOutput {
-    /// Forward velocity, mm/s.
-    #[serde(default)]
-    pub linear: f32,
-    /// Turn rate, deg/s.
-    #[serde(default)]
-    pub angular: f32,
-    /// Left UI LED packed `0xRRGGBB`.
-    #[serde(default)]
-    pub led_left: u32,
-    /// Right UI LED packed `0xRRGGBB`.
-    #[serde(default)]
-    pub led_right: u32,
-    /// The next persistent state to thread to the following tick.
-    #[serde(default)]
-    pub state: HashMap<String, Value>,
+	/// Forward velocity, mm/s.
+	#[serde(default)]
+	pub linear: f32,
+	/// Turn rate, deg/s.
+	#[serde(default)]
+	pub angular: f32,
+	/// Left UI LED packed `0xRRGGBB`.
+	#[serde(default)]
+	pub led_left: u32,
+	/// Right UI LED packed `0xRRGGBB`.
+	#[serde(default)]
+	pub led_right: u32,
+	/// The next persistent state to thread to the following tick.
+	#[serde(default)]
+	pub state: HashMap<String, Value>,
 }
 
 /// Behaviour-tree leaf: gather the sensor snapshot, run this entity's
@@ -68,51 +68,59 @@ pub struct AlvikOutput {
 #[type_path = "alvik"]
 #[require(Script<AlvikInput, AlvikOutput>, ScriptState)]
 pub async fn AlvikScriptStep(cx: ActionContext) -> Result<Outcome> {
-    ScriptState::step(
-        cx,
-        |world, state| {
-            world.with_state::<(
-                Res<Time>,
-                Query<(&Tof, &LineSensors, &Orientation, &TouchValue), With<AlvikRobot>>,
-            ), _>(|(time, sensors)| {
-                let (tof, line, orientation, touch) = sensors.single().ok()?;
-                AlvikInput {
-                    elapsed_ms: (time.elapsed_secs_f64() * 1000.0) as i64,
-                    depth_mm: tof.center.as_millimeters() as i64,
-                    line_left: line.left as i64,
-                    line_center: line.center as i64,
-                    line_right: line.right as i64,
-                    yaw_deg: orientation.0.to_euler(EulerRot::XYZ).2 as f64 * 180.0
-                        / core::f64::consts::PI,
-                    touch: touch.0 as i64,
-                    state,
-                }
-                .xsome()
-            })
-        },
-        |world, output: AlvikOutput| {
-            world.with_state::<(
-                Query<&mut DifferentialDrive, With<AlvikRobot>>,
-                Query<(&AlvikLed, &mut LedColor)>,
-            ), _>(|(mut drives, mut leds)| {
-                for mut drive in &mut drives {
-                    drive.linear = LinearVelocity::from_mm_per_sec(output.linear);
-                    drive.angular = AngularVelocity::from_deg_per_sec(output.angular);
-                }
-                for (led, mut color) in &mut leds {
-                    let packed = match led.side {
-                        Side::Left => output.led_left,
-                        Side::Right => output.led_right,
-                    };
-                    color.0 = unpack_color(packed);
-                }
-            });
-            info!(
-                "scene: script -> ({} mm/s, {} deg/s) led {:#08x}/{:#08x}",
-                output.linear, output.angular, output.led_left, output.led_right
-            );
-            output.state
-        },
-    )
-    .await
+	ScriptState::step(
+		cx,
+		|world, state| {
+			world.with_state::<(
+				Res<Time>,
+				Query<
+					(&Tof, &LineSensors, &Orientation, &TouchValue),
+					With<AlvikRobot>,
+				>,
+			), _>(|(time, sensors)| {
+				let (tof, line, orientation, touch) = sensors.single().ok()?;
+				AlvikInput {
+					elapsed_ms: (time.elapsed_secs_f64() * 1000.0) as i64,
+					depth_mm: tof.center.as_millimeters() as i64,
+					line_left: line.left as i64,
+					line_center: line.center as i64,
+					line_right: line.right as i64,
+					yaw_deg: orientation.0.to_euler(EulerRot::XYZ).2 as f64
+						* 180.0 / core::f64::consts::PI,
+					touch: touch.0 as i64,
+					state,
+				}
+				.xsome()
+			})
+		},
+		|world, output: AlvikOutput| {
+			world.with_state::<(
+				Query<&mut DifferentialDrive, With<AlvikRobot>>,
+				Query<(&AlvikLed, &mut LedColor)>,
+			), _>(|(mut drives, mut leds)| {
+				for mut drive in &mut drives {
+					drive.linear =
+						LinearVelocity::from_mm_per_sec(output.linear);
+					drive.angular =
+						AngularVelocity::from_deg_per_sec(output.angular);
+				}
+				for (led, mut color) in &mut leds {
+					let packed = match led.side {
+						Side::Left => output.led_left,
+						Side::Right => output.led_right,
+					};
+					color.0 = unpack_color(packed);
+				}
+			});
+			info!(
+				"scene: script -> ({} mm/s, {} deg/s) led {:#08x}/{:#08x}",
+				output.linear,
+				output.angular,
+				output.led_left,
+				output.led_right
+			);
+			output.state
+		},
+	)
+	.await
 }

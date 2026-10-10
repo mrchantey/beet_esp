@@ -105,6 +105,8 @@ cargo test               # on-hardware tests (embedded-test)
 
 Target, runner and `build-std` are configured in `.cargo/config.toml`.
 
+Format with `just fmt` (`just fmt --check` to verify), never bare `cargo fmt`. Unlike beet's recipe it passes `-p`, not `--all`, formatting only this crate and `macros`: `--all` would also reach `../beet` and `vendor/`.
+
 **`cargo run` does not exit.** The probe-rs runner flashes and then attaches an
 RTT/`defmt` monitor that streams output indefinitely, it never returns on its
 own. When running non-interactively (e.g. from an agent), always wrap it in a

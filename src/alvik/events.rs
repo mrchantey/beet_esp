@@ -54,60 +54,60 @@ pub struct Tilted(pub TiltAxis);
 
 /// True if `mask` is newly set going from `prev` to `next`.
 fn rising(prev: u8, next: u8, mask: u8) -> bool {
-    prev & mask == 0 && next & mask != 0
+	prev & mask == 0 && next & mask != 0
 }
 
 /// True if `mask` was set in `prev` and cleared in `next`.
 fn falling(prev: u8, next: u8, mask: u8) -> bool {
-    prev & mask != 0 && next & mask == 0
+	prev & mask != 0 && next & mask == 0
 }
 
 /// Compare this frame's [`TouchValue`] / [`MotionValue`] against last frame's
 /// and trigger the matching observer events. Added to the schedule by
 /// [`AlvikPlugin`](super::plugin::AlvikPlugin).
 pub fn detect_events(
-    mut commands: Commands,
-    mut prev: Local<EdgeState>,
-    robot: Single<(&TouchValue, &MotionValue), With<AlvikRobot>>,
+	mut commands: Commands,
+	mut prev: Local<EdgeState>,
+	robot: Single<(&TouchValue, &MotionValue), With<AlvikRobot>>,
 ) {
-    let (touch, motion) = (robot.0.0, robot.1.0);
+	let (touch, motion) = (robot.0.0, robot.1.0);
 
-    for (mask, button) in [
-        (TOUCH_OK, TouchButton::Ok),
-        (TOUCH_CANCEL, TouchButton::Cancel),
-        (TOUCH_CENTER, TouchButton::Center),
-        (TOUCH_UP, TouchButton::Up),
-        (TOUCH_LEFT, TouchButton::Left),
-        (TOUCH_DOWN, TouchButton::Down),
-        (TOUCH_RIGHT, TouchButton::Right),
-    ] {
-        if rising(prev.touch, touch, mask) {
-            commands.trigger(TouchPressed(button));
-        }
-    }
+	for (mask, button) in [
+		(TOUCH_OK, TouchButton::Ok),
+		(TOUCH_CANCEL, TouchButton::Cancel),
+		(TOUCH_CENTER, TouchButton::Center),
+		(TOUCH_UP, TouchButton::Up),
+		(TOUCH_LEFT, TouchButton::Left),
+		(TOUCH_DOWN, TouchButton::Down),
+		(TOUCH_RIGHT, TouchButton::Right),
+	] {
+		if rising(prev.touch, touch, mask) {
+			commands.trigger(TouchPressed(button));
+		}
+	}
 
-    if rising(prev.motion, motion, MOTION_SHAKE) {
-        commands.trigger(Shaken);
-    }
-    if rising(prev.motion, motion, MOTION_LIFT) {
-        commands.trigger(Lifted);
-    }
-    if falling(prev.motion, motion, MOTION_LIFT) {
-        commands.trigger(Dropped);
-    }
-    for (mask, axis) in [
-        (MOTION_TILT_X, TiltAxis::X),
-        (MOTION_TILT_NEG_X, TiltAxis::NegX),
-        (MOTION_TILT_Y, TiltAxis::Y),
-        (MOTION_TILT_NEG_Y, TiltAxis::NegY),
-        (MOTION_TILT_Z, TiltAxis::Z),
-        (MOTION_TILT_NEG_Z, TiltAxis::NegZ),
-    ] {
-        if rising(prev.motion, motion, mask) {
-            commands.trigger(Tilted(axis));
-        }
-    }
+	if rising(prev.motion, motion, MOTION_SHAKE) {
+		commands.trigger(Shaken);
+	}
+	if rising(prev.motion, motion, MOTION_LIFT) {
+		commands.trigger(Lifted);
+	}
+	if falling(prev.motion, motion, MOTION_LIFT) {
+		commands.trigger(Dropped);
+	}
+	for (mask, axis) in [
+		(MOTION_TILT_X, TiltAxis::X),
+		(MOTION_TILT_NEG_X, TiltAxis::NegX),
+		(MOTION_TILT_Y, TiltAxis::Y),
+		(MOTION_TILT_NEG_Y, TiltAxis::NegY),
+		(MOTION_TILT_Z, TiltAxis::Z),
+		(MOTION_TILT_NEG_Z, TiltAxis::NegZ),
+	] {
+		if rising(prev.motion, motion, mask) {
+			commands.trigger(Tilted(axis));
+		}
+	}
 
-    prev.touch = touch;
-    prev.motion = motion;
+	prev.touch = touch;
+	prev.motion = motion;
 }

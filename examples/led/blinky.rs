@@ -20,15 +20,15 @@ use beet_esp::prelude::*;
 
 #[beet_esp::main]
 fn main() {
-    App::new()
-        .add_plugins((Esp32Plugin, HealthPlugin, LedPlugin))
-        .add_systems(Startup, setup)
-        .run();
+	App::new()
+		.add_plugins((Esp32Plugin, HealthPlugin, LedPlugin))
+		.add_systems(Startup, setup)
+		.run();
 }
 
 /// Spawn the on-board LED entity with a hue-fade animation. The [`Ws2812Led`]
 /// marker selects the RMT backend; [`LedPlugin`] claims its peripherals at
 /// startup and [`Update`] systems drive its [`HueFade`].
 fn setup(mut commands: Commands) {
-    commands.spawn((LedColor::default(), HueFade::default(), Ws2812Led));
+	commands.spawn((LedColor::default(), HueFade::default(), Ws2812Led));
 }

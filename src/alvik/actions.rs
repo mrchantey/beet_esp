@@ -23,19 +23,19 @@ const LINE_BLACK_THRESHOLD: i16 = 500;
 #[reflect(Component)]
 #[type_path = "alvik"]
 pub fn LineFollowStep(
-    _cx: In<ActionContext>,
-    line: Single<&LineSensors, With<AlvikRobot>>,
-    mut drive: Single<&mut DifferentialDrive, With<AlvikRobot>>,
+	_cx: In<ActionContext>,
+	line: Single<&LineSensors, With<AlvikRobot>>,
+	mut drive: Single<&mut DifferentialDrive, With<AlvikRobot>>,
 ) -> Outcome {
-    if line.left >= LINE_BLACK_THRESHOLD {
-        // left over the line — steer back to the right
-        drive.linear = LinearVelocity::from_mm_per_sec(20.0);
-        drive.angular = AngularVelocity::from_deg_per_sec(-60.0);
-    } else {
-        drive.linear = LinearVelocity::from_mm_per_sec(40.0);
-        drive.angular = AngularVelocity::from_deg_per_sec(0.0);
-    }
-    Outcome::PASS
+	if line.left >= LINE_BLACK_THRESHOLD {
+		// left over the line — steer back to the right
+		drive.linear = LinearVelocity::from_mm_per_sec(20.0);
+		drive.angular = AngularVelocity::from_deg_per_sec(-60.0);
+	} else {
+		drive.linear = LinearVelocity::from_mm_per_sec(40.0);
+		drive.angular = AngularVelocity::from_deg_per_sec(0.0);
+	}
+	Outcome::PASS
 }
 
 /// Turn away from a wall closer than this (mm).
@@ -49,16 +49,16 @@ const ROOMBA_NEAR_MM: f32 = 200.0;
 #[reflect(Component)]
 #[type_path = "alvik"]
 pub fn RoombaStep(
-    _cx: In<ActionContext>,
-    tof: Single<&Tof, With<AlvikRobot>>,
-    mut drive: Single<&mut DifferentialDrive, With<AlvikRobot>>,
+	_cx: In<ActionContext>,
+	tof: Single<&Tof, With<AlvikRobot>>,
+	mut drive: Single<&mut DifferentialDrive, With<AlvikRobot>>,
 ) -> Outcome {
-    if tof.center.as_millimeters() <= ROOMBA_NEAR_MM {
-        drive.linear = LinearVelocity::from_mm_per_sec(0.0);
-        drive.angular = AngularVelocity::from_deg_per_sec(-90.0);
-    } else {
-        drive.linear = LinearVelocity::from_mm_per_sec(50.0);
-        drive.angular = AngularVelocity::from_deg_per_sec(0.0);
-    }
-    Outcome::PASS
+	if tof.center.as_millimeters() <= ROOMBA_NEAR_MM {
+		drive.linear = LinearVelocity::from_mm_per_sec(0.0);
+		drive.angular = AngularVelocity::from_deg_per_sec(-90.0);
+	} else {
+		drive.linear = LinearVelocity::from_mm_per_sec(50.0);
+		drive.angular = AngularVelocity::from_deg_per_sec(0.0);
+	}
+	Outcome::PASS
 }

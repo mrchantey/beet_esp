@@ -24,36 +24,44 @@ use beet_esp::prelude::*;
 use core::time::Duration;
 use esp_hal::time::Instant;
 
-fn now_ms() -> u64 {
-    Instant::now().duration_since_epoch().as_micros() / 1000
-}
+fn now_ms() -> u64 { Instant::now().duration_since_epoch().as_micros() / 1000 }
 
 #[beet_esp::main]
 fn main() {
-    let runtime = Runtime::new_esp().unwrap();
-    let context = Context::full(&runtime).unwrap();
+	let runtime = Runtime::new_esp().unwrap();
+	let context = Context::full(&runtime).unwrap();
 
-    // 1) The deadline guard against an infinite loop: the interrupt handler
-    //    aborts it after 2 s, so eval returns Err instead of hanging forever.
-    runtime.set_deadline(Duration::from_secs(2));
-    context.with(|ctx| {
-        let start = now_ms();
-        let aborted = ctx.eval::<i64, _>("while (true) {}").is_err();
-        info!("infinite loop: aborted={} elapsed={}ms", aborted, now_ms() - start);
-    });
-    runtime.clear_deadline();
+	// 1) The deadline guard against an infinite loop: the interrupt handler
+	//    aborts it after 2 s, so eval returns Err instead of hanging forever.
+	runtime.set_deadline(Duration::from_secs(2));
+	context.with(|ctx| {
+		let start = now_ms();
+		let aborted = ctx.eval::<i64, _>("while (true) {}").is_err();
+		info!(
+			"infinite loop: aborted={} elapsed={}ms",
+			aborted,
+			now_ms() - start
+		);
+	});
+	runtime.clear_deadline();
 
-    // 2) A normal short script still completes with a deadline set — the guard
-    //    only fires on overruns, so it does not interfere with real scripts.
-    runtime.set_deadline(Duration::from_secs(5));
-    context.with(|ctx| {
-        let start = now_ms();
-        let value = ctx
-            .eval::<i64, _>("let s = 0; for (let i = 0; i < 10000; i++) { s += i; } s")
-            .unwrap_or(-1);
-        info!("bounded script: value={} elapsed={}ms", value, now_ms() - start);
-    });
-    runtime.clear_deadline();
+	// 2) A normal short script still completes with a deadline set — the guard
+	//    only fires on overruns, so it does not interfere with real scripts.
+	runtime.set_deadline(Duration::from_secs(5));
+	context.with(|ctx| {
+		let start = now_ms();
+		let value = ctx
+			.eval::<i64, _>(
+				"let s = 0; for (let i = 0; i < 10000; i++) { s += i; } s",
+			)
+			.unwrap_or(-1);
+		info!(
+			"bounded script: value={} elapsed={}ms",
+			value,
+			now_ms() - start
+		);
+	});
+	runtime.clear_deadline();
 
-    App::new().add_plugins((Esp32Plugin, HealthPlugin)).run();
+	App::new().add_plugins((Esp32Plugin, HealthPlugin)).run();
 }

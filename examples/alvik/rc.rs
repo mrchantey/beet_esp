@@ -43,36 +43,32 @@ const TURN_RATE_DEG_S: f32 = 90.0;
 
 #[beet_esp::main]
 fn main() {
-    App::new()
-        .add_plugins((
-            Esp32Plugin,
-            HealthPlugin,
-            WifiPlugin::from_env().with_static_ip(ALVIK_IP),
-            AlvikPlugin,
-            RouterPlugin,
-        ))
-        .spawn((
-            HttpServer::new(8080),
-            CallOnReady::on_spawn(),
-            children![(
-                Router::with_defaults(),
-                children![
-                    route::exchange("", Home),
-                    route::exchange("drive/:dir", Drive),
-                    route::exchange("led/:side/:state", Led),
-                ],
-            )],
-        ))
-        .run();
+	App::new()
+		.add_plugins((
+			Esp32Plugin,
+			HealthPlugin,
+			WifiPlugin::from_env().with_static_ip(ALVIK_IP),
+			AlvikPlugin,
+			RouterPlugin,
+		))
+		.spawn((HttpServer::new(8080), CallOnReady::on_spawn(), children![(
+			Router::with_defaults(),
+			children![
+				route::exchange("", Home),
+				route::exchange("drive/:dir", Drive),
+				route::exchange("led/:side/:state", Led),
+			],
+		)]))
+		.run();
 }
 
 /// `GET /` — list the control routes.
 #[action]
 #[derive(Default, Clone, Component)]
 async fn Home(_cx: ActionContext<RequestParts>) -> Response {
-    Response::ok_text(
-        "alvik rc\n\nroutes:\n  /drive/<forward|back|left|right|stop>\n  /led/<left|right>/<on|off>\n",
-    )
+	Response::ok_text(
+		"alvik rc\n\nroutes:\n  /drive/<forward|back|left|right|stop>\n  /led/<left|right>/<on|off>\n",
+	)
 }
 
 /// `GET /drive/:dir` — set a continuous drive velocity from the direction
@@ -81,40 +77,46 @@ async fn Home(_cx: ActionContext<RequestParts>) -> Response {
 #[action]
 #[derive(Default, Clone, Component)]
 fn Drive(
-    cx: In<ActionContext<RequestParts>>,
-    mut drive: Single<&mut DifferentialDrive, With<AlvikRobot>>,
+	cx: In<ActionContext<RequestParts>>,
+	mut drive: Single<&mut DifferentialDrive, With<AlvikRobot>>,
 ) -> Response {
-    let dir = cx.input.get_param("dir").unwrap_or("stop");
-    let (linear, angular) = match dir {
-        "forward" => (DRIVE_SPEED_MM_S, 0.0),
-        "back" => (-DRIVE_SPEED_MM_S, 0.0),
-        "left" => (0.0, TURN_RATE_DEG_S),
-        "right" => (0.0, -TURN_RATE_DEG_S),
-        _ => (0.0, 0.0),
-    };
-    drive.linear = LinearVelocity::from_mm_per_sec(linear);
-    drive.angular = AngularVelocity::from_deg_per_sec(angular);
-    info!("rc: drive {} ({} mm/s, {} deg/s)", dir, linear, angular);
-    Response::ok_text(alloc::format!("drive {dir}\n"))
+	let dir = cx.input.get_param("dir").unwrap_or("stop");
+	let (linear, angular) = match dir {
+		"forward" => (DRIVE_SPEED_MM_S, 0.0),
+		"back" => (-DRIVE_SPEED_MM_S, 0.0),
+		"left" => (0.0, TURN_RATE_DEG_S),
+		"right" => (0.0, -TURN_RATE_DEG_S),
+		_ => (0.0, 0.0),
+	};
+	drive.linear = LinearVelocity::from_mm_per_sec(linear);
+	drive.angular = AngularVelocity::from_deg_per_sec(angular);
+	info!("rc: drive {} ({} mm/s, {} deg/s)", dir, linear, angular);
+	Response::ok_text(alloc::format!("drive {dir}\n"))
 }
 
 /// `GET /led/:side/:state` — set one UI LED to white (on) or black (off).
 #[action]
 #[derive(Default, Clone, Component)]
 fn Led(
-    cx: In<ActionContext<RequestParts>>,
-    mut leds: Query<(&AlvikLed, &mut LedColor)>,
+	cx: In<ActionContext<RequestParts>>,
+	mut leds: Query<(&AlvikLed, &mut LedColor)>,
 ) -> Response {
-    let side = cx.input.get_param("side").unwrap_or("");
-    let state = cx.input.get_param("state").unwrap_or("off");
-    let want = match side {
-        "left" => Side::Left,
-        _ => Side::Right,
-    };
-    let color = if state == "on" { Color::WHITE } else { Color::BLACK };
-    for (_, mut led_color) in leds.iter_mut().filter(|(led, _)| led.side == want) {
-        led_color.0 = color;
-    }
-    info!("rc: led {} {}", side, state);
-    Response::ok_text(alloc::format!("led {side} {state}\n"))
+	let side = cx.input.get_param("side").unwrap_or("");
+	let state = cx.input.get_param("state").unwrap_or("off");
+	let want = match side {
+		"left" => Side::Left,
+		_ => Side::Right,
+	};
+	let color = if state == "on" {
+		Color::WHITE
+	} else {
+		Color::BLACK
+	};
+	for (_, mut led_color) in
+		leds.iter_mut().filter(|(led, _)| led.side == want)
+	{
+		led_color.0 = color;
+	}
+	info!("rc: led {} {}", side, state);
+	Response::ok_text(alloc::format!("led {side} {state}\n"))
 }

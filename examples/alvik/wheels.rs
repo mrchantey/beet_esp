@@ -15,52 +15,52 @@ use beet_esp::prelude::*;
 
 #[beet_esp::main]
 fn main() {
-    App::new()
-        .add_plugins((Esp32Plugin, HealthPlugin, AlvikPlugin))
-        .add_systems(Update, (set_target_speed, log_measured_speed))
-        .run();
+	App::new()
+		.add_plugins((Esp32Plugin, HealthPlugin, AlvikPlugin))
+		.add_systems(Update, (set_target_speed, log_measured_speed))
+		.run();
 }
 
 /// Every three seconds, step both wheels to the next target speed (rpm).
 fn set_target_speed(
-    time: Res<Time>,
-    mut elapsed: Local<f32>,
-    mut step: Local<usize>,
-    mut wheels: Query<&mut WheelTarget, With<Wheel>>,
+	time: Res<Time>,
+	mut elapsed: Local<f32>,
+	mut step: Local<usize>,
+	mut wheels: Query<&mut WheelTarget, With<Wheel>>,
 ) {
-    *elapsed += time.delta_secs();
-    if *elapsed < 3.0 {
-        return;
-    }
-    *elapsed = 0.0;
+	*elapsed += time.delta_secs();
+	if *elapsed < 3.0 {
+		return;
+	}
+	*elapsed = 0.0;
 
-    let speeds = [10.0, 30.0, -20.0, 0.0];
-    let rpm = speeds[*step % speeds.len()];
-    *step += 1;
-    info!("wheels: target {} rpm", rpm);
+	let speeds = [10.0, 30.0, -20.0, 0.0];
+	let rpm = speeds[*step % speeds.len()];
+	*step += 1;
+	info!("wheels: target {} rpm", rpm);
 
-    for mut target in &mut wheels {
-        *target = WheelTarget::Speed(AngularVelocity::from_rpm(rpm));
-    }
+	for mut target in &mut wheels {
+		*target = WheelTarget::Speed(AngularVelocity::from_rpm(rpm));
+	}
 }
 
 /// Log each wheel's measured speed twice a second.
 fn log_measured_speed(
-    time: Res<Time>,
-    mut elapsed: Local<f32>,
-    wheels: Query<(&Wheel, &WheelState)>,
+	time: Res<Time>,
+	mut elapsed: Local<f32>,
+	wheels: Query<(&Wheel, &WheelState)>,
 ) {
-    *elapsed += time.delta_secs();
-    if *elapsed < 0.5 {
-        return;
-    }
-    *elapsed = 0.0;
+	*elapsed += time.delta_secs();
+	if *elapsed < 0.5 {
+		return;
+	}
+	*elapsed = 0.0;
 
-    for (wheel, state) in &wheels {
-        info!(
-            "wheel {:?} measured {} rpm",
-            wheel.side,
-            state.speed.as_rpm()
-        );
-    }
+	for (wheel, state) in &wheels {
+		info!(
+			"wheel {:?} measured {} rpm",
+			wheel.side,
+			state.speed.as_rpm()
+		);
+	}
 }

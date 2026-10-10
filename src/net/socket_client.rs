@@ -19,8 +19,8 @@
 use crate::esp32_utils::async_bridge::AsyncBridge;
 use crate::esp32_utils::async_bridge::Reply;
 use alloc::sync::Arc;
-use beet::prelude::*;
 use beet::prelude::sockets::*;
+use beet::prelude::*;
 // disambiguate the socket `Message` enum from bevy's `Message` trait (both are
 // glob-imported above), matching the upstream socket examples.
 use beet::prelude::sockets::Message;
@@ -301,7 +301,8 @@ async fn run_duplex<S: Read + Write>(
 	let mut read_buf = [0u8; 512];
 	loop {
 		// drain any complete frames already buffered before awaiting more IO.
-		while let Some((message, consumed)) = ws_ext::parse_frame(&decode_buf)? {
+		while let Some((message, consumed)) = ws_ext::parse_frame(&decode_buf)?
+		{
 			decode_buf.drain(..consumed);
 			let is_close = matches!(message, Message::Close(_));
 			job.inbound.send(Ok(message));
@@ -311,8 +312,8 @@ async fn run_duplex<S: Read + Write>(
 		}
 		match select(socket.read(&mut read_buf), job.outbound.receive()).await {
 			Either::First(read) => {
-				let n =
-					read.map_err(|err| bevyhow!("socket read failed: {:?}", err))?;
+				let n = read
+					.map_err(|err| bevyhow!("socket read failed: {:?}", err))?;
 				if n == 0 {
 					// remote closed the stream without a Close frame; the ended
 					// inbound channel tells the reader task the same thing.
@@ -325,14 +326,12 @@ async fn run_duplex<S: Read + Write>(
 				// client frames are masked with a fresh random key (RFC 6455 §5.3).
 				let frame =
 					ws_ext::encode_frame(&message, Some(random_bytes::<4>()));
-				socket
-					.write_all(&frame)
-					.await
-					.map_err(|err| bevyhow!("socket write failed: {:?}", err))?;
-				socket
-					.flush()
-					.await
-					.map_err(|err| bevyhow!("socket flush failed: {:?}", err))?;
+				socket.write_all(&frame).await.map_err(|err| {
+					bevyhow!("socket write failed: {:?}", err)
+				})?;
+				socket.flush().await.map_err(|err| {
+					bevyhow!("socket flush failed: {:?}", err)
+				})?;
 				if is_close {
 					return Ok(());
 				}

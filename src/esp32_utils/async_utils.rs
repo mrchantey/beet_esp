@@ -69,12 +69,12 @@ struct AssertSendSync<F>(F);
 unsafe impl<F> Send for AssertSendSync<F> {}
 unsafe impl<F> Sync for AssertSendSync<F> {}
 impl<F: Future> Future for AssertSendSync<F> {
-    type Output = F::Output;
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<F::Output> {
-        // SAFETY: structural pin projection onto the single field; we never move
-        // `F` out of `self`.
-        unsafe { self.map_unchecked_mut(|s| &mut s.0).poll(cx) }
-    }
+	type Output = F::Output;
+	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<F::Output> {
+		// SAFETY: structural pin projection onto the single field; we never move
+		// `F` out of `self`.
+		unsafe { self.map_unchecked_mut(|s| &mut s.0).poll(cx) }
+	}
 }
 
 /// Install the [`AsyncSpawner`] that backs beet's async bridge with bevy's
@@ -85,12 +85,12 @@ impl<F: Future> Future for AssertSendSync<F> {
 /// `action` feature is enabled. See the module docs for why this pool and not
 /// embassy.
 pub fn install_async_spawner(app: &mut App) {
-    app.insert_resource(AsyncSpawner::new(
-        |fut| {
-            IoTaskPool::get().spawn_local(AssertSendSync(fut)).detach();
-        },
-        |fut| {
-            IoTaskPool::get().spawn_local(AssertSendSync(fut)).detach();
-        },
-    ));
+	app.insert_resource(AsyncSpawner::new(
+		|fut| {
+			IoTaskPool::get().spawn_local(AssertSendSync(fut)).detach();
+		},
+		|fut| {
+			IoTaskPool::get().spawn_local(AssertSendSync(fut)).detach();
+		},
+	));
 }

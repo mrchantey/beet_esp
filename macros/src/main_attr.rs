@@ -1,13 +1,13 @@
 use proc_macro2::TokenStream;
 use quote::quote;
+use syn::parse::Parser;
+use syn::punctuated::Punctuated;
 use syn::Attribute;
 use syn::Expr;
 use syn::Ident;
 use syn::ItemFn;
 use syn::MetaNameValue;
 use syn::Token;
-use syn::parse::Parser;
-use syn::punctuated::Punctuated;
 
 /// Recognised config attributes. Sibling attributes with these names are parsed
 /// and stripped from the entry `fn`; any other attribute is left in place. Extend
@@ -17,130 +17,138 @@ const ATTRIBUTES: &[&str] = &["internal_reserve_kb"];
 /// Entry-point config, gathered from `#[beet_esp::main(name = expr, …)]` args
 /// and from sibling `#[name(expr)]` attributes.
 struct Config {
-    /// The internal SRAM reserve size, in **bytes**. Set from
-    /// `internal_reserve_kb` as `(kb) * 1024`, so it can be used straight as the
-    /// `Reserve<N>` const-generic size.
-    internal_reserve: Expr,
+	/// The internal SRAM reserve size, in **bytes**. Set from
+	/// `internal_reserve_kb` as `(kb) * 1024`, so it can be used straight as the
+	/// `Reserve<N>` const-generic size.
+	internal_reserve: Expr,
 }
 
 impl Default for Config {
-    fn default() -> Self {
-        Self {
-            // 64 KiB internal reserve: ample for the radio + DMA + hot
-            // allocations now that the World/registry/request bulk is in PSRAM.
-            internal_reserve: syn::parse_quote!(64 * 1024),
-        }
-    }
+	fn default() -> Self {
+		Self {
+			// 64 KiB internal reserve: ample for the radio + DMA + hot
+			// allocations now that the World/registry/request bulk is in PSRAM.
+			internal_reserve: syn::parse_quote!(64 * 1024),
+		}
+	}
 }
 
 impl Config {
-    fn set(&mut self, name: &Ident, value: Expr) -> syn::Result<()> {
-        match name.to_string().as_str() {
-            // Kilobytes in, bytes out: wrap the user expr in `(..) * 1024` so the
-            // stored value is always a byte count usable as the `Reserve<N>` size.
-            "internal_reserve_kb" => {
-                self.internal_reserve = syn::parse_quote!((#value) * 1024)
-            }
-            other => {
-                return Err(syn::Error::new_spanned(
-                    name,
-                    format!("#[beet_esp::main]: unknown config attribute `{other}`"),
-                ));
-            }
-        }
-        Ok(())
-    }
+	fn set(&mut self, name: &Ident, value: Expr) -> syn::Result<()> {
+		match name.to_string().as_str() {
+			// Kilobytes in, bytes out: wrap the user expr in `(..) * 1024` so the
+			// stored value is always a byte count usable as the `Reserve<N>` size.
+			"internal_reserve_kb" => {
+				self.internal_reserve = syn::parse_quote!((#value) * 1024)
+			}
+			other => {
+				return Err(syn::Error::new_spanned(
+					name,
+					format!(
+						"#[beet_esp::main]: unknown config attribute `{other}`"
+					),
+				));
+			}
+		}
+		Ok(())
+	}
 
-    /// Apply `name = expr` attributes from the `#[beet_esp::main(...)]` arguments.
-    fn apply_args(&mut self, args: Punctuated<MetaNameValue, Token![,]>) -> syn::Result<()> {
-        for nv in args {
-            let name = nv.path.require_ident()?.clone();
-            self.set(&name, nv.value)?;
-        }
-        Ok(())
-    }
+	/// Apply `name = expr` attributes from the `#[beet_esp::main(...)]` arguments.
+	fn apply_args(
+		&mut self,
+		args: Punctuated<MetaNameValue, Token![,]>,
+	) -> syn::Result<()> {
+		for nv in args {
+			let name = nv.path.require_ident()?.clone();
+			self.set(&name, nv.value)?;
+		}
+		Ok(())
+	}
 
-    /// Consume recognised sibling `#[name(expr)]` attributes from `attrs`,
-    /// leaving the rest so they still apply to the generated `fn`.
-    fn take_sibling_attrs(&mut self, attrs: &mut Vec<Attribute>) -> syn::Result<()> {
-        let mut kept = Vec::with_capacity(attrs.len());
-        for attr in core::mem::take(attrs) {
-            let is_attribute = attr
-                .path()
-                .get_ident()
-                .is_some_and(|id| ATTRIBUTES.contains(&id.to_string().as_str()));
-            if is_attribute {
-                let name = attr.path().get_ident().unwrap().clone();
-                let value: Expr = attr.parse_args()?;
-                self.set(&name, value)?;
-            } else {
-                kept.push(attr);
-            }
-        }
-        *attrs = kept;
-        Ok(())
-    }
+	/// Consume recognised sibling `#[name(expr)]` attributes from `attrs`,
+	/// leaving the rest so they still apply to the generated `fn`.
+	fn take_sibling_attrs(
+		&mut self,
+		attrs: &mut Vec<Attribute>,
+	) -> syn::Result<()> {
+		let mut kept = Vec::with_capacity(attrs.len());
+		for attr in core::mem::take(attrs) {
+			let is_attribute = attr.path().get_ident().is_some_and(|id| {
+				ATTRIBUTES.contains(&id.to_string().as_str())
+			});
+			if is_attribute {
+				let name = attr.path().get_ident().unwrap().clone();
+				let value: Expr = attr.parse_args()?;
+				self.set(&name, value)?;
+			} else {
+				kept.push(attr);
+			}
+		}
+		*attrs = kept;
+		Ok(())
+	}
 }
 
 pub fn impl_main_attr(
-    attr: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
+	attr: proc_macro::TokenStream,
+	input: proc_macro::TokenStream,
 ) -> syn::Result<TokenStream> {
-    let mut func = syn::parse::<ItemFn>(input)?;
+	let mut func = syn::parse::<ItemFn>(input)?;
 
-    if func.sig.ident != "main" {
-        return Err(syn::Error::new_spanned(
-            &func.sig.ident,
-            "#[beet_esp::main] can only be applied to `fn main`",
-        ));
-    }
-    if func.sig.asyncness.is_some() {
-        return Err(syn::Error::new_spanned(
+	if func.sig.ident != "main" {
+		return Err(syn::Error::new_spanned(
+			&func.sig.ident,
+			"#[beet_esp::main] can only be applied to `fn main`",
+		));
+	}
+	if func.sig.asyncness.is_some() {
+		return Err(syn::Error::new_spanned(
             &func.sig.fn_token,
             "#[beet_esp::main] requires a synchronous `fn main` — the esp runner owns the executor",
         ));
-    }
+	}
 
-    let mut config = Config::default();
-    if !attr.is_empty() {
-        let args = Punctuated::<MetaNameValue, Token![,]>::parse_terminated.parse(attr)?;
-        config.apply_args(args)?;
-    }
-    config.take_sibling_attrs(&mut func.attrs)?;
+	let mut config = Config::default();
+	if !attr.is_empty() {
+		let args = Punctuated::<MetaNameValue, Token![,]>::parse_terminated
+			.parse(attr)?;
+		config.apply_args(args)?;
+	}
+	config.take_sibling_attrs(&mut func.attrs)?;
 
-    let internal_reserve = &config.internal_reserve;
-    let attrs = &func.attrs;
-    let block = &func.block;
+	let internal_reserve = &config.internal_reserve;
+	let attrs = &func.attrs;
+	let block = &func.block;
 
-    Ok(quote! {
-        // The RTT panic handler is now owned by the `beet_esp` lib itself (a
-        // `#[panic_handler]` gated on `device` + `not(test)`), so apps need no
-        // panic boilerplate and the on-device test build can swap in its own.
+	Ok(quote! {
+		// The RTT panic handler is now owned by the `beet_esp` lib itself (a
+		// `#[panic_handler]` gated on `device` + `not(test)`), so apps need no
+		// panic boilerplate and the on-device test build can swap in its own.
 
-        // The esp-idf bootloader application descriptor: an item-scope linker
-        // static, so it is emitted as a sibling of `main` rather than inside it.
-        ::beet_esp::esp_app_desc!();
+		// The esp-idf bootloader application descriptor: an item-scope linker
+		// static, so it is emitted as a sibling of `main` rather than inside it.
+		::beet_esp::esp_app_desc!();
 
-        // The internal SRAM reserve: a binary-local linker static (a heap region
-        // must be `'static`, and a generic fn can't size a `static` from its own
-        // const param, so the size lands here at the macro site as a const
-        // generic). Declared at module scope, *not* inside `main`: the
-        // xtensa-lx-rt `#[entry]` that `#[esp_hal::main]` wraps rewrites any
-        // `static mut` inside the entry fn into a `&'static mut`, which would
-        // change its type out from under `init_esp`.
-        static mut __BEET_ESP_RESERVE: ::beet_esp::esp32_utils::mem::Reserve<{ #internal_reserve }> =
-            ::beet_esp::esp32_utils::mem::Reserve::uninit();
+		// The internal SRAM reserve: a binary-local linker static (a heap region
+		// must be `'static`, and a generic fn can't size a `static` from its own
+		// const param, so the size lands here at the macro site as a const
+		// generic). Declared at module scope, *not* inside `main`: the
+		// xtensa-lx-rt `#[entry]` that `#[esp_hal::main]` wraps rewrites any
+		// `static mut` inside the entry fn into a `&'static mut`, which would
+		// change its type out from under `init_esp`.
+		static mut __BEET_ESP_RESERVE: ::beet_esp::esp32_utils::mem::Reserve<{ #internal_reserve }> =
+			::beet_esp::esp32_utils::mem::Reserve::uninit();
 
-        #(#attrs)*
-        #[::beet_esp::esp_hal::main]
-        fn main() -> ! {
-            // Hand the reserve to `mem::init_esp`, which does the actual bring-up
-            // — RTT `log` output, PSRAM + heap registration, the boot snapshot.
-            unsafe { ::beet_esp::esp32_utils::mem::init_esp(&raw mut __BEET_ESP_RESERVE) };
+		#(#attrs)*
+		#[::beet_esp::esp_hal::main]
+		fn main() -> ! {
+			// Hand the reserve to `mem::init_esp`, which does the actual bring-up
+			// — RTT `log` output, PSRAM + heap registration, the boot snapshot.
+			unsafe { ::beet_esp::esp32_utils::mem::init_esp(&raw mut __BEET_ESP_RESERVE) };
 
-            #block
+			#block
 
-            ::core::unreachable!("the esp runner never returns")
-        }
-    })
+			::core::unreachable!("the esp runner never returns")
+		}
+	})
 }

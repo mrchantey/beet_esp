@@ -49,48 +49,51 @@ const SCENE_JSON: &str = r#"{
 
 #[beet_esp::main]
 fn main() {
-    let mut app = App::new();
-    app.add_plugins((Esp32Plugin, HealthPlugin));
-    // world_serde looks types up by reflection at load time.
-    app.init_resource::<AppTypeRegistry>();
-    app.register_type::<HelloWorld>();
-    app.add_systems(Startup, (dump_canonical, load_scene, greet).chain());
-    app.run();
+	let mut app = App::new();
+	app.add_plugins((Esp32Plugin, HealthPlugin));
+	// world_serde looks types up by reflection at load time.
+	app.init_resource::<AppTypeRegistry>();
+	app.register_type::<HelloWorld>();
+	app.add_systems(Startup, (dump_canonical, load_scene, greet).chain());
+	app.run();
 }
 
 /// Serialize a freshly-spawned [`HelloWorld`] subtree to JSON and log it, so the
 /// device itself reports the canonical wire format. The temp entity is despawned
 /// so it doesn't show up in [`greet`].
 fn dump_canonical(world: &mut World) {
-    let temp = world.spawn(HelloWorld).id();
-    match TemplateSaver::new()
-        .with_entity_tree(world, temp)
-        .save(world, MediaType::Json)
-    {
-        Ok(bytes) => match bytes.as_utf8() {
-            Ok(text) => info!("canonical scene JSON:\n{}", text),
-            Err(e) => warn!("serialized scene not UTF-8: {:?}", e),
-        },
-        Err(e) => warn!("failed to serialize scene: {:?}", e),
-    }
-    world.despawn(temp);
+	let temp = world.spawn(HelloWorld).id();
+	match TemplateSaver::new()
+		.with_entity_tree(world, temp)
+		.save(world, MediaType::Json)
+	{
+		Ok(bytes) => match bytes.as_utf8() {
+			Ok(text) => info!("canonical scene JSON:\n{}", text),
+			Err(e) => warn!("serialized scene not UTF-8: {:?}", e),
+		},
+		Err(e) => warn!("failed to serialize scene: {:?}", e),
+	}
+	world.despawn(temp);
 }
 
 /// Deserialize [`SCENE_JSON`] into the world via [`TemplateLoader`].
 fn load_scene(world: &mut World) {
-    let bytes = MediaBytes::new_json(SCENE_JSON);
-    match TemplateLoader::new(world).load(&bytes) {
-        Ok(spawned) => info!("loaded {} entit(ies) from hard-coded JSON scene", spawned.len()),
-        Err(e) => warn!("failed to load scene: {:?}", e),
-    }
+	let bytes = MediaBytes::new_json(SCENE_JSON);
+	match TemplateLoader::new(world).load(&bytes) {
+		Ok(spawned) => info!(
+			"loaded {} entit(ies) from hard-coded JSON scene",
+			spawned.len()
+		),
+		Err(e) => warn!("failed to load scene: {:?}", e),
+	}
 }
 
 /// The payload system: runs once the scene is loaded and greets each entity that
 /// carries the [`HelloWorld`] component.
 fn greet(query: Query<Entity, With<HelloWorld>>) {
-    let count = query.iter().count();
-    info!("{} entit(ies) with HelloWorld present", count);
-    for _ in &query {
-        info!("hello world");
-    }
+	let count = query.iter().count();
+	info!("{} entit(ies) with HelloWorld present", count);
+	for _ in &query {
+		info!("hello world");
+	}
 }

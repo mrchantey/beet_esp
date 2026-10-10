@@ -52,10 +52,8 @@ fn main() -> ! {
 	// runner; override it with the test runner (last `set_runner` wins).
 	app.add_plugins((Esp32Plugin, TestPlugin))
 		.set_runner(esp_test_runner);
-	app.world_mut().spawn((
-		TestRunnerConfig::default(),
-		tests_bundle(embedded_tests()),
-	));
+	app.world_mut()
+		.spawn((TestRunnerConfig::default(), tests_bundle(embedded_tests())));
 	app.run();
 	unreachable!("the test runner reports via semihosting and never returns")
 }

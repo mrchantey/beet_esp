@@ -46,51 +46,51 @@ use beet_esp::prelude::*;
 
 #[beet_esp::main]
 fn main() {
-    let mut app = App::new();
-    app.add_plugins((
-        Esp32Plugin,
-        HealthPlugin,
-        // The static IPv4 comes from the `WIFI_STATIC_IP` env var, so a
-        // controller reaches the device at a fixed address with no lookup.
-        WifiPlugin::from_env().with_env_static_ip(),
-        RouterPlugin,
-        EspScenePlugin,
-    ))
-    .add_systems(Startup, setup);
+	let mut app = App::new();
+	app.add_plugins((
+		Esp32Plugin,
+		HealthPlugin,
+		// The static IPv4 comes from the `WIFI_STATIC_IP` env var, so a
+		// controller reaches the device at a fixed address with no lookup.
+		WifiPlugin::from_env().with_env_static_ip(),
+		RouterPlugin,
+		EspScenePlugin,
+	))
+	.add_systems(Startup, setup);
 
-    // The Alvik build drives the robot; the bare build drives the on-board
-    // WS2812. Both expose `LedColor` entities, so the generic scene routes and
-    // the reset handler work either way.
-    cfg_if! {
-      if #[cfg(feature = "alvik")]{
-        app.add_plugins(AlvikPlugin);
-      }else{
-        app.add_plugins(LedPlugin)
-          .add_systems(Startup, setup_builtin_led);
-      }
-    }
+	// The Alvik build drives the robot; the bare build drives the on-board
+	// WS2812. Both expose `LedColor` entities, so the generic scene routes and
+	// the reset handler work either way.
+	cfg_if! {
+	  if #[cfg(feature = "alvik")]{
+		app.add_plugins(AlvikPlugin);
+	  }else{
+		app.add_plugins(LedPlugin)
+		  .add_systems(Startup, setup_builtin_led);
+	  }
+	}
 
-    // The perceive-act body: registers the `<AgentSocket>` transport + the
-    // `whoami`/`drive` capability routes a pushed `.bsx` composes into a
-    // socket body client (see `templates/alvik/perceive-act-body.bsx`). Needs the
-    // Alvik (the robot the drive commands move) and the socket exchange (back to the agent).
-    #[cfg(all(feature = "alvik", feature = "sockets"))]
-    app.add_plugins(PerceiveActBodyPlugin);
+	// The perceive-act body: registers the `<AgentSocket>` transport + the
+	// `whoami`/`drive` capability routes a pushed `.bsx` composes into a
+	// socket body client (see `templates/alvik/perceive-act-body.bsx`). Needs the
+	// Alvik (the robot the drive commands move) and the socket exchange (back to the agent).
+	#[cfg(all(feature = "alvik", feature = "sockets"))]
+	app.add_plugins(PerceiveActBodyPlugin);
 
-    // Load the firmware's embedded default scene (the perceive-act body) once on boot,
-    // so a freshly powered device serves its routes and dials the agent with no host
-    // `beet load`. A later `beet load` replaces it; `beet clear` clears it for good.
-    #[cfg(all(feature = "alvik", feature = "sockets"))]
-    app.add_plugins(DefaultScenePlugin);
+	// Load the firmware's embedded default scene (the perceive-act body) once on boot,
+	// so a freshly powered device serves its routes and dials the agent with no host
+	// `beet load`. A later `beet load` replaces it; `beet clear` clears it for good.
+	#[cfg(all(feature = "alvik", feature = "sockets"))]
+	app.add_plugins(DefaultScenePlugin);
 
-    app.run();
+	app.run();
 }
 
 // Only the bare-ESP32 (non-alvik) build wires the on-board WS2812; the alvik
 // branch drives the robot's LEDs instead, so this is dead there.
 #[cfg(not(feature = "alvik"))]
 fn setup_builtin_led(mut commands: Commands) {
-    commands.spawn((LedColor::default(), Ws2812Led));
+	commands.spawn((LedColor::default(), Ws2812Led));
 }
 
 // The bootstrap server: only the meta-routes, mounted on a `Router` that is the
@@ -113,70 +113,68 @@ fn setup_builtin_led(mut commands: Commands) {
 // available for a `.bsx` scene. The bare (non-alvik) build has no robot, so the
 // server stays a plain root.
 fn scene_server() -> impl Bundle {
-    (
-        HttpServer::new(DEFAULT_HTTP_PORT),
-        CallOnReady::on_spawn(),
-        children![(Router::with_defaults(), SceneServer::routes())],
-    )
+	(
+		HttpServer::new(DEFAULT_HTTP_PORT),
+		CallOnReady::on_spawn(),
+		children![(Router::with_defaults(), SceneServer::routes())],
+	)
 }
 
 #[cfg(feature = "alvik")]
 fn setup(mut commands: Commands) {
-    commands.spawn((
-        AlvikRobot,
-        // Grouped into sub-bundles: a flat tuple would exceed the 15-element
-        // `Bundle` impl. State, then sensors.
-        (
-            Connected::default(),
-            FirmwareVersion::default(),
-            BehaviorCode::default(),
-            BatterState::default(),
-            Illuminator(true),
-            BuiltinLed(false),
-        ),
-        (
-            LineSensors::default(),
-            ColorSensor::default(),
-            Tof::default(),
-            Imu::default(),
-            Orientation::default(),
-            RobotPose::default(),
-            // Commanded velocity: the upstream `Drive` leaf writes this on the
-            // robot (its agent, resolved as the root ancestor), and `flush_drive`
-            // sends it to the wire.
-            DifferentialDrive::default(),
-            TouchValue::default(),
-            MotionValue::default(),
-        ),
-        children![
-            // --- the robot's hardware: wheels, servos, RGB UI LEDs ---
-            (
-                Wheel { side: Side::Left },
-                WheelState::default(),
-                WheelTarget::Speed(AngularVelocity::default()),
-            ),
-            (
-                Wheel { side: Side::Right },
-                WheelState::default(),
-                WheelTarget::Speed(AngularVelocity::default()),
-            ),
-            (Servo {
-                id: ServoId::A,
-                position: Angle::from_degrees(90.0),
-            }),
-            (Servo {
-                id: ServoId::B,
-                position: Angle::from_degrees(90.0),
-            }),
-            (AlvikLed { side: Side::Left }, LedColor::default()),
-            (AlvikLed { side: Side::Right }, LedColor::default()),
-            // --- the scene server: a child of the robot root ---
-            scene_server(),
-        ],
-    ));
+	commands.spawn((
+		AlvikRobot,
+		// Grouped into sub-bundles: a flat tuple would exceed the 15-element
+		// `Bundle` impl. State, then sensors.
+		(
+			Connected::default(),
+			FirmwareVersion::default(),
+			BehaviorCode::default(),
+			BatterState::default(),
+			Illuminator(true),
+			BuiltinLed(false),
+		),
+		(
+			LineSensors::default(),
+			ColorSensor::default(),
+			Tof::default(),
+			Imu::default(),
+			Orientation::default(),
+			RobotPose::default(),
+			// Commanded velocity: the upstream `Drive` leaf writes this on the
+			// robot (its agent, resolved as the root ancestor), and `flush_drive`
+			// sends it to the wire.
+			DifferentialDrive::default(),
+			TouchValue::default(),
+			MotionValue::default(),
+		),
+		children![
+			// --- the robot's hardware: wheels, servos, RGB UI LEDs ---
+			(
+				Wheel { side: Side::Left },
+				WheelState::default(),
+				WheelTarget::Speed(AngularVelocity::default()),
+			),
+			(
+				Wheel { side: Side::Right },
+				WheelState::default(),
+				WheelTarget::Speed(AngularVelocity::default()),
+			),
+			(Servo {
+				id: ServoId::A,
+				position: Angle::from_degrees(90.0),
+			}),
+			(Servo {
+				id: ServoId::B,
+				position: Angle::from_degrees(90.0),
+			}),
+			(AlvikLed { side: Side::Left }, LedColor::default()),
+			(AlvikLed { side: Side::Right }, LedColor::default()),
+			// --- the scene server: a child of the robot root ---
+			scene_server(),
+		],
+	));
 }
 
 #[cfg(not(feature = "alvik"))]
-fn setup(mut commands: Commands) {
-    commands.spawn(scene_server());
-}
+fn setup(mut commands: Commands) { commands.spawn(scene_server()); }

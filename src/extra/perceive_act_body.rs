@@ -29,8 +29,8 @@
 //! out the movement.
 
 use crate::prelude::*;
-use beet::prelude::*;
 use beet::prelude::sockets::*;
+use beet::prelude::*;
 
 extern crate alloc;
 use alloc::string::String;
@@ -49,21 +49,21 @@ use alloc::string::String;
 pub struct PerceiveActBodyPlugin;
 
 impl Plugin for PerceiveActBodyPlugin {
-    fn build(&self, app: &mut App) {
-        app.register_type::<WhoAmi>()
-            .register_type::<DriveForDurationAction>()
-            .register_type::<DriveStep>()
-            // the reconnecting transport + its disconnect reaction, so a pushed
-            // scene can also carry them directly (AgentSocket bakes them in).
-            .register_type::<PersistentSocket>()
-            .register_type::<ResetOnDisconnect>()
-            // The outbound socket-client transport: wraps a non-reflect codec
-            // `Arc`, so it cannot be a bsx literal — a template provides it,
-            // expanding at build to leave no marker to re-fire on reload.
-            .register_template::<AgentSocket>()
-            // ends each drive command after its duration, so the robot steps then stops.
-            .add_systems(Update, expire_drive_step);
-    }
+	fn build(&self, app: &mut App) {
+		app.register_type::<WhoAmi>()
+			.register_type::<DriveForDurationAction>()
+			.register_type::<DriveStep>()
+			// the reconnecting transport + its disconnect reaction, so a pushed
+			// scene can also carry them directly (AgentSocket bakes them in).
+			.register_type::<PersistentSocket>()
+			.register_type::<ResetOnDisconnect>()
+			// The outbound socket-client transport: wraps a non-reflect codec
+			// `Arc`, so it cannot be a bsx literal — a template provides it,
+			// expanding at build to leave no marker to re-fire on reload.
+			.register_template::<AgentSocket>()
+			// ends each drive command after its duration, so the robot steps then stops.
+			.add_systems(Update, expire_drive_step);
+	}
 }
 
 /// `<AgentSocket url="wss://host:port">` — the outbound socket-client transport
@@ -84,27 +84,27 @@ impl Plugin for PerceiveActBodyPlugin {
 /// a `wss://` url needs the `secure` build.
 #[template]
 pub fn AgentSocket(
-    /// The agent's socket url, eg `wss://192.168.86.221:8338`; defaults to the
-    /// `BEET_SOCKET_SERVER` build env.
-    url: Option<String>,
+	/// The agent's socket url, eg `wss://192.168.86.221:8338`; defaults to the
+	/// `BEET_SOCKET_SERVER` build env.
+	url: Option<String>,
 ) -> impl Bundle {
-    let url = url
-        .or_else(|| option_env!("BEET_SOCKET_SERVER").map(String::from))
-        .unwrap_or_default()
-        .xmap(|url| match url.contains("://") {
-            true => url,
-            false => alloc::format!("ws://{url}"),
-        });
-    rsx! {
-        <span {(
-            PersistentSocket::new(url),
-            ResetOnDisconnect,
-            ExchangeSocket::json(),
-            Router::with_defaults(),
-        )}>
-            <Slot/>
-        </span>
-    }
+	let url = url
+		.or_else(|| option_env!("BEET_SOCKET_SERVER").map(String::from))
+		.unwrap_or_default()
+		.xmap(|url| match url.contains("://") {
+			true => url,
+			false => alloc::format!("ws://{url}"),
+		});
+	rsx! {
+		<span {(
+			PersistentSocket::new(url),
+			ResetOnDisconnect,
+			ExchangeSocket::json(),
+			Router::with_defaults(),
+		)}>
+			<Slot/>
+		</span>
+	}
 }
 
 /// The `whoami` handshake answer: this client is the `body`. The agent strips the
@@ -116,7 +116,7 @@ pub fn AgentSocket(
 #[reflect(Component)]
 #[type_path = "perceive_act"]
 async fn WhoAmi(_cx: ActionContext<RequestParts>) -> Response {
-    Response::ok_text("body")
+	Response::ok_text("body")
 }
 
 /// Serve `drive`: write the [`DifferentialDrive`] the agent chose onto the Alvik's
@@ -139,42 +139,44 @@ async fn WhoAmi(_cx: ActionContext<RequestParts>) -> Response {
 #[derive(Default, Clone, Component, Reflect)]
 #[reflect(Component)]
 #[type_path = "perceive_act"]
-async fn DriveForDurationAction(cx: ActionContext<DriveForDuration>) -> Response {
-    let drive = cx.input.drive;
-    let duration = cx.input.duration;
-    info!(
-        "drive: ({} mm/s, {} deg/s) for {:?}",
-        drive.linear.as_mm_per_sec(),
-        drive.angular.as_deg_per_sec(),
-        duration
-    );
-    // write the commanded velocity onto the robot root and return its entity, skipping
-    // cleanly if the Alvik is not up yet (the model trails several round-trips, so in
-    // practice it is).
-    let world = cx.world();
-    let robot = world
-        .with_state::<Query<(Entity, &mut DifferentialDrive), With<AlvikRobot>>, _>(
-            move |mut drives| {
-                let (entity, mut robot_drive) = drives.iter_mut().next()?;
-                *robot_drive = drive;
-                Some(entity)
-            },
-        )
-        .await;
-    let settle = match robot {
-        Some(robot) => {
-            let _ = world
-                .entity(robot)
-                .insert(DriveStep {
-                    timer: Timer::new(duration, TimerMode::Once),
-                })
-                .await;
-            SettleTime::new(duration)
-        }
-        // no robot up: nothing will move, so nothing to settle
-        None => SettleTime::NONE,
-    };
-    Response::ok_json(&settle).unwrap_or_else(|_| Response::ok())
+async fn DriveForDurationAction(
+	cx: ActionContext<DriveForDuration>,
+) -> Response {
+	let drive = cx.input.drive;
+	let duration = cx.input.duration;
+	info!(
+		"drive: ({} mm/s, {} deg/s) for {:?}",
+		drive.linear.as_mm_per_sec(),
+		drive.angular.as_deg_per_sec(),
+		duration
+	);
+	// write the commanded velocity onto the robot root and return its entity, skipping
+	// cleanly if the Alvik is not up yet (the model trails several round-trips, so in
+	// practice it is).
+	let world = cx.world();
+	let robot = world
+		.with_state::<Query<(Entity, &mut DifferentialDrive), With<AlvikRobot>>, _>(
+			move |mut drives| {
+				let (entity, mut robot_drive) = drives.iter_mut().next()?;
+				*robot_drive = drive;
+				Some(entity)
+			},
+		)
+		.await;
+	let settle = match robot {
+		Some(robot) => {
+			let _ = world
+				.entity(robot)
+				.insert(DriveStep {
+					timer: Timer::new(duration, TimerMode::Once),
+				})
+				.await;
+			SettleTime::new(duration)
+		}
+		// no robot up: nothing will move, so nothing to settle
+		None => SettleTime::NONE,
+	};
+	Response::ok_json(&settle).unwrap_or_else(|_| Response::ok())
 }
 
 /// Marks the robot as mid-step; [`expire_drive_step`] counts it down and stops the
@@ -182,8 +184,8 @@ async fn DriveForDurationAction(cx: ActionContext<DriveForDuration>) -> Response
 #[derive(Debug, Clone, Component, Reflect)]
 #[reflect(Component)]
 struct DriveStep {
-    /// Counts down the drive command's duration.
-    timer: Timer,
+	/// Counts down the drive command's duration.
+	timer: Timer,
 }
 
 /// End each drive command once its [`DriveStep`] timer finishes, zeroing the
@@ -192,16 +194,15 @@ struct DriveStep {
 /// esp's `TimePlugin`), so it runs in the schedule with no async-timer waker
 /// constraint.
 fn expire_drive_step(
-    time: Res<Time>,
-    mut robots: Query<(Entity, &mut DriveStep, &mut DifferentialDrive)>,
-    mut commands: Commands,
+	time: Res<Time>,
+	mut robots: Query<(Entity, &mut DriveStep, &mut DifferentialDrive)>,
+	mut commands: Commands,
 ) {
-    for (entity, mut step, mut drive) in &mut robots {
-        if step.timer.tick(time.delta()).is_finished() {
-            info!("drive step complete, halting");
-            *drive = DifferentialDrive::default();
-            commands.entity(entity).remove::<DriveStep>();
-        }
-    }
+	for (entity, mut step, mut drive) in &mut robots {
+		if step.timer.tick(time.delta()).is_finished() {
+			info!("drive step complete, halting");
+			*drive = DifferentialDrive::default();
+			commands.entity(entity).remove::<DriveStep>();
+		}
+	}
 }
-

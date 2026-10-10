@@ -78,16 +78,14 @@ use esp_hal::psram::PsramConfig;
 pub struct Reserve<const N: usize>(MaybeUninit<[u8; N]>);
 
 impl<const N: usize> Reserve<N> {
-    /// An uninitialised reserve. `const` so it can initialise a `static`.
-    pub const fn uninit() -> Self {
-        Self(MaybeUninit::uninit())
-    }
+	/// An uninitialised reserve. `const` so it can initialise a `static`.
+	pub const fn uninit() -> Self { Self(MaybeUninit::uninit()) }
 
-    /// `(ptr, len)` over the whole buffer, for registering as a heap region.
-    /// The pointer's `'static` validity comes from the caller's static storage.
-    fn region(&mut self) -> (*mut u8, usize) {
-        (self.0.as_mut_ptr() as *mut u8, N)
-    }
+	/// `(ptr, len)` over the whole buffer, for registering as a heap region.
+	/// The pointer's `'static` validity comes from the caller's static storage.
+	fn region(&mut self) -> (*mut u8, usize) {
+		(self.0.as_mut_ptr() as *mut u8, N)
+	}
 }
 
 /// The bootloader-reclaimed internal SRAM region (linker section `dram2_seg`),
@@ -95,23 +93,22 @@ impl<const N: usize> Reserve<N> {
 /// than in the macro; [`init_esp`] registers it as an [`Internal`] heap region so
 /// radio DMA can use it.
 #[esp_hal::ram(reclaimed)]
-static mut RECLAIMED: MaybeUninit<[u8; crate::RECLAIMED_INTERNAL_BYTES]> = MaybeUninit::uninit();
+static mut RECLAIMED: MaybeUninit<[u8; crate::RECLAIMED_INTERNAL_BYTES]> =
+	MaybeUninit::uninit();
 
 /// Outcome of bringing PSRAM up, reported once at boot so the placement model is
 /// observable rather than assumed.
 #[derive(Debug, Clone, Copy)]
 pub struct PsramInfo {
-    /// Base virtual address of the mapped PSRAM window.
-    pub start: usize,
-    /// Mapped, usable PSRAM size in bytes (0 if no PSRAM was detected).
-    pub size: usize,
+	/// Base virtual address of the mapped PSRAM window.
+	pub start: usize,
+	/// Mapped, usable PSRAM size in bytes (0 if no PSRAM was detected).
+	pub size: usize,
 }
 
 impl PsramInfo {
-    /// Whether usable PSRAM was detected and mapped.
-    pub fn present(&self) -> bool {
-        self.size > 0
-    }
+	/// Whether usable PSRAM was detected and mapped.
+	pub fn present(&self) -> bool { self.size > 0 }
 }
 
 /// Bring PSRAM up, register it as the **default** (first) heap region, then add
@@ -135,52 +132,55 @@ impl PsramInfo {
 /// non-overlapping byte region with non-zero length. The caller ([`init_esp`]) must
 /// not register those regions itself.
 unsafe fn init_mem(
-    reserve: (*mut u8, usize),
-    reclaimed: (*mut u8, usize),
+	reserve: (*mut u8, usize),
+	reclaimed: (*mut u8, usize),
 ) -> (Peripherals, PsramInfo) {
-    let p = esp_hal::init(esp_hal::Config::default().with_cpu_clock(esp_hal::clock::CpuClock::max()));
+	let p = esp_hal::init(
+		esp_hal::Config::default()
+			.with_cpu_clock(esp_hal::clock::CpuClock::max()),
+	);
 
-    // Auto-detects octal vs quad and the size; warns (does not panic) if no chip
-    // is present, leaving `raw_parts` empty so we simply skip the region.
-    //
-    // `Psram::new` wants `PSRAM<'static>`, which we can't move out of the
-    // `#[non_exhaustive]` `Peripherals` while keeping the rest. `Psram` only
-    // touches the peripheral to map the window once and then holds it inert, so
-    // steal a second `'static` handle for it; the original in `p` is never used
-    // again (PSRAM is not exposed as a peripheral resource).
-    let psram_peri = unsafe { esp_hal::peripherals::PSRAM::steal() };
-    let psram = Psram::new(psram_peri, PsramConfig::default());
-    let (psram_start, psram_size) = psram.raw_parts();
-    let info = PsramInfo {
-        start: psram_start as usize,
-        size: psram_size,
-    };
+	// Auto-detects octal vs quad and the size; warns (does not panic) if no chip
+	// is present, leaving `raw_parts` empty so we simply skip the region.
+	//
+	// `Psram::new` wants `PSRAM<'static>`, which we can't move out of the
+	// `#[non_exhaustive]` `Peripherals` while keeping the rest. `Psram` only
+	// touches the peripheral to map the window once and then holds it inert, so
+	// steal a second `'static` handle for it; the original in `p` is never used
+	// again (PSRAM is not exposed as a peripheral resource).
+	let psram_peri = unsafe { esp_hal::peripherals::PSRAM::steal() };
+	let psram = Psram::new(psram_peri, PsramConfig::default());
+	let (psram_start, psram_size) = psram.raw_parts();
+	let info = PsramInfo {
+		start: psram_start as usize,
+		size: psram_size,
+	};
 
-    unsafe {
-        // PSRAM FIRST → it becomes the home for every capability-agnostic
-        // allocation (the bulk: World, type registry, request buffers).
-        if info.present() {
-            esp_alloc::HEAP.add_region(HeapRegion::new(
-                psram_start,
-                psram_size,
-                MemoryCapability::External.into(),
-            ));
-        }
-        // Internal regions AFTER → they only ever serve `Internal`-capability
-        // requests (radio DMA) plus any overflow once PSRAM is full.
-        esp_alloc::HEAP.add_region(HeapRegion::new(
-            reserve.0,
-            reserve.1,
-            MemoryCapability::Internal.into(),
-        ));
-        esp_alloc::HEAP.add_region(HeapRegion::new(
-            reclaimed.0,
-            reclaimed.1,
-            MemoryCapability::Internal.into(),
-        ));
-    }
+	unsafe {
+		// PSRAM FIRST → it becomes the home for every capability-agnostic
+		// allocation (the bulk: World, type registry, request buffers).
+		if info.present() {
+			esp_alloc::HEAP.add_region(HeapRegion::new(
+				psram_start,
+				psram_size,
+				MemoryCapability::External.into(),
+			));
+		}
+		// Internal regions AFTER → they only ever serve `Internal`-capability
+		// requests (radio DMA) plus any overflow once PSRAM is full.
+		esp_alloc::HEAP.add_region(HeapRegion::new(
+			reserve.0,
+			reserve.1,
+			MemoryCapability::Internal.into(),
+		));
+		esp_alloc::HEAP.add_region(HeapRegion::new(
+			reclaimed.0,
+			reclaimed.1,
+			MemoryCapability::Internal.into(),
+		));
+	}
 
-    (p, info)
+	(p, info)
 }
 
 /// Install the RTT `log` backend: declare the `_SEGGER_RTT` control block and the
@@ -192,7 +192,7 @@ unsafe fn init_mem(
 /// single expansion site every binary shares: [`init_esp`] calls it at boot, and
 /// on-device tests call it directly instead of expanding the macro themselves.
 pub fn init_rtt_log() {
-    crate::rtt_target::rtt_init_log!(log::LevelFilter::Info);
+	crate::rtt_target::rtt_init_log!(log::LevelFilter::Info);
 }
 
 /// Full boot-time bring-up, and the only thing
@@ -218,20 +218,20 @@ pub fn init_rtt_log() {
 /// nowhere else — exactly the `static mut Reserve<N>` the entry macro declares
 /// and passes by `&raw mut`. Must be called once.
 pub unsafe fn init_esp<const N: usize>(reserve: *mut Reserve<N>) {
-    // Start the RTT `log` backend before anything logs.
-    init_rtt_log();
+	// Start the RTT `log` backend before anything logs.
+	init_rtt_log();
 
-    // The static is `'static` and only touched here, so the exclusive borrow is
-    // sound for the duration of registration.
-    let reserve = unsafe { &mut *reserve };
-    let reclaimed = (
-        (&raw mut RECLAIMED) as *mut u8,
-        crate::RECLAIMED_INTERNAL_BYTES,
-    );
-    let (peripherals, psram) = unsafe { init_mem(reserve.region(), reclaimed) };
-    crate::esp32_plugin::stash_peripherals(peripherals);
-    crate::esp32_utils::health::set_psram_info(psram);
-    // Paint the stack and record the boot memory snapshot, before anything
-    // allocates. Picked up by `HealthPlugin` in `PreStartup`.
-    crate::esp32_utils::health::on_boot();
+	// The static is `'static` and only touched here, so the exclusive borrow is
+	// sound for the duration of registration.
+	let reserve = unsafe { &mut *reserve };
+	let reclaimed = (
+		(&raw mut RECLAIMED) as *mut u8,
+		crate::RECLAIMED_INTERNAL_BYTES,
+	);
+	let (peripherals, psram) = unsafe { init_mem(reserve.region(), reclaimed) };
+	crate::esp32_plugin::stash_peripherals(peripherals);
+	crate::esp32_utils::health::set_psram_info(psram);
+	// Paint the stack and record the boot memory snapshot, before anything
+	// allocates. Picked up by `HealthPlugin` in `PreStartup`.
+	crate::esp32_utils::health::on_boot();
 }

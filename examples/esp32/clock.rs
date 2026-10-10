@@ -19,33 +19,34 @@ use embassy_time::Instant;
 
 #[beet_esp::main]
 fn main() {
-    App::new()
-        .add_plugins((
-            Esp32Plugin,
-            HealthPlugin,
-            WifiPlugin::from_env(),
-            ClockPlugin::default(),
-        ))
-        .add_systems(Update, report_time)
-        .run();
+	App::new()
+		.add_plugins((
+			Esp32Plugin,
+			HealthPlugin,
+			WifiPlugin::from_env(),
+			ClockPlugin::default(),
+		))
+		.add_systems(Update, report_time)
+		.run();
 }
 
 /// Log the wall clock every ~2s (throttled off the monotonic clock so we don't
 /// spam every tick). `try_now` errors until the first SNTP sync lands.
 fn report_time(mut last: Local<Option<Instant>>) {
-    let mono = Instant::now();
-    let due = last.is_none_or(|t| mono.duration_since(t) >= Duration::from_secs(2));
-    if !due {
-        return;
-    }
-    *last = Some(mono);
+	let mono = Instant::now();
+	let due =
+		last.is_none_or(|t| mono.duration_since(t) >= Duration::from_secs(2));
+	if !due {
+		return;
+	}
+	*last = Some(mono);
 
-    match time_ext::try_now() {
-        Ok(d) => info!(
-            "wall clock: {} unix ms ({} s since epoch)",
-            d.as_millis() as u64,
-            d.as_secs()
-        ),
-        Err(_) => info!("clock still loading (SNTP not synced yet)"),
-    }
+	match time_ext::try_now() {
+		Ok(d) => info!(
+			"wall clock: {} unix ms ({} s since epoch)",
+			d.as_millis() as u64,
+			d.as_secs()
+		),
+		Err(_) => info!("clock still loading (SNTP not synced yet)"),
+	}
 }

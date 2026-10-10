@@ -13,36 +13,36 @@ use beet_esp::prelude::*;
 
 #[beet_esp::main]
 fn main() {
-    App::new()
-        .add_plugins((Esp32Plugin, HealthPlugin, AlvikPlugin))
-        .add_systems(Update, sweep_servos)
-        .run();
+	App::new()
+		.add_plugins((Esp32Plugin, HealthPlugin, AlvikPlugin))
+		.add_systems(Update, sweep_servos)
+		.run();
 }
 
 /// Step the servos through a sweep once a second; B mirrors A.
 fn sweep_servos(
-    time: Res<Time>,
-    mut elapsed: Local<f32>,
-    mut step: Local<usize>,
-    mut servos: Query<&mut Servo>,
+	time: Res<Time>,
+	mut elapsed: Local<f32>,
+	mut step: Local<usize>,
+	mut servos: Query<&mut Servo>,
 ) {
-    *elapsed += time.delta_secs();
-    if *elapsed < 1.0 {
-        return;
-    }
-    *elapsed = 0.0;
+	*elapsed += time.delta_secs();
+	if *elapsed < 1.0 {
+		return;
+	}
+	*elapsed = 0.0;
 
-    let positions = [0.0, 45.0, 90.0, 135.0, 180.0, 135.0, 90.0, 45.0];
-    let index = *step % positions.len();
-    *step += 1;
-    let a = positions[index];
-    let b = 180.0 - a;
-    info!("servo: A={}° B={}°", a, b);
+	let positions = [0.0, 45.0, 90.0, 135.0, 180.0, 135.0, 90.0, 45.0];
+	let index = *step % positions.len();
+	*step += 1;
+	let a = positions[index];
+	let b = 180.0 - a;
+	info!("servo: A={}° B={}°", a, b);
 
-    for mut servo in &mut servos {
-        servo.position = match servo.id {
-            ServoId::A => Angle::from_degrees(a),
-            ServoId::B => Angle::from_degrees(b),
-        };
-    }
+	for mut servo in &mut servos {
+		servo.position = match servo.id {
+			ServoId::A => Angle::from_degrees(a),
+			ServoId::B => Angle::from_degrees(b),
+		};
+	}
 }

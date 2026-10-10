@@ -19,39 +19,38 @@ const POLL_SECS: u64 = 10;
 
 #[beet_esp::main]
 fn main() {
-    App::new()
-        .add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::from_env()))
-        .add_systems(Startup, ping_example_com)
-        .add_systems(Update, poll_example_com)
-        .run();
+	App::new()
+		.add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::from_env()))
+		.add_systems(Startup, ping_example_com)
+		.add_systems(Update, poll_example_com)
+		.run();
 }
 
-fn ping_example_com(commands: AsyncCommands) {
-    get_example_com(commands);
-}
+fn ping_example_com(commands: AsyncCommands) { get_example_com(commands); }
 
 fn poll_example_com(
-    commands: AsyncCommands,
-    time: Res<Time>,
-    mut timer: Local<Option<Timer>>,
+	commands: AsyncCommands,
+	time: Res<Time>,
+	mut timer: Local<Option<Timer>>,
 ) {
-    let timer = timer
-        .get_or_insert_with(|| Timer::new(Duration::from_secs(POLL_SECS), TimerMode::Repeating));
-    if timer.tick(time.delta()).just_finished() {
-        get_example_com(commands);
-    }
+	let timer = timer.get_or_insert_with(|| {
+		Timer::new(Duration::from_secs(POLL_SECS), TimerMode::Repeating)
+	});
+	if timer.tick(time.delta()).just_finished() {
+		get_example_com(commands);
+	}
 }
 
 fn get_example_com(commands: AsyncCommands) {
-    commands.run_local(async move |_world: AsyncWorld| {
-        match Request::get("http://example.com").send().await {
-            Ok(response) => {
-                info!(
-                    "client GET example.com -> status {}",
-                    response.status().as_u16()
-                );
-            }
-            Err(e) => warn!("client request failed: {:?}", e),
-        }
-    });
+	commands.run_local(async move |_world: AsyncWorld| {
+		match Request::get("http://example.com").send().await {
+			Ok(response) => {
+				info!(
+					"client GET example.com -> status {}",
+					response.status().as_u16()
+				);
+			}
+			Err(e) => warn!("client request failed: {:?}", e),
+		}
+	});
 }

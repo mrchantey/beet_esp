@@ -30,15 +30,13 @@ extern crate alloc;
 
 #[beet_esp::main]
 fn main() {
-    App::new()
-        .add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::from_env()))
-        .init_resource::<Visits>()
-        .spawn((
-            HttpServer::new(8080),
-            CallOnReady::on_spawn(),
-            children![Handler],
-        ))
-        .run();
+	App::new()
+		.add_plugins((Esp32Plugin, HealthPlugin, WifiPlugin::from_env()))
+		.init_resource::<Visits>()
+		.spawn((HttpServer::new(8080), CallOnReady::on_spawn(), children![
+			Handler
+		]))
+		.run();
 }
 
 /// Visitor counter mutated by the [`Handler`].
@@ -49,15 +47,18 @@ struct Visits(u32);
 /// dispatch child.
 #[action]
 #[derive(Default, Clone, Component)]
-fn Handler(cx: In<ActionContext<Request>>, mut visits: ResMut<Visits>) -> Response {
-    visits.0 += 1;
-    info!(
-        "server request #{} -> {}",
-        visits.0,
-        cx.input.path_string().as_str()
-    );
-    Response::ok_text(alloc::format!(
-        "hello from the beet_esp ECS server\nyou are visitor #{}\n",
-        visits.0
-    ))
+fn Handler(
+	cx: In<ActionContext<Request>>,
+	mut visits: ResMut<Visits>,
+) -> Response {
+	visits.0 += 1;
+	info!(
+		"server request #{} -> {}",
+		visits.0,
+		cx.input.path_string().as_str()
+	);
+	Response::ok_text(alloc::format!(
+		"hello from the beet_esp ECS server\nyou are visitor #{}\n",
+		visits.0
+	))
 }

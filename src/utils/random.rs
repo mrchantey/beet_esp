@@ -26,11 +26,11 @@ use esp_hal::rng::Rng;
 /// upholds this contract for every call.
 #[unsafe(no_mangle)]
 unsafe extern "Rust" fn __getrandom_v03_custom(
-    dest: *mut u8,
-    len: usize,
+	dest: *mut u8,
+	len: usize,
 ) -> Result<(), getrandom::Error> {
-    // SAFETY: getrandom guarantees `dest` is valid for `len` writes.
-    let buffer = unsafe { core::slice::from_raw_parts_mut(dest, len) };
-    Rng::new().read(buffer);
-    Ok(())
+	// SAFETY: getrandom guarantees `dest` is valid for `len` writes.
+	let buffer = unsafe { core::slice::from_raw_parts_mut(dest, len) };
+	Rng::new().read(buffer);
+	Ok(())
 }
