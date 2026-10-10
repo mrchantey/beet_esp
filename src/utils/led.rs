@@ -128,7 +128,7 @@ mod device {
     /// Drop a [`Ws2812Led`] entity's driver when the marker is removed, freeing
     /// the channel (its [`Ws2812`] drop resets the peripheral).
     fn release_ws2812_driver(
-        remove: On<Remove, Ws2812Led>,
+        remove: On<Remove<Ws2812Led>>,
         mut drivers: NonSendMut<Ws2812Drivers>,
     ) {
         drivers.0.remove(&remove.entity);

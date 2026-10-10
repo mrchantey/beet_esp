@@ -16,7 +16,7 @@ use beet::prelude::*;
 /// child, so the robot is the root ancestor a loaded behaviour's agent resolves
 /// to. The transport systems below query `With<AlvikRobot>` and so do not care
 /// where the robot sits in the tree. To run logic when the robot appears, add an
-/// observer on `On<Add, AlvikRobot>`.
+/// observer on `On<Add<AlvikRobot>>`.
 pub struct AlvikPlugin;
 
 impl Plugin for AlvikPlugin {

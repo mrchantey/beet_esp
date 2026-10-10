@@ -27,7 +27,7 @@ fn main() {
 }
 
 /// Log a service as its `MDnsService` entity is spawned.
-fn on_discovered(ev: On<Add, MDnsService>, services: Query<&MDnsService>) -> Result {
+fn on_discovered(ev: On<Add<MDnsService>>, services: Query<&MDnsService>) -> Result {
     let service = services.get(ev.entity)?;
     info!(
         "discovered: {} at {}:{}",
@@ -39,7 +39,7 @@ fn on_discovered(ev: On<Add, MDnsService>, services: Query<&MDnsService>) -> Res
 }
 
 /// Log a service as its `MDnsService` entity is despawned.
-fn on_removed(ev: On<Remove, MDnsService>, services: Query<&MDnsService>) -> Result {
+fn on_removed(ev: On<Remove<MDnsService>>, services: Query<&MDnsService>) -> Result {
     let service = services.get(ev.entity)?;
     info!("removed: {}", service.instance.as_str());
     Ok(())

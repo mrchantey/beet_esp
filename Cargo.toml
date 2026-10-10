@@ -1,7 +1,7 @@
 [package]
 edition      = "2024"
 name         = "beet_esp"
-rust-version = "1.88"
+rust-version = "1.97.1"
 version      = "0.1.0"
 # The scene-server firmware is the default `cargo run` target; `flash-firmware` is
 # the opt-in second bin (`cargo run --bin flash-firmware`). Without this `cargo

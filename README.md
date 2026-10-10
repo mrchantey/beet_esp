@@ -27,8 +27,9 @@ targeting the **ESP32-S3** (Xtensa).
 
 - Espressif Rust (Xtensa) toolchain via [`espup`](https://github.com/esp-rs/espup):
   ```shell
-  cargo binstall espup && espup install
+  cargo binstall espup && espup install --targets esp32s3 --toolchain-version 1.98.1.0
   ```
+  The version is pinned because espup defaults to the newest non-prerelease build, which can trail the `rust-version` bevy requires, and 1.99.0.0 reorders `global_asm!` blocks so esp-hal's `.rwtext` literals fail to link.
   Then source the env in each shell (sets `LIBCLANG_PATH` etc.):
   ```shell
   . $HOME/export-esp.sh

@@ -8,7 +8,7 @@
 //! components and write command components (`WheelTarget`, the robot's commanded
 //! `DifferentialDrive`, `Servo`, `LedColor`); the systems carry
 //! them to and from the wire. To run
-//! logic when the robot appears, add an observer on `On<Add, AlvikRobot>`.
+//! logic when the robot appears, add an observer on `On<Add<AlvikRobot>>`.
 //!
 //! The wire protocol (ucPack framing, command/status codes) lives in
 //! [`ucpack`] and [`protocol`]; see `agent/plans/alvik-plan.md` for the decode.
