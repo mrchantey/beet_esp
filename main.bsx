@@ -28,8 +28,12 @@ Two kinds of verb:
     `BEET_SOCKET_SERVER` port. Start it before flashing the socket_client example.
 
         beet socket-server   # run the host echo server (Ctrl-C to stop)
+
+`RejectUnknownParams` refuses a flag no verb declares, so `beet dump --ulr=..`
+answers `did you mean --url?` rather than driving the `.env` device. `run`
+forwards the rest to the device route it fires.
 -->
-<CliServer {CallOnReady}>
+<CliServer {(CallOnReady, RejectUnknownParams)}>
 <Router {HelpHandler}>
 	<SceneLoad/>
 	<SceneRun/>

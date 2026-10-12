@@ -26,14 +26,25 @@ fmt-toolchain := 'nightly-2026-07-02'
 default:
     @just --list
 
-# Install the `beet` CLI (its `SceneManagementPlugin` registers the scene-push
-# commands, and `ExchangeSequence`/`Command` back the build/flash/monitor verbs
-# `main.bsx` wires). Re-run after pulling beet changes.
+# The scene-management capabilities (`SceneManagementPlugin`) register the
+# scene-push commands, and `ExchangeSequence`/`Command` back the
+# build/flash/monitor verbs `main.bsx` wires.
+# Install the `beet` CLI through beet's own recipe; re-run after pulling beet changes.
 install-cli:
-    cd {{beet_dir}} && cargo install --path crates/beet-cli
+    cd {{beet_dir}} && just install-cli
 
-beet:
-	cargo run --manifest-path=/home/pete/me/beet/crates/beet-cli/Cargo.toml
+#     just beet --help
+#     just beet dump
+#
+# The `beet` CLI over this directory's `main.bsx`, with no install step.
+beet *args:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	# built in the beet checkout, since this directory's toolchain and
+	# `.cargo/config.toml` target the esp32, then run here so it discovers this
+	# entry and its `.env`
+	(cd {{beet_dir}} && cargo build -p beet-cli)
+	"${CARGO_TARGET_DIR:-{{beet_dir}}/target}/debug/beet" {{args}}
 
 # Format this crate and its macros with the pinned nightly. Never `cargo fmt`.
 fmt *args:
