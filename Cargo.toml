@@ -488,8 +488,10 @@ opt-level     = 's'
 # `bevy/serialize`) leaves default features on its `serde` (only the `MemorySize`
 # derive uses it), enabling `serde/std`, which cannot build for a bare-metal
 # target. The vendored copy is the published 0.20.0 crate with
-# `default-features = false` on that one dependency; delete it and this patch
-# once a bevy release does the same (upstream fix: the
-# `mrchantey/bevy:bevy_utils-serde-no-std` branch).
+# `default-features = false` on that one dependency. The upstream fix
+# (bevyengine/bevy#26108) is merged to `main` for the 0.20.1 milestone; delete
+# the vendored copy and this patch once 0.20.1 is published. A git patch on
+# `main` cannot stand in meanwhile: its crates are `0.20.0-dev`, which does not
+# satisfy `^0.20.0`, so cargo ignores it and silently resolves the broken 0.20.0.
 [patch.crates-io]
 bevy_utils = { path = "vendor/bevy_utils" }
