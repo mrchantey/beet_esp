@@ -1,6 +1,7 @@
 # will have compiled files and executables
 debug/
 target/
+vendor/
 .env
 # Generated remote-loader scene for the `beet` CLI (regenerate with `just beet-json`).
 beet.json

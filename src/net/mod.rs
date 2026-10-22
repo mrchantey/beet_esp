@@ -138,11 +138,12 @@ impl Plugin for WifiPlugin {
 		// beet's async bridge, which needs `AsyncPlugin` (it inserts the
 		// `AsyncWorld` resource) and `ActionPlugin`. `RouterPlugin` also adds
 		// these, but a plain client/server app has no router, so add them here
-		// too. `init_plugin` is idempotent, so it is safe when both are present.
+		// too. `install_type` installs a plugin only when absent, so it is safe
+		// when both are present.
 		#[cfg(feature = "action")]
 		{
-			app.init_plugin::<ActionPlugin>()
-				.init_plugin::<AsyncPlugin>()
+			app.install_type::<ActionPlugin>()
+				.install_type::<AsyncPlugin>()
 				.add_plugins(http_server::http_server_plugin);
 		}
 

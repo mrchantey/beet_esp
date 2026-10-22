@@ -60,7 +60,7 @@ impl Plugin for PerceiveActBodyPlugin {
 			// The outbound socket-client transport: wraps a non-reflect codec
 			// `Arc`, so it cannot be a bsx literal — a template provides it,
 			// expanding at build to leave no marker to re-fire on reload.
-			.register_template::<AgentSocket>()
+			.install_type::<AgentSocket>()
 			// ends each drive command after its duration, so the robot steps then stops.
 			.add_systems(Update, expire_drive_step);
 	}

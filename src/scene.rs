@@ -44,12 +44,14 @@ impl Plugin for EspScenePlugin {
 		// rather than in `Esp32Plugin` so it rides the same `ResetScene` the scene
 		// server already owns, and only when a scene stack (with hardware to stop)
 		// is present.
-		app.try_set_error_handler(reset_on_unhandled_error)
-			.add_systems(Update, trigger_reset_on_error);
+		if app.get_error_handler().is_none() {
+			app.set_error_handler(reset_on_unhandled_error);
+		}
+		app.add_systems(Update, trigger_reset_on_error);
 		app.add_plugins(SceneServerPlugin)
 			// upstream's `<Route path=".." {handler}/>` template — registered here
 			// because `RouterPlugin` only registers it on a `std` target.
-			.register_template::<Route>()
+			.install_type::<Route>()
 			.register_type::<RouteAction>()
 			// The behaviour-tree delay leaf. Registered already by `ActionPlugin`,
 			// but augment its registration with `ReflectDefault` so a partial
@@ -68,7 +70,7 @@ impl Plugin for EspScenePlugin {
                 crate::scripting::LedInput,
                 crate::scripting::LedOutput,
             >>()
-            .register_template::<LedScript>();
+            .install_type::<LedScript>();
 		#[cfg(feature = "led")]
 		app.add_observer(reset_leds);
 		#[cfg(feature = "alvik")]

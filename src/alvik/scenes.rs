@@ -30,7 +30,7 @@ impl Plugin for AlvikScenePlugin {
 			// the robot, so the robot is the scene root and a loaded `<SetDrive>` leaf
 			// resolves its `DifferentialDrive` to the robot via root-ancestor (no
 			// marker needed).
-			.register_template::<Alvik>()
+			.install_type::<Alvik>()
 			.add_observer(reset_robot);
 		// The script step plus its data: the typed `Script` and the `ScriptState`
 		// it threads (registered once in `EspScenePlugin`), and the `<AlvikScript>`
@@ -41,7 +41,7 @@ impl Plugin for AlvikScenePlugin {
                 super::scripting::AlvikInput,
                 super::scripting::AlvikOutput,
             >>()
-            .register_template::<AlvikScript>();
+            .install_type::<AlvikScript>();
 	}
 }
 

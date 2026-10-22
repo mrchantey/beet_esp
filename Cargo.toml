@@ -483,3 +483,13 @@ codegen-units = 1     # LLVM can perform better optimizations using a single thr
 debug         = 2     # prefer slower builds but better debugging experience
 lto           = 'fat'
 opt-level     = 's'
+
+# bevy 0.20's `bevy_utils/serialize` (reached through `beet/template_serde` ->
+# `bevy/serialize`) leaves default features on its `serde` (only the `MemorySize`
+# derive uses it), enabling `serde/std`, which cannot build for a bare-metal
+# target. The vendored copy is the published 0.20.0 crate with
+# `default-features = false` on that one dependency; delete it and this patch
+# once a bevy release does the same (upstream fix: the
+# `mrchantey/bevy:bevy_utils-serde-no-std` branch).
+[patch.crates-io]
+bevy_utils = { path = "vendor/bevy_utils" }
